@@ -2,10 +2,23 @@ class BloodStainSystem {
     constructor() {
         this.stains = [];
         this.maxStains = 600;
+        this.fadeDuration = 22;
+        this.minAlpha = 0.2;
     }
 
     clear() {
         this.stains = [];
+    }
+
+    update(dt) {
+        for (const stain of this.stains) {
+            stain.age += dt;
+        }
+    }
+
+    _stainAlpha(age) {
+        const t = clamp(age / this.fadeDuration, 0, 1);
+        return 1 - t * (1 - this.minAlpha);
     }
 
     spawn(x, y, intensity = 1, fromAngle = null) {
@@ -58,7 +71,7 @@ class BloodStainSystem {
             });
         }
 
-        this.stains.push({ x, y, drops, streaks });
+        this.stains.push({ x, y, drops, streaks, age: 0 });
 
         if (this.stains.length > this.maxStains) {
             this.stains.splice(0, this.stains.length - this.maxStains);
@@ -67,11 +80,13 @@ class BloodStainSystem {
 
     draw(ctx) {
         for (const stain of this.stains) {
+            const alpha = this._stainAlpha(stain.age);
+
             for (const s of stain.streaks) {
                 ctx.strokeStyle = s.color;
                 ctx.lineWidth = s.width;
                 ctx.lineCap = 'round';
-                ctx.globalAlpha = 0.92;
+                ctx.globalAlpha = alpha * 0.92;
                 ctx.beginPath();
                 ctx.moveTo(stain.x + s.x1, stain.y + s.y1);
                 ctx.lineTo(stain.x + s.x2, stain.y + s.y2);
@@ -80,7 +95,7 @@ class BloodStainSystem {
 
             for (const d of stain.drops) {
                 ctx.fillStyle = d.color;
-                ctx.globalAlpha = 0.95;
+                ctx.globalAlpha = alpha * 0.95;
                 ctx.beginPath();
                 ctx.arc(stain.x + d.x, stain.y + d.y, d.r, 0, Math.PI * 2);
                 ctx.fill();

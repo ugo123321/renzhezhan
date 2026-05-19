@@ -56,25 +56,6 @@ const UPGRADE_DEFS = [
         },
     },
     {
-        id: 'shuriken',
-        name: '飞镖',
-        desc: '伤害+10%，1枚飞镖环绕身边伤害敌人',
-        stackDesc: '飞镖+1，伤害+5%',
-        icon: '🎯',
-        color: '#8aa',
-        apply(player, stacks) {
-            if (stacks === 1) {
-                player.damageBonus += 0.10;
-                player.shurikenCount = 1;
-                player.shurikenLevel = 1;
-            } else {
-                player.damageBonus += 0.05;
-                player.shurikenCount += 1;
-                player.shurikenLevel = stacks;
-            }
-        },
-    },
-    {
         id: 'crescent',
         name: '月牙天冲',
         desc: '暴击率+5%，每连击3次对最近敌人释放穿透月牙波',

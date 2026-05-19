@@ -89,7 +89,7 @@ const CONFIG = {
     XP: {
         BASE_REQUIRED: 30,
         SCALE_FACTOR: 1.35,
-        ORB_VALUE_SCALE: 0.5,
+        ORB_VALUE_SCALE: 0.25,
         ORB_SPEED: 180,
         ORB_RADIUS: 5,
         PICKUP_DELAY: 0.3,

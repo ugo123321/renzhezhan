@@ -8,7 +8,7 @@ class MonsterSpawner {
         this.spawnInterval = 1.5;
     }
 
-    prepareLevelSpawns(levelIndex, canvasW, canvasH) {
+    prepareLevelSpawns(levelIndex, canvasW, canvasH, playAreaBottom = canvasH) {
         this.monsters = [];
         this.spawnQueue = [];
         this.spawnTimer = 0;
@@ -31,25 +31,28 @@ class MonsterSpawner {
                 const config = CONFIG.MONSTERS[typeKey];
                 const edge = Math.floor(Math.random() * 4);
                 let x, y;
-                const margin = 36;
-                const inset = 20;
+                const edgePad = 72;
+                const alongPad = 80;
+                const playBottom = Math.min(playAreaBottom, canvasH);
+                const maxY = Math.max(alongPad + 20, playBottom - edgePad);
+                const minY = edgePad;
 
                 switch (edge) {
                     case 0:
-                        x = randRange(inset, canvasW - inset);
-                        y = -margin;
+                        x = randRange(alongPad, canvasW - alongPad);
+                        y = minY;
                         break;
                     case 1:
-                        x = randRange(inset, canvasW - inset);
-                        y = canvasH + margin;
+                        x = randRange(alongPad, canvasW - alongPad);
+                        y = maxY;
                         break;
                     case 2:
-                        x = inset;
-                        y = randRange(inset, canvasH - inset);
+                        x = edgePad;
+                        y = randRange(minY, maxY);
                         break;
                     case 3:
-                        x = canvasW - inset;
-                        y = randRange(inset, canvasH - inset);
+                        x = canvasW - edgePad;
+                        y = randRange(minY, maxY);
                         break;
                 }
 

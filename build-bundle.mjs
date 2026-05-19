@@ -21,6 +21,7 @@ const ORDER = [
     'bossRewards.js',
     'abilities.js',
     'sakura.js',
+    'grass.js',
     'levelManager.js',
     'ui.js',
     'boss.js',

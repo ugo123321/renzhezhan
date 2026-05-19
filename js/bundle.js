@@ -154,7 +154,7 @@ const CONFIG = {
     XP: {
         BASE_REQUIRED: 30,
         SCALE_FACTOR: 1.35,
-        ORB_VALUE_SCALE: 0.5,
+        ORB_VALUE_SCALE: 0.25,
         ORB_SPEED: 180,
         ORB_RADIUS: 5,
         PICKUP_DELAY: 0.3,
@@ -2222,25 +2222,6 @@ const UPGRADE_DEFS = [
         },
     },
     {
-        id: 'shuriken',
-        name: '飞镖',
-        desc: '伤害+10%，1枚飞镖环绕身边伤害敌人',
-        stackDesc: '飞镖+1，伤害+5%',
-        icon: '🎯',
-        color: '#8aa',
-        apply(player, stacks) {
-            if (stacks === 1) {
-                player.damageBonus += 0.10;
-                player.shurikenCount = 1;
-                player.shurikenLevel = 1;
-            } else {
-                player.damageBonus += 0.05;
-                player.shurikenCount += 1;
-                player.shurikenLevel = stacks;
-            }
-        },
-    },
-    {
         id: 'crescent',
         name: '月牙天冲',
         desc: '暴击率+5%，每连击3次对最近敌人释放穿透月牙波',
@@ -2469,6 +2450,16 @@ class UpgradeManager {
 
 
 // ---- bossRewards.js ----
+const PIXEL_CHEST_SPRITE = [
+    [null, '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', null],
+    ['#2a1810', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#2a1810'],
+    ['#3a2818', '#7a5830', '#ffd850', '#ffe878', '#ffd850', '#7a5830', '#3a2818', '#2a1810'],
+    ['#2a1810', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a1810', '#2a1810'],
+    ['#2a1810', '#4a3010', '#6a5028', '#6a5028', '#6a5028', '#6a5028', '#4a3010', '#2a1810'],
+    ['#2a1810', '#3a2818', '#4a3818', '#4a3818', '#4a3818', '#4a3818', '#3a2818', '#2a1810'],
+    ['#1a1008', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#1a1008'],
+];
+
 const BOSS_REWARD_DEFS = [
     {
         id: 'dual_wield',
@@ -2747,77 +2738,35 @@ class BossChestManager {
     draw(ctx) {
         for (const chest of this.chests) {
             if (chest.opened) continue;
-            const bobY = Math.sin(chest.bob) * 6;
-            const pop = chest.spawnPop > 0 ? 1 + chest.spawnPop * 0.35 : 1;
-            const x = Math.floor(chest.x);
-            const y = Math.floor(chest.y + bobY);
-            const pulse = 0.7 + Math.sin(chest.bob * 1.4) * 0.3;
-            const scale = pop;
+            const bobY = Math.sin(chest.bob) * 4;
+            const pop = chest.spawnPop > 0 ? 1 + chest.spawnPop * 0.25 : 1;
+            const x = chest.x;
+            const y = chest.y + bobY;
+            const pulse = 0.75 + Math.sin(chest.bob * 1.4) * 0.25;
+            const pixelScale = Math.round(3 * pop);
 
             ctx.save();
-            ctx.globalAlpha = 0.4 + chest.glow * 0.25;
-            const beamH = 120 * scale;
+            ctx.globalAlpha = 0.35 + chest.glow * 0.2;
+            const beamH = 90 * pop;
             const beam = ctx.createLinearGradient(x, y, x, y - beamH);
-            beam.addColorStop(0, 'rgba(255, 220, 100, 0.55)');
+            beam.addColorStop(0, 'rgba(255, 210, 90, 0.5)');
             beam.addColorStop(1, 'rgba(255, 200, 80, 0)');
             ctx.fillStyle = beam;
-            ctx.fillRect(x - 14 * scale, y - beamH, 28 * scale, beamH);
+            ctx.fillRect(x - 10 * pop, y - beamH, 20 * pop, beamH);
 
-            const grad = ctx.createRadialGradient(x, y - 8, 6, x, y - 8, 52 * pulse * scale);
-            grad.addColorStop(0, 'rgba(255, 220, 120, 0.95)');
-            grad.addColorStop(0.5, 'rgba(255, 160, 50, 0.45)');
-            grad.addColorStop(1, 'rgba(255, 140, 40, 0)');
+            const grad = ctx.createRadialGradient(x, y - 4, 4, x, y - 4, 36 * pulse);
+            grad.addColorStop(0, 'rgba(255, 210, 100, 0.7)');
+            grad.addColorStop(1, 'rgba(255, 160, 50, 0)');
             ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.arc(x, y - 8, 52 * pulse * scale, 0, Math.PI * 2);
+            ctx.arc(x, y - 4, 36 * pulse, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.globalAlpha = 1;
-            const bw = 44 * scale;
-            const bh = 28 * scale;
-            const topH = 20 * scale;
-            ctx.fillStyle = '#5a3818';
-            ctx.fillRect(x - bw / 2, y - 6, bw, bh);
-            ctx.fillStyle = '#9a6828';
-            ctx.fillRect(x - bw / 2 + 3, y - topH - 6, bw - 6, topH);
-            ctx.fillStyle = '#ffd060';
-            ctx.fillRect(x - bw / 2 + 5, y - topH - 4, bw - 10, 5 * scale);
-            ctx.strokeStyle = '#ffe8a0';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x - bw / 2 + 3, y - topH - 6, bw - 6, topH + bh - 4);
-
-            ctx.fillStyle = '#ffea90';
-            ctx.font = `bold ${Math.round(20 * scale)}px serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('📦', x, y - 2);
-
-            ctx.fillStyle = '#fff8c0';
-            ctx.font = `bold ${Math.round(13 * scale)}px ${GAME_FONT}`;
-            ctx.fillText('Boss宝箱', x, y + bh + 10);
+            const sz = getSpriteSize(PIXEL_CHEST_SPRITE, pixelScale);
+            drawSprite(ctx, PIXEL_CHEST_SPRITE, x, y - sz.h * 0.08, pixelScale);
             ctx.restore();
         }
-    }
-
-    drawHint(ctx, vp, uiScale) {
-        const chest = this.getActiveChest();
-        const player = this.game.player;
-        if (!chest || !player) return;
-        if (dist(player.x, player.y, chest.x, chest.y) < 80) return;
-
-        const dx = chest.x - player.x;
-        const dy = chest.y - player.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const s = uiScale || 1;
-
-        ctx.save();
-        ctx.globalAlpha = 0.9;
-        drawGameText(ctx, 'Boss宝箱 →',
-            vp.cx + ux * 72 * s, vp.cy + uy * 72 * s,
-            Math.round(15 * s), '#ffd080', 'center', 'middle');
-        ctx.restore();
     }
 }
 
@@ -3634,6 +3583,85 @@ class SakuraSystem {
 }
 
 
+// ---- grass.js ----
+const GRASS_PALETTES = [
+    ['#3a6838', '#4a8048', '#5a9858'],
+    ['#3a6038', '#4a7848', '#5a9050'],
+    ['#446840', '#528050', '#609860'],
+];
+
+class GrassSystem {
+    constructor() {
+        this.blades = [];
+        this.ready = false;
+    }
+
+    init(worldW, worldH, playAreaBottom = worldH) {
+        this.blades = [];
+        const count = Math.min(22, Math.floor((worldW * worldH) / 45000));
+        const topPad = Math.max(100, worldH * 0.14);
+        const grassBottom = Math.max(topPad + 40, playAreaBottom - 16);
+
+        for (let i = 0; i < count; i++) {
+            const variant = Math.floor(Math.random() * 3);
+            this.blades.push({
+                x: randRange(16, worldW - 16),
+                y: randRange(topPad, grassBottom),
+                variant,
+                scale: randRange(2, 3),
+                height: Math.floor(randRange(3, 6)),
+                phase: randRange(0, Math.PI * 2),
+                speed: randRange(1.4, 3.2),
+                swayAmp: randRange(0.14, 0.28),
+                offset: randRange(-1, 1),
+            });
+        }
+        this.ready = true;
+    }
+
+    update(dt) {
+        if (!this.ready) return;
+        for (const b of this.blades) {
+            b.phase += dt * b.speed;
+        }
+    }
+
+    _drawTuft(ctx, b) {
+        const palette = GRASS_PALETTES[b.variant];
+        const s = b.scale;
+        const sway = Math.sin(b.phase) * b.swayAmp;
+        const baseX = Math.floor(b.x);
+        const baseY = Math.floor(b.y);
+
+        ctx.save();
+        ctx.translate(baseX + b.offset * s, baseY);
+
+        for (let blade = -1; blade <= 1; blade++) {
+            const lean = sway + blade * 0.08;
+            ctx.save();
+            ctx.rotate(lean + blade * 0.12);
+            for (let i = 0; i < b.height; i++) {
+                ctx.fillStyle = palette[Math.min(i, palette.length - 1)];
+                const w = s + (i === b.height - 1 ? 0 : 0);
+                ctx.fillRect(-w / 2 + blade, -i * s - s, w, s);
+            }
+            ctx.restore();
+        }
+
+        ctx.fillStyle = palette[0];
+        ctx.fillRect(-s, 0, s * 2, s);
+        ctx.restore();
+    }
+
+    draw(ctx) {
+        if (!this.ready) return;
+        for (const b of this.blades) {
+            this._drawTuft(ctx, b);
+        }
+    }
+}
+
+
 // ---- levelManager.js ----
 class LevelManager {
     constructor() {
@@ -3787,18 +3815,75 @@ class UI {
 
     draw(ctx, player, vp, uiScale, opts = {}) {
         const s = uiScale || 1;
-        this.drawKiBar(ctx, player, vp, s);
+        this.drawBottomPanel(ctx, vp, s);
         this.drawHearts(ctx, player, vp, s);
+        this.drawKiBar(ctx, player, vp, s);
         this.drawXpBar(ctx, player, vp, s);
-        this.drawLevel(ctx, player, vp, s);
         this.drawComboBanner(ctx, player, vp, s, !!opts.hasBoss);
     }
 
+    getBottomHudLayout(vp, s) {
+        const innerPad = Math.round(12 * s);
+        const xpBarH = Math.round(12 * s);
+        const kiBarH = Math.round(10 * s);
+        const heartScale = Math.round(4 * s);
+        const heartSpacing = 26 * s;
+        const heartBlockH = heartScale * 5;
+        const bottomPad = Math.round(14 * s);
+        const rowGap = Math.round(12 * s);
+        const panelTopPad = Math.round(22 * s);
+
+        const panelX = vp.x;
+        const panelW = vp.w;
+        const barW = panelW - innerPad * 2;
+        const barX = panelX + innerPad;
+
+        const xpY = vp.y + vp.h - bottomPad - xpBarH;
+        const kiY = xpY - rowGap - kiBarH;
+        const heartsY = kiY - rowGap - heartBlockH / 2;
+        const panelY = heartsY - heartBlockH / 2 - panelTopPad;
+
+        return {
+            panel: { x: panelX, y: panelY, w: panelW, h: vp.y + vp.h - panelY },
+            playAreaBottom: panelY,
+            xp: { x: barX, y: xpY, w: barW, h: xpBarH },
+            ki: { x: barX, y: kiY, w: barW, h: kiBarH },
+            hearts: { y: heartsY, scale: heartScale, spacing: heartSpacing },
+        };
+    }
+
+    getPlayAreaBottom(canvasH, uiScale) {
+        const s = uiScale || 1;
+        const vp = { x: 0, y: 0, w: CONFIG.DISPLAY.LOGICAL_WIDTH, h: canvasH };
+        return this.getBottomHudLayout(vp, s).playAreaBottom;
+    }
+
+    drawBottomPanel(ctx, vp, s) {
+        const { panel } = this.getBottomHudLayout(vp, s);
+        const r = Math.round(10 * s);
+        ctx.save();
+        ctx.fillStyle = 'rgba(36, 30, 24, 0.82)';
+        if (typeof ctx.roundRect === 'function') {
+            ctx.beginPath();
+            ctx.roundRect(panel.x, panel.y, panel.w, panel.h, [r, r, 0, 0]);
+            ctx.fill();
+        } else {
+            ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+        }
+        ctx.strokeStyle = 'rgba(130, 108, 82, 0.65)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(panel.x, panel.y + 1);
+        ctx.lineTo(panel.x + panel.w, panel.y + 1);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     getTopHudBottom(vp, s, hasBoss = false) {
-        const ki = this.getKiBarLayout(vp, s);
-        let bottom = ki.y + ki.h;
+        const pauseBtn = this.getPauseButtonRect(vp, s);
+        let bottom = pauseBtn.y + pauseBtn.h + Math.round(8 * s);
         if (hasBoss) {
-            const gap = Math.round(5 * s);
+            const gap = Math.round(6 * s);
             const barH = Math.round(8 * s);
             const nameSize = Math.round(11 * s);
             bottom += gap + barH + nameSize + Math.round(6 * s);
@@ -3850,14 +3935,13 @@ class UI {
     }
 
     drawHearts(ctx, player, vp, s) {
-        const xpBarY = vp.y + vp.h - 28 * s;
-        const heartScale = Math.round(4 * s);
-        const spacing = 26 * s;
-        const heartBlockH = heartScale * 5;
-        const y = xpBarY - heartBlockH - 8 * s;
+        const { panel, hearts } = this.getBottomHudLayout(vp, s);
+        const heartScale = hearts.scale;
+        const spacing = hearts.spacing;
+        const y = hearts.y;
         const totalHearts = Math.ceil(player.maxHearts);
         const totalW = totalHearts > 0 ? (totalHearts - 1) * spacing + heartScale * 5 : 0;
-        const startX = vp.x + (vp.w - totalW) / 2;
+        const startX = panel.x + (panel.w - totalW) / 2;
         for (let i = 0; i < totalHearts; i++) {
             const heartVal = player.hearts - i;
             let sprite;
@@ -3872,114 +3956,130 @@ class UI {
         }
     }
 
+    _uiPx(ctx, ox, oy, col, row, color, px) {
+        if (!color) return;
+        ctx.fillStyle = color;
+        ctx.fillRect(ox + col * px, oy + row * px, px, px);
+    }
+
     _drawKatanaKiBar(ctx, x, y, totalW, h, ratio, s, deepBreath = false) {
-        const hiltW = Math.max(Math.round(14 * s), Math.round(totalW * 0.09));
-        const tsubaW = Math.max(Math.round(8 * s), Math.round(totalW * 0.045));
-        const tipW = Math.max(Math.round(10 * s), Math.round(totalW * 0.05));
-        const bladeW = totalW - hiltW - tsubaW - tipW;
-        const bladeX = x + hiltW + tsubaW;
-        const outline = deepBreath ? '#1a3848' : '#2a2018';
-        const hiltFill = deepBreath ? '#3a5868' : '#5a4038';
-        const hiltWrap = deepBreath ? '#68a8c0' : '#8a6858';
-        const tsubaFill = deepBreath ? '#58a8c8' : '#6a6468';
-        const trackFill = deepBreath ? '#2a5060' : '#4a5058';
-        const trackDark = deepBreath ? '#1a3844' : '#363c44';
-        const kiHi = deepBreath ? '#b8ffff' : '#8ad4f0';
-        const kiLo = deepBreath ? '#48d8f8' : '#4a88b0';
-        const edgeHi = deepBreath ? '#d8ffff' : '#9a9088';
+        const px = Math.max(2, Math.floor(h / 5));
+        const rows = 5;
+        const barH = rows * px;
+        const barY = Math.floor(y + (h - barH) / 2);
+        const ox = Math.floor(x);
+
+        const pal = deepBreath ? {
+            outline: '#1a3848',
+            hilt0: '#2a4858', hilt1: '#4a6878', hilt2: '#6a98a8', hiltWrap: '#88c0d0',
+            tsuba: '#68b8d8', tsubaHi: '#a8e8ff',
+            track: '#2a4858', trackHi: '#3a5868',
+            kiLo: '#48c8e8', kiHi: '#b8ffff', kiEdge: '#d8ffff',
+            tip: '#4a7888', warn: '#e85848',
+        } : {
+            outline: '#2a1810',
+            hilt0: '#3a2818', hilt1: '#5a4030', hilt2: '#7a5840', hiltWrap: '#9a7860',
+            tsuba: '#6a6468', tsubaHi: '#9a9898',
+            track: '#3a4048', trackHi: '#4a5058',
+            kiLo: '#3a78a0', kiHi: '#8ad4f0', kiEdge: '#c8ecff',
+            tip: '#5a6068', warn: '#c45848',
+        };
+
+        const hiltCols = 4;
+        const tsubaCols = 2;
+        const tipCols = 3;
+        const bladeCols = Math.max(
+            6,
+            Math.floor((totalW - (hiltCols + tsubaCols + tipCols) * px) / px)
+        );
+        const totalPx = hiltCols + tsubaCols + bladeCols + tipCols;
+        const drawW = totalPx * px;
+        const dx = ox + Math.floor((totalW - drawW) / 2);
 
         if (deepBreath) {
-            const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.25;
+            const pulse = 0.45 + Math.sin(Date.now() * 0.005) * 0.2;
             ctx.save();
             ctx.globalAlpha = pulse;
-            ctx.strokeStyle = '#68e8ff';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(x - 2, y - 3, totalW + 4, h + 6);
+            for (let c = 0; c < totalPx; c++) {
+                this._uiPx(ctx, dx - px, barY - px, c, 0, '#68e8ff', px);
+                this._uiPx(ctx, dx - px, barY + rows, c, 0, '#68e8ff', px);
+            }
             ctx.restore();
         }
 
-        ctx.lineWidth = Math.max(2, Math.round(2 * s));
-        ctx.strokeStyle = outline;
-        ctx.lineJoin = 'round';
-
-        ctx.fillStyle = hiltFill;
-        ctx.fillRect(x + 1, y + 2, hiltW - 2, h - 4);
-        ctx.fillStyle = hiltWrap;
-        for (let i = 0; i < 3; i++) {
-            const dy = y + 3 + i * Math.floor((h - 6) / 3);
-            ctx.fillRect(x + 3, dy, hiltW - 6, Math.max(1, Math.floor((h - 6) / 3) - 1));
-        }
-
-        const gx = x + hiltW;
-        const tsubaH = h + Math.round(6 * s);
-        const tsubaY = y - Math.round(3 * s);
-        ctx.fillStyle = tsubaFill;
-        ctx.beginPath();
-        ctx.rect(gx, tsubaY + 1, tsubaW, tsubaH - 2);
-        ctx.fill();
-        ctx.strokeRect(gx, tsubaY, tsubaW, tsubaH);
-        ctx.fillStyle = edgeHi;
-        ctx.fillRect(gx + 1, tsubaY + 1, tsubaW - 2, 2);
-
-        ctx.fillStyle = trackDark;
-        ctx.fillRect(bladeX, y + 1, bladeW, h - 2);
-
-        const fillW = Math.max(0, Math.floor((bladeW - 2) * ratio));
-        if (fillW > 0) {
-            ctx.fillStyle = kiLo;
-            ctx.fillRect(bladeX + 1, y + 2, fillW, h - 4);
-            ctx.fillStyle = kiHi;
-            ctx.fillRect(bladeX + 1, y + 2, fillW, Math.max(1, Math.floor((h - 4) * 0.45)));
-        }
-
-        const tipX = bladeX + bladeW;
-        ctx.fillStyle = trackFill;
-        ctx.beginPath();
-        ctx.moveTo(tipX, y);
-        ctx.lineTo(x + totalW - 1, y + h / 2);
-        ctx.lineTo(tipX, y + h);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.strokeStyle = outline;
-        ctx.beginPath();
-        ctx.moveTo(bladeX, y);
-        ctx.lineTo(tipX, y);
-        ctx.lineTo(x + totalW - 1, y + h / 2);
-        ctx.lineTo(tipX, y + h);
-        ctx.lineTo(bladeX, y + h);
-        ctx.closePath();
-        ctx.stroke();
-
-        ctx.strokeStyle = outline;
-        ctx.strokeRect(x, y, hiltW, h);
-        ctx.strokeRect(bladeX, y, bladeW, h);
-
-        ctx.strokeStyle = edgeHi;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(bladeX + 1, y + 1);
-        ctx.lineTo(tipX - 1, y + 1);
-        ctx.stroke();
-
-        if (ratio < 0.25) {
-            const blink = Math.floor(Date.now() / 280) % 2 === 0;
-            if (blink) {
-                ctx.fillStyle = '#c45848';
-                ctx.fillRect(tipX - 4, y - 2, 3, 2);
+        const hiltRows = [
+            [pal.outline, pal.hilt0, pal.hilt0, pal.outline],
+            [pal.hilt1, pal.hilt2, pal.hiltWrap, pal.hilt1],
+            [pal.hilt1, pal.hiltWrap, pal.hiltWrap, pal.hilt1],
+            [pal.hilt1, pal.hilt2, pal.hiltWrap, pal.hilt1],
+            [pal.outline, pal.hilt0, pal.hilt0, pal.outline],
+        ];
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < hiltCols; c++) {
+                this._uiPx(ctx, dx, barY, c, r, hiltRows[r][c], px);
             }
+        }
+
+        const tsubaCol = hiltCols;
+        const tsubaRows = [
+            [pal.outline, pal.outline],
+            [pal.tsubaHi, pal.tsuba],
+            [pal.tsuba, pal.tsuba],
+            [pal.tsuba, pal.tsuba],
+            [pal.outline, pal.outline],
+        ];
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < tsubaCols; c++) {
+                this._uiPx(ctx, dx, barY, tsubaCol + c, r, tsubaRows[r][c], px);
+            }
+        }
+
+        const bladeStart = hiltCols + tsubaCols;
+        const fillCols = Math.floor(bladeCols * ratio);
+        for (let c = 0; c < bladeCols; c++) {
+            const filled = c < fillCols;
+            const edge = c === 0 || c === bladeCols - 1;
+            const topHi = c < fillCols && c % 2 === 0;
+            for (let r = 0; r < rows; r++) {
+                const isEdgeRow = r === 0 || r === rows - 1;
+                let color;
+                if (filled) {
+                    if (isEdgeRow && !edge) color = pal.kiLo;
+                    else if (r <= 1 && topHi) color = pal.kiEdge;
+                    else if (r <= 2) color = pal.kiHi;
+                    else color = pal.kiLo;
+                } else {
+                    if (isEdgeRow || edge) color = pal.outline;
+                    else if (r === 1) color = pal.trackHi;
+                    else color = pal.track;
+                }
+                this._uiPx(ctx, dx, barY, bladeStart + c, r, color, px);
+            }
+        }
+
+        const tipStart = bladeStart + bladeCols;
+        const tipPattern = [
+            [null, null, pal.outline],
+            [null, pal.tip, pal.tip],
+            [pal.tip, pal.kiHi, pal.kiLo],
+            [null, pal.tip, pal.tip],
+            [null, null, pal.outline],
+        ];
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < tipCols; c++) {
+                this._uiPx(ctx, dx, barY, tipStart + c, r, tipPattern[r][c], px);
+            }
+        }
+
+        if (ratio < 0.25 && Math.floor(Date.now() / 280) % 2 === 0) {
+            this._uiPx(ctx, dx, barY, tipStart + 1, 2, pal.warn, px);
+            this._uiPx(ctx, dx, barY, tipStart + 2, 2, pal.warn, px);
         }
     }
 
     getKiBarLayout(vp, s) {
-        const pad = 12 * s;
-        const barH = Math.round(10 * s);
-        const pauseBtn = this.getPauseButtonRect(vp, s);
-        const topGap = Math.round(8 * s);
-        const x = Math.floor(vp.x + pad);
-        const y = Math.floor(pauseBtn.y + pauseBtn.h + topGap);
-        const totalW = vp.w - pad * 2;
-        return { x, y, w: totalW, h: barH, pad };
+        const { ki } = this.getBottomHudLayout(vp, s);
+        return { x: Math.floor(ki.x), y: Math.floor(ki.y), w: ki.w, h: ki.h, pad: 14 * s };
     }
 
     drawKiBar(ctx, player, vp, s) {
@@ -3991,12 +4091,13 @@ class UI {
     drawBossBar(ctx, boss, vp, s) {
         if (!boss || (!boss.alive && !boss.dying)) return;
 
-        const ki = this.getKiBarLayout(vp, s);
-        const gap = Math.round(5 * s);
+        const pauseBtn = this.getPauseButtonRect(vp, s);
+        const gap = Math.round(6 * s);
         const barH = Math.round(8 * s);
-        const x = ki.x;
-        const y = ki.y + ki.h + gap;
-        const barW = ki.w;
+        const pad = Math.round(12 * s);
+        const x = vp.x + pad;
+        const y = pauseBtn.y + pauseBtn.h + gap;
+        const barW = vp.w - pad * 2;
         const ratio = clamp(boss.hp / boss.maxHp, 0, 1);
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -4013,26 +4114,67 @@ class UI {
         drawGameText(ctx, boss.cfg.name, vp.cx, y - 2 * s, nameSize, '#ffe8c0', 'center', 'bottom');
     }
 
-    drawXpBar(ctx, player, vp, s) {
-        const pad = 14 * s;
-        const barW = vp.w - pad * 2;
-        const barH = Math.round(8 * s);
-        const x = vp.x + pad;
-        const y = vp.y + vp.h - 28 * s;
-        const ratio = clamp(player.xp / player.xpToNext, 0, 1);
+    _drawPixelXpBar(ctx, x, y, totalW, h, ratio) {
+        const px = Math.max(2, Math.floor(h / 4));
+        const rows = 4;
+        const barH = rows * px;
+        const barY = Math.floor(y + (h - barH) / 2);
+        const ox = Math.floor(x);
 
-        ctx.fillStyle = 'rgba(60, 50, 40, 0.35)';
-        ctx.fillRect(x, y, barW, barH);
-        ctx.fillStyle = '#2d5aa0';
-        ctx.fillRect(x, y, barW * ratio, barH);
-        drawGameText(ctx, `${player.xp}/${player.xpToNext}`, x + barW, y - 2,
-            Math.round(12 * s), '#2a4a78', 'right', 'bottom');
+        const cols = Math.max(12, Math.floor(totalW / px));
+        const drawW = cols * px;
+        const dx = ox + Math.floor((totalW - drawW) / 2);
+
+        const pal = {
+            outline: '#2a2218',
+            track: '#3a4048',
+            trackHi: '#4a525c',
+            trackLo: '#2e343c',
+            fillLo: '#2850a0',
+            fillHi: '#4890d8',
+            fillEdge: '#68b8f0',
+        };
+
+        const innerCols = Math.max(1, cols - 2);
+        const fillInner = Math.floor(innerCols * ratio);
+        const nearLevel = ratio >= 0.92;
+        const pulse = nearLevel && Math.floor(Date.now() / 200) % 2 === 0;
+
+        for (let c = 0; c < cols; c++) {
+            for (let r = 0; r < rows; r++) {
+                const edgeRow = r === 0 || r === rows - 1;
+                const edgeCol = c === 0 || c === cols - 1;
+                const filled = c > 0 && c <= fillInner;
+                let color;
+
+                if (edgeRow || edgeCol) {
+                    color = pal.outline;
+                } else if (filled) {
+                    if (pulse && c === fillInner) color = pal.fillEdge;
+                    else if (r === 1) color = pal.fillEdge;
+                    else if (r === 2) color = pal.fillHi;
+                    else color = pal.fillLo;
+                } else {
+                    color = (r + c) % 2 === 0 ? pal.track : pal.trackHi;
+                }
+                this._uiPx(ctx, dx, barY, c, r, color, px);
+            }
+        }
     }
 
-    drawLevel(ctx, player, vp, s) {
-        const xpBarY = vp.y + vp.h - 28 * s;
-        drawGameText(ctx, `Lv.${player.level}`, vp.x + 14 * s, xpBarY - 4 * s,
-            Math.round(13 * s), '#5a6a58', 'left', 'bottom');
+    drawXpBar(ctx, player, vp, s) {
+        const { xp } = this.getBottomHudLayout(vp, s);
+        const { x, y, w: barW, h: barH } = xp;
+        const ratio = clamp(player.xp / player.xpToNext, 0, 1);
+        const fontSize = Math.round(10 * s);
+        const textY = y + barH / 2;
+
+        this._drawPixelXpBar(ctx, x, y, barW, barH, ratio);
+
+        drawGameText(ctx, `Lv.${player.level}`, x + 8 * s, textY,
+            fontSize, '#eef2f8', 'left', 'middle');
+        drawGameText(ctx, `${player.xp}/${player.xpToNext}`, x + barW - 8 * s, textY,
+            fontSize, '#d0dcf0', 'right', 'middle');
     }
 
     getPauseButtonRect(vp, s) {
@@ -4289,7 +4431,7 @@ class FireDragonBoss {
         const spr = SPRITES.fireDragon.idle[0];
         const sz = getSpriteSize(spr, this.spriteScale);
         this.x = canvasW / 2;
-        this.y = sz.h * 0.52;
+        this.y = sz.h * 0.88;
         this.canvasW = canvasW;
 
         const mouthRow = 17;
@@ -4822,7 +4964,7 @@ class CombatManager {
             isCrit,
             isIaiCrit,
             combo,
-            color: isIaiCrit ? '#8ef' : (color || (isCrit ? '#ff0' : '#fff')),
+            color: isIaiCrit ? '#1a88e8' : (color || (isCrit ? '#e85800' : '#b82018')),
             life: isIaiCrit ? 1.1 : 0.8,
             maxLife: isIaiCrit ? 1.1 : 0.8,
             vy: isIaiCrit ? -80 : -60,
@@ -4838,6 +4980,21 @@ class CombatManager {
         this.damageNumbers = this.damageNumbers.filter(d => d.life > 0);
     }
 
+    _drawDamageText(ctx, text, x, y, size, fillColor, alpha) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.font = `${size}px ${GAME_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = Math.max(2, size * 0.14);
+        ctx.strokeStyle = 'rgba(255, 252, 245, 0.92)';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, x, y);
+        ctx.fillStyle = fillColor;
+        ctx.fillText(text, x, y);
+        ctx.restore();
+    }
+
     drawDamageNumbers(ctx) {
         const uiScale = this.game.renderer.uiScale || 1;
         for (const d of this.damageNumbers) {
@@ -4845,22 +5002,15 @@ class CombatManager {
             const scale = d.isIaiCrit ? 1.8 : (d.isCrit ? 1.4 : 1.0);
             const size = Math.floor((14 + d.damage * 0.3) * scale * uiScale);
 
-            ctx.globalAlpha = alpha;
-            if (d.isIaiCrit) {
-                ctx.shadowColor = '#8ef';
-                ctx.shadowBlur = 14;
-            }
-            drawGameText(ctx, String(d.damage), d.x, d.y, size, d.color);
-            ctx.shadowBlur = 0;
+            this._drawDamageText(ctx, String(d.damage), d.x, d.y, size, d.color, alpha);
 
             if (d.isIaiCrit) {
-                drawGameText(ctx, '居合!', d.x, d.y - size * 0.9,
-                    Math.floor(size * 0.5), '#adf');
+                this._drawDamageText(ctx, '居合!', d.x, d.y - size * 0.9,
+                    Math.floor(size * 0.5), '#0a68c8', alpha);
             } else if (d.isCrit) {
-                drawGameText(ctx, '暴击', d.x, d.y - size * 0.85,
-                    Math.floor(size * 0.55), '#d44');
+                this._drawDamageText(ctx, '暴击', d.x, d.y - size * 0.85,
+                    Math.floor(size * 0.55), '#a83808', alpha);
             }
-            ctx.globalAlpha = 1;
         }
     }
 }
@@ -4877,7 +5027,7 @@ class MonsterSpawner {
         this.spawnInterval = 1.5;
     }
 
-    prepareLevelSpawns(levelIndex, canvasW, canvasH) {
+    prepareLevelSpawns(levelIndex, canvasW, canvasH, playAreaBottom = canvasH) {
         this.monsters = [];
         this.spawnQueue = [];
         this.spawnTimer = 0;
@@ -4900,25 +5050,28 @@ class MonsterSpawner {
                 const config = CONFIG.MONSTERS[typeKey];
                 const edge = Math.floor(Math.random() * 4);
                 let x, y;
-                const margin = 36;
-                const inset = 20;
+                const edgePad = 72;
+                const alongPad = 80;
+                const playBottom = Math.min(playAreaBottom, canvasH);
+                const maxY = Math.max(alongPad + 20, playBottom - edgePad);
+                const minY = edgePad;
 
                 switch (edge) {
                     case 0:
-                        x = randRange(inset, canvasW - inset);
-                        y = -margin;
+                        x = randRange(alongPad, canvasW - alongPad);
+                        y = minY;
                         break;
                     case 1:
-                        x = randRange(inset, canvasW - inset);
-                        y = canvasH + margin;
+                        x = randRange(alongPad, canvasW - alongPad);
+                        y = maxY;
                         break;
                     case 2:
-                        x = inset;
-                        y = randRange(inset, canvasH - inset);
+                        x = edgePad;
+                        y = randRange(minY, maxY);
                         break;
                     case 3:
-                        x = canvasW - inset;
-                        y = randRange(inset, canvasH - inset);
+                        x = canvasW - edgePad;
+                        y = randRange(minY, maxY);
                         break;
                 }
 
@@ -5089,6 +5242,7 @@ class Game {
         this.bloodStains = new BloodStainSystem();
         this.abilities = new AbilityManager(this);
         this.sakura = new SakuraSystem();
+        this.grass = new GrassSystem();
         this.bossManager = new BossManager(this);
         this.input = null;
 
@@ -5159,6 +5313,10 @@ class Game {
 
         const onViewportChange = () => {
             this.renderer.resize();
+            if (this.grass && this.ui) {
+                const playBottom = this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale);
+                this.grass.init(this.renderer.w, this.renderer.h, playBottom);
+            }
             if (this.player) {
                 this.player.homeX = this.renderer.w / 2;
                 this.player.homeY = this.renderer.h / 2;
@@ -5271,6 +5429,9 @@ class Game {
         this.bossManager = new BossManager(this);
         this.sakura.petals = [];
         this.sakura.active = false;
+        this.grass.init(
+            this.renderer.w, this.renderer.h,
+            this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale));
         this.levelCleared = false;
         this.pendingLevelUpCount = 0;
 
@@ -5388,8 +5549,9 @@ class Game {
         this.experience.orbs = [];
 
         this.sakura.start(this.renderer.w, this.renderer.h);
+        const playBottom = this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale);
         this.spawner.prepareLevelSpawns(
-            this.levelManager.level, this.renderer.w, this.renderer.h);
+            this.levelManager.level, this.renderer.w, this.renderer.h, playBottom);
         this.bossManager.prepareForLevel(
             this.levelManager.level, this.renderer.w, this.renderer.h);
 
@@ -5516,8 +5678,10 @@ class Game {
             if (levelEvent === 'START_LEVEL') {
                 this.levelCleared = false;
                 this.sakura.start(this.renderer.w, this.renderer.h);
+                const playBottom = this.ui.getPlayAreaBottom(
+                    this.renderer.h, this.renderer.uiScale);
                 this.spawner.prepareLevelSpawns(
-                    this.levelManager.level, this.renderer.w, this.renderer.h);
+                    this.levelManager.level, this.renderer.w, this.renderer.h, playBottom);
                 this.bossManager.prepareForLevel(
                     this.levelManager.level, this.renderer.w, this.renderer.h);
             } else if (levelEvent === 'ALL_COMPLETE') {
@@ -5543,6 +5707,8 @@ class Game {
             this.combat.update(dt);
             this.bossChests.update(dt);
             this.sakura.update(realDt, this.renderer.w, this.renderer.h);
+            this.bloodStains.update(realDt);
+            this.grass.update(realDt);
             this.particles.update(realDt);
 
             if (this.player.state === PlayerState.ATTACKING) {
@@ -5615,6 +5781,7 @@ class Game {
 
         const isBulletTime = this.player && this.player.state === PlayerState.BULLET_TIME;
 
+        this.grass.draw(ctx);
         this.sakura.draw(ctx);
         this.bloodStains.draw(ctx);
         this.experience.draw(ctx);
@@ -5665,7 +5832,6 @@ class Game {
         }
 
         this.levelManager.drawBanner(ctx, vp, uiScale);
-        this.bossChests.drawHint(ctx, vp, uiScale);
 
         if (this.state === 'LEVEL_UP') {
             this.upgrades.drawUI(ctx, vp, uiScale);

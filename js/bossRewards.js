@@ -1,3 +1,13 @@
+const PIXEL_CHEST_SPRITE = [
+    [null, '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', null],
+    ['#2a1810', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#2a1810'],
+    ['#3a2818', '#7a5830', '#ffd850', '#ffe878', '#ffd850', '#7a5830', '#3a2818', '#2a1810'],
+    ['#2a1810', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a1810', '#2a1810'],
+    ['#2a1810', '#4a3010', '#6a5028', '#6a5028', '#6a5028', '#6a5028', '#4a3010', '#2a1810'],
+    ['#2a1810', '#3a2818', '#4a3818', '#4a3818', '#4a3818', '#4a3818', '#3a2818', '#2a1810'],
+    ['#1a1008', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#1a1008'],
+];
+
 const BOSS_REWARD_DEFS = [
     {
         id: 'dual_wield',
@@ -276,76 +286,34 @@ class BossChestManager {
     draw(ctx) {
         for (const chest of this.chests) {
             if (chest.opened) continue;
-            const bobY = Math.sin(chest.bob) * 6;
-            const pop = chest.spawnPop > 0 ? 1 + chest.spawnPop * 0.35 : 1;
-            const x = Math.floor(chest.x);
-            const y = Math.floor(chest.y + bobY);
-            const pulse = 0.7 + Math.sin(chest.bob * 1.4) * 0.3;
-            const scale = pop;
+            const bobY = Math.sin(chest.bob) * 4;
+            const pop = chest.spawnPop > 0 ? 1 + chest.spawnPop * 0.25 : 1;
+            const x = chest.x;
+            const y = chest.y + bobY;
+            const pulse = 0.75 + Math.sin(chest.bob * 1.4) * 0.25;
+            const pixelScale = Math.round(3 * pop);
 
             ctx.save();
-            ctx.globalAlpha = 0.4 + chest.glow * 0.25;
-            const beamH = 120 * scale;
+            ctx.globalAlpha = 0.35 + chest.glow * 0.2;
+            const beamH = 90 * pop;
             const beam = ctx.createLinearGradient(x, y, x, y - beamH);
-            beam.addColorStop(0, 'rgba(255, 220, 100, 0.55)');
+            beam.addColorStop(0, 'rgba(255, 210, 90, 0.5)');
             beam.addColorStop(1, 'rgba(255, 200, 80, 0)');
             ctx.fillStyle = beam;
-            ctx.fillRect(x - 14 * scale, y - beamH, 28 * scale, beamH);
+            ctx.fillRect(x - 10 * pop, y - beamH, 20 * pop, beamH);
 
-            const grad = ctx.createRadialGradient(x, y - 8, 6, x, y - 8, 52 * pulse * scale);
-            grad.addColorStop(0, 'rgba(255, 220, 120, 0.95)');
-            grad.addColorStop(0.5, 'rgba(255, 160, 50, 0.45)');
-            grad.addColorStop(1, 'rgba(255, 140, 40, 0)');
+            const grad = ctx.createRadialGradient(x, y - 4, 4, x, y - 4, 36 * pulse);
+            grad.addColorStop(0, 'rgba(255, 210, 100, 0.7)');
+            grad.addColorStop(1, 'rgba(255, 160, 50, 0)');
             ctx.fillStyle = grad;
             ctx.beginPath();
-            ctx.arc(x, y - 8, 52 * pulse * scale, 0, Math.PI * 2);
+            ctx.arc(x, y - 4, 36 * pulse, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.globalAlpha = 1;
-            const bw = 44 * scale;
-            const bh = 28 * scale;
-            const topH = 20 * scale;
-            ctx.fillStyle = '#5a3818';
-            ctx.fillRect(x - bw / 2, y - 6, bw, bh);
-            ctx.fillStyle = '#9a6828';
-            ctx.fillRect(x - bw / 2 + 3, y - topH - 6, bw - 6, topH);
-            ctx.fillStyle = '#ffd060';
-            ctx.fillRect(x - bw / 2 + 5, y - topH - 4, bw - 10, 5 * scale);
-            ctx.strokeStyle = '#ffe8a0';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x - bw / 2 + 3, y - topH - 6, bw - 6, topH + bh - 4);
-
-            ctx.fillStyle = '#ffea90';
-            ctx.font = `bold ${Math.round(20 * scale)}px serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('📦', x, y - 2);
-
-            ctx.fillStyle = '#fff8c0';
-            ctx.font = `bold ${Math.round(13 * scale)}px ${GAME_FONT}`;
-            ctx.fillText('Boss宝箱', x, y + bh + 10);
+            const sz = getSpriteSize(PIXEL_CHEST_SPRITE, pixelScale);
+            drawSprite(ctx, PIXEL_CHEST_SPRITE, x, y - sz.h * 0.08, pixelScale);
             ctx.restore();
         }
-    }
-
-    drawHint(ctx, vp, uiScale) {
-        const chest = this.getActiveChest();
-        const player = this.game.player;
-        if (!chest || !player) return;
-        if (dist(player.x, player.y, chest.x, chest.y) < 80) return;
-
-        const dx = chest.x - player.x;
-        const dy = chest.y - player.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const s = uiScale || 1;
-
-        ctx.save();
-        ctx.globalAlpha = 0.9;
-        drawGameText(ctx, 'Boss宝箱 →',
-            vp.cx + ux * 72 * s, vp.cy + uy * 72 * s,
-            Math.round(15 * s), '#ffd080', 'center', 'middle');
-        ctx.restore();
     }
 }

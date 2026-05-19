@@ -65,7 +65,7 @@ class FireDragonBoss {
         const spr = SPRITES.fireDragon.idle[0];
         const sz = getSpriteSize(spr, this.spriteScale);
         this.x = canvasW / 2;
-        this.y = sz.h * 0.52;
+        this.y = sz.h * 0.88;
         this.canvasW = canvasW;
 
         const mouthRow = 17;

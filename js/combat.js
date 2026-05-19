@@ -356,7 +356,7 @@ class CombatManager {
             isCrit,
             isIaiCrit,
             combo,
-            color: isIaiCrit ? '#8ef' : (color || (isCrit ? '#ff0' : '#fff')),
+            color: isIaiCrit ? '#1a88e8' : (color || (isCrit ? '#e85800' : '#b82018')),
             life: isIaiCrit ? 1.1 : 0.8,
             maxLife: isIaiCrit ? 1.1 : 0.8,
             vy: isIaiCrit ? -80 : -60,
@@ -372,6 +372,21 @@ class CombatManager {
         this.damageNumbers = this.damageNumbers.filter(d => d.life > 0);
     }
 
+    _drawDamageText(ctx, text, x, y, size, fillColor, alpha) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.font = `${size}px ${GAME_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = Math.max(2, size * 0.14);
+        ctx.strokeStyle = 'rgba(255, 252, 245, 0.92)';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, x, y);
+        ctx.fillStyle = fillColor;
+        ctx.fillText(text, x, y);
+        ctx.restore();
+    }
+
     drawDamageNumbers(ctx) {
         const uiScale = this.game.renderer.uiScale || 1;
         for (const d of this.damageNumbers) {
@@ -379,22 +394,15 @@ class CombatManager {
             const scale = d.isIaiCrit ? 1.8 : (d.isCrit ? 1.4 : 1.0);
             const size = Math.floor((14 + d.damage * 0.3) * scale * uiScale);
 
-            ctx.globalAlpha = alpha;
-            if (d.isIaiCrit) {
-                ctx.shadowColor = '#8ef';
-                ctx.shadowBlur = 14;
-            }
-            drawGameText(ctx, String(d.damage), d.x, d.y, size, d.color);
-            ctx.shadowBlur = 0;
+            this._drawDamageText(ctx, String(d.damage), d.x, d.y, size, d.color, alpha);
 
             if (d.isIaiCrit) {
-                drawGameText(ctx, '居合!', d.x, d.y - size * 0.9,
-                    Math.floor(size * 0.5), '#adf');
+                this._drawDamageText(ctx, '居合!', d.x, d.y - size * 0.9,
+                    Math.floor(size * 0.5), '#0a68c8', alpha);
             } else if (d.isCrit) {
-                drawGameText(ctx, '暴击', d.x, d.y - size * 0.85,
-                    Math.floor(size * 0.55), '#d44');
+                this._drawDamageText(ctx, '暴击', d.x, d.y - size * 0.85,
+                    Math.floor(size * 0.55), '#a83808', alpha);
             }
-            ctx.globalAlpha = 1;
         }
     }
 }

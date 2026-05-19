@@ -23,6 +23,7 @@ class Game {
         this.bloodStains = new BloodStainSystem();
         this.abilities = new AbilityManager(this);
         this.sakura = new SakuraSystem();
+        this.grass = new GrassSystem();
         this.bossManager = new BossManager(this);
         this.input = null;
 
@@ -93,6 +94,10 @@ class Game {
 
         const onViewportChange = () => {
             this.renderer.resize();
+            if (this.grass && this.ui) {
+                const playBottom = this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale);
+                this.grass.init(this.renderer.w, this.renderer.h, playBottom);
+            }
             if (this.player) {
                 this.player.homeX = this.renderer.w / 2;
                 this.player.homeY = this.renderer.h / 2;
@@ -205,6 +210,9 @@ class Game {
         this.bossManager = new BossManager(this);
         this.sakura.petals = [];
         this.sakura.active = false;
+        this.grass.init(
+            this.renderer.w, this.renderer.h,
+            this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale));
         this.levelCleared = false;
         this.pendingLevelUpCount = 0;
 
@@ -322,8 +330,9 @@ class Game {
         this.experience.orbs = [];
 
         this.sakura.start(this.renderer.w, this.renderer.h);
+        const playBottom = this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale);
         this.spawner.prepareLevelSpawns(
-            this.levelManager.level, this.renderer.w, this.renderer.h);
+            this.levelManager.level, this.renderer.w, this.renderer.h, playBottom);
         this.bossManager.prepareForLevel(
             this.levelManager.level, this.renderer.w, this.renderer.h);
 
@@ -450,8 +459,10 @@ class Game {
             if (levelEvent === 'START_LEVEL') {
                 this.levelCleared = false;
                 this.sakura.start(this.renderer.w, this.renderer.h);
+                const playBottom = this.ui.getPlayAreaBottom(
+                    this.renderer.h, this.renderer.uiScale);
                 this.spawner.prepareLevelSpawns(
-                    this.levelManager.level, this.renderer.w, this.renderer.h);
+                    this.levelManager.level, this.renderer.w, this.renderer.h, playBottom);
                 this.bossManager.prepareForLevel(
                     this.levelManager.level, this.renderer.w, this.renderer.h);
             } else if (levelEvent === 'ALL_COMPLETE') {
@@ -477,6 +488,8 @@ class Game {
             this.combat.update(dt);
             this.bossChests.update(dt);
             this.sakura.update(realDt, this.renderer.w, this.renderer.h);
+            this.bloodStains.update(realDt);
+            this.grass.update(realDt);
             this.particles.update(realDt);
 
             if (this.player.state === PlayerState.ATTACKING) {
@@ -549,6 +562,7 @@ class Game {
 
         const isBulletTime = this.player && this.player.state === PlayerState.BULLET_TIME;
 
+        this.grass.draw(ctx);
         this.sakura.draw(ctx);
         this.bloodStains.draw(ctx);
         this.experience.draw(ctx);
@@ -599,7 +613,6 @@ class Game {
         }
 
         this.levelManager.drawBanner(ctx, vp, uiScale);
-        this.bossChests.drawHint(ctx, vp, uiScale);
 
         if (this.state === 'LEVEL_UP') {
             this.upgrades.drawUI(ctx, vp, uiScale);
