@@ -2955,6 +2955,7 @@ class BossChestManager {
             glow: 0,
             opened: false,
             spawnPop: 0.45,
+            pickupDelay: 0.35,
         });
         const { particles, renderer } = this.game;
         renderer.shake(5, 0.12);
@@ -2978,11 +2979,13 @@ class BossChestManager {
             chest.bob += dt * 4;
             chest.glow = Math.min(1, chest.glow + dt * 2);
             if (chest.spawnPop > 0) chest.spawnPop -= dt;
+            if (chest.pickupDelay > 0) chest.pickupDelay -= dt;
 
-            const canPickup = player.state === PlayerState.IDLE ||
-                player.state === PlayerState.RETURNING;
+            // Require intentional pickup: only when player is idle and close enough.
+            const canPickup = player.state === PlayerState.IDLE;
             if (!canPickup) continue;
-            if (dist(player.x, player.y, chest.x, chest.y) > 52) continue;
+            if (chest.pickupDelay > 0) continue;
+            if (dist(player.x, player.y, chest.x, chest.y) > 26) continue;
 
             chest.opened = true;
             this._openChest(chest);
