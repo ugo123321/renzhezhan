@@ -16,6 +16,10 @@ class MonsterSpawner {
         const levelConfig = CONFIG.LEVELS[levelIndex];
         if (!levelConfig) return;
 
+        if (getBossKeyForLevel(levelIndex)) {
+            return;
+        }
+
         const totalCount = levelConfig.count;
         const waves = levelConfig.waves;
         const perWave = Math.ceil(totalCount / waves);

@@ -119,6 +119,15 @@ class Renderer {
         }
     }
 
+    shakeAttackHit(isCrit, combo = 1) {
+        const base = isCrit ? CONFIG.SHAKE.CRIT : CONFIG.SHAKE.NORMAL;
+        const bonus = Math.min(
+            CONFIG.SHAKE.COMBO_MAG_CAP,
+            Math.max(0, combo - 1) * CONFIG.SHAKE.COMBO_MAG_PER_HIT
+        );
+        this.shake(base.magnitude + bonus, base.duration);
+    }
+
     updateShake(dt) {
         if (this.shakeTimer > 0) {
             this.shakeTimer -= dt;

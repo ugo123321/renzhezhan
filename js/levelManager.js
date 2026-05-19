@@ -3,6 +3,7 @@ class LevelManager {
         this.chapter = 1;
         this.level = 0;
         this.allLevelsComplete = false;
+        this.nextLevelOverride = null;
 
         this.bannerActive = false;
         this.bannerTimer = 0;
@@ -32,6 +33,14 @@ class LevelManager {
 
     showStageBanner() {
         const cfg = this.currentLevelConfig;
+        if (isBossLevel(this.level)) {
+            const bossKey = getBossKeyForLevel(this.level);
+            const bossName = bossKey && CONFIG.BOSSES[bossKey]
+                ? CONFIG.BOSSES[bossKey].name
+                : '首领即将登场...';
+            this.showBanner('⚠ BOSS战', bossName, 2.8, '#f84');
+            return;
+        }
         const sub = cfg ? `怪物 ${cfg.count} 只` : '';
         this.showBanner(`第 ${this.chapter} 章 · 第 ${this.level + 1} 关`, sub, 2.2, '#fff');
     }
@@ -42,7 +51,13 @@ class LevelManager {
     }
 
     onLevelCleared() {
-        this.showBanner('关卡通过!', '准备下一关...', 1.1, '#6f6');
+        this.showBanner('关卡通过!', '准备下一关...', 1.1, '#4a3828');
+    }
+
+    setNextLevelOverride(index) {
+        if (!Number.isInteger(index)) return;
+        const clamped = clamp(index, 0, this.totalLevels - 1);
+        this.nextLevelOverride = clamped;
     }
 
     update(dt) {
@@ -59,7 +74,12 @@ class LevelManager {
         }
 
         if (this.bannerTitle === '关卡通过!') {
-            this.level++;
+            if (this.nextLevelOverride !== null) {
+                this.level = this.nextLevelOverride;
+                this.nextLevelOverride = null;
+            } else {
+                this.level++;
+            }
             if (this.level >= this.totalLevels) {
                 this.allLevelsComplete = true;
                 return 'ALL_COMPLETE';

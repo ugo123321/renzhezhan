@@ -9,6 +9,7 @@ class XpOrb {
         this.age = 0;
         this.bobTimer = Math.random() * Math.PI * 2;
         this.settled = false;
+        this.magnetized = false;
         this.radius = CONFIG.XP.ORB_RADIUS;
         this.pickupDelay = CONFIG.XP.PICKUP_DELAY;
     }
@@ -36,8 +37,17 @@ class XpOrb {
         const pickupReady = this.canPickup();
 
         if (pickupReady && d < magnetRadius) {
+            this.magnetized = true;
+        }
+
+        if (pickupReady && this.magnetized) {
             const n = normalize(playerX - this.x, playerY - this.y);
-            const speed = CONFIG.XP.ORB_SPEED * (1 - d / magnetRadius + 0.3);
+            let speed;
+            if (d < magnetRadius) {
+                speed = CONFIG.XP.ORB_SPEED * (1 - d / magnetRadius + 0.3);
+            } else {
+                speed = CONFIG.XP.ORB_SPEED * 1.4;
+            }
             this.x += n.x * speed * dt;
             this.y += n.y * speed * dt;
         }
@@ -61,9 +71,11 @@ class XpOrb {
             ctx.restore();
         }
 
-        const glowAlpha = this.canPickup()
-            ? 0.45 + Math.sin(this.bobTimer) * 0.2
-            : 0.22;
+        const glowAlpha = this.magnetized
+            ? 0.55 + Math.sin(this.bobTimer) * 0.25
+            : this.canPickup()
+                ? 0.45 + Math.sin(this.bobTimer) * 0.2
+                : 0.22;
         ctx.globalAlpha = glowAlpha;
         ctx.beginPath();
         ctx.arc(this.x, this.y + bobY, 6, 0, Math.PI * 2);
@@ -79,7 +91,9 @@ class ExperienceManager {
     }
 
     spawnOrb(x, y, value) {
-        this.orbs.push(new XpOrb(x, y, value));
+        const scale = CONFIG.XP.ORB_VALUE_SCALE ?? 1;
+        const xp = Math.max(1, Math.floor(value * scale));
+        this.orbs.push(new XpOrb(x, y, xp));
     }
 
     update(dt, playerX, playerY, magnetRadius) {

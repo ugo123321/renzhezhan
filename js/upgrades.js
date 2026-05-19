@@ -44,18 +44,6 @@ const UPGRADE_DEFS = [
         },
     },
     {
-        id: 'small_mushroom',
-        name: '小蘑菇',
-        desc: '体型缩小6%，伤害+8%',
-        stackDesc: '体型缩小6%，伤害+8%',
-        icon: '🍄',
-        color: '#fa0',
-        apply(player, stacks) {
-            player.sizeScale *= 0.94;
-            player.damageBonus += 0.08;
-        },
-    },
-    {
         id: 'big_mushroom',
         name: '大蘑菇',
         desc: '体型放大6%，暴击率+10%',
@@ -65,6 +53,97 @@ const UPGRADE_DEFS = [
         apply(player, stacks) {
             player.sizeScale *= 1.06;
             player.critRate += 0.10;
+        },
+    },
+    {
+        id: 'shuriken',
+        name: '飞镖',
+        desc: '伤害+10%，1枚飞镖环绕身边伤害敌人',
+        stackDesc: '飞镖+1，伤害+5%',
+        icon: '🎯',
+        color: '#8aa',
+        apply(player, stacks) {
+            if (stacks === 1) {
+                player.damageBonus += 0.10;
+                player.shurikenCount = 1;
+                player.shurikenLevel = 1;
+            } else {
+                player.damageBonus += 0.05;
+                player.shurikenCount += 1;
+                player.shurikenLevel = stacks;
+            }
+        },
+    },
+    {
+        id: 'crescent',
+        name: '月牙天冲',
+        desc: '暴击率+5%，每连击3次对最近敌人释放穿透月牙波',
+        stackDesc: '暴击率+2%，月牙波+1',
+        icon: '🌙',
+        color: '#bdf',
+        apply(player, stacks) {
+            if (stacks === 1) {
+                player.critRate += 0.05;
+                player.crescentLevel = 1;
+                player.crescentWaves = 1;
+            } else {
+                player.critRate += 0.02;
+                player.crescentLevel = stacks;
+                player.crescentWaves += 1;
+            }
+        },
+    },
+    {
+        id: 'black_hole',
+        name: '黑洞',
+        desc: '每连击8次在攻击位置生成黑洞，吸附范围内敌人',
+        stackDesc: '吸附范围+10，吸力+18',
+        icon: '🕳️',
+        color: '#86a',
+        apply(player, stacks) {
+            player.blackHoleLevel = stacks;
+        },
+    },
+    {
+        id: 'blade_whirl',
+        name: '刀阵旋风',
+        desc: '每连击5次以自身为中心释放刀阵旋风',
+        stackDesc: '刀阵旋风伤害+12%',
+        icon: '🌀',
+        color: '#aab',
+        apply(player, stacks) {
+            player.bladeWhirlLevel = stacks;
+        },
+    },
+    {
+        id: 'fireball',
+        name: '火球术',
+        desc: '暴击伤害+10%，每2秒对最近敌人释放火球',
+        stackDesc: '暴击伤害+5%，火球+1',
+        icon: '🔥',
+        color: '#f84',
+        apply(player, stacks) {
+            if (stacks === 1) {
+                player.critMultiplier += 0.10;
+                player.fireballLevel = 1;
+                player.fireballCount = 1;
+            } else {
+                player.critMultiplier += 0.05;
+                player.fireballCount += 1;
+                player.fireballLevel = stacks;
+            }
+        },
+    },
+    {
+        id: 'shadow_clone',
+        name: '影分身',
+        desc: '连击>10时留下影分身，下次攻击协同作战(30%伤害)',
+        stackDesc: '影分身+1',
+        icon: '👤',
+        color: '#668',
+        apply(player, stacks) {
+            player.shadowCloneLevel = stacks;
+            player.shadowCloneCount = stacks;
         },
     },
 ];

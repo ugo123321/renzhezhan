@@ -41,6 +41,7 @@ class Particle {
 class ParticleSystem {
     constructor(poolSize = 500) {
         this.pool = [];
+        this.lightningBolts = [];
         for (let i = 0; i < poolSize; i++) {
             this.pool.push(new Particle());
         }
@@ -155,16 +156,62 @@ class ParticleSystem {
         }
     }
 
+    iaiCritEffect(x, y) {
+        for (let ring = 0; ring < 3; ring++) {
+            const count = 10 + ring * 4;
+            for (let i = 0; i < count; i++) {
+                const a = (i / count) * Math.PI * 2 + ring * 0.4;
+                const spd = randRange(100, 220) * (1 - ring * 0.15);
+                this.emit(x, y, Math.cos(a) * spd, Math.sin(a) * spd,
+                    randRange(0.35, 0.65), randRange(5, 11),
+                    ['#fff', '#cef', '#8ef', '#48f'][Math.floor(Math.random() * 4)],
+                    0, true, true);
+            }
+        }
+        for (let i = 0; i < 8; i++) {
+            const a = randRange(0, Math.PI * 2);
+            const len = randRange(30, 70);
+            const ex = x + Math.cos(a) * len;
+            const ey = y + Math.sin(a) * len;
+            this.lightningBolts.push({
+                points: [{ x, y }, { x: ex, y: ey }],
+                life: 0.35,
+                maxLife: 0.35,
+            });
+        }
+    }
+
     lightningEffect(x1, y1, x2, y2) {
-        const steps = 6;
-        for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            const px = x1 + (x2 - x1) * t + randRange(-8, 8);
-            const py = y1 + (y2 - y1) * t + randRange(-8, 8);
-            this.emit(px, py, randRange(-10, 10), randRange(-10, 10),
-                randRange(0.15, 0.3), randRange(2, 4),
-                ['#ff0', '#fff', '#8ff'][Math.floor(Math.random() * 3)],
+        const segments = 12;
+        const jitter = 16;
+        const points = [{ x: x1, y: y1 }];
+        for (let i = 1; i < segments; i++) {
+            const t = i / segments;
+            points.push({
+                x: x1 + (x2 - x1) * t + randRange(-jitter, jitter),
+                y: y1 + (y2 - y1) * t + randRange(-jitter, jitter),
+            });
+        }
+        points.push({ x: x2, y: y2 });
+        this.lightningBolts.push({ points, life: 0.5, maxLife: 0.5 });
+
+        for (let i = 0; i <= 24; i++) {
+            const t = i / 24;
+            const px = x1 + (x2 - x1) * t + randRange(-10, 10);
+            const py = y1 + (y2 - y1) * t + randRange(-10, 10);
+            this.emit(px, py, randRange(-30, 30), randRange(-30, 30),
+                randRange(0.28, 0.5), randRange(4, 9),
+                ['#ff0', '#fff', '#8ef', '#cef'][Math.floor(Math.random() * 4)],
                 0, true, true);
+        }
+
+        for (let i = 0; i < 10; i++) {
+            const a = (i / 10) * Math.PI * 2;
+            const spd = randRange(60, 140);
+            this.emit(x1, y1, Math.cos(a) * spd, Math.sin(a) * spd,
+                randRange(0.2, 0.4), randRange(5, 10), '#fff', 0, true, true);
+            this.emit(x2, y2, Math.cos(a) * spd, Math.sin(a) * spd,
+                randRange(0.2, 0.4), randRange(5, 10), '#ff0', 0, true, true);
         }
     }
 
@@ -172,9 +219,51 @@ class ParticleSystem {
         for (const p of this.pool) {
             if (p.active) p.update(dt);
         }
+        for (const bolt of this.lightningBolts) {
+            bolt.life -= dt;
+        }
+        this.lightningBolts = this.lightningBolts.filter(b => b.life > 0);
     }
 
     draw(ctx) {
+        for (const bolt of this.lightningBolts) {
+            const t = bolt.life / bolt.maxLife;
+            const pts = bolt.points;
+            if (pts.length < 2) continue;
+
+            ctx.save();
+            ctx.globalAlpha = t;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            ctx.strokeStyle = 'rgba(140, 220, 255, 0.55)';
+            ctx.lineWidth = 10;
+            ctx.shadowColor = '#8cf';
+            ctx.shadowBlur = 18;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 4;
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#ff0';
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
         for (const p of this.pool) {
             if (p.active) p.draw(ctx);
         }
