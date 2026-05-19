@@ -16,9 +16,10 @@ class Renderer {
 
         const screenW = Math.max(window.innerWidth || document.documentElement.clientWidth || logicalW, logicalW);
         const screenH = Math.max(window.innerHeight || document.documentElement.clientHeight || logicalH, logicalH);
+        this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
 
-        this.canvas.width = screenW;
-        this.canvas.height = screenH;
+        this.canvas.width = Math.round(screenW * this.dpr);
+        this.canvas.height = Math.round(screenH * this.dpr);
         this.canvas.style.width = screenW + 'px';
         this.canvas.style.height = screenH + 'px';
 
@@ -36,7 +37,18 @@ class Renderer {
         this.viewportW = logicalW * this.scale;
         this.viewportH = logicalH * this.scale;
 
-        this.ctx.imageSmoothingEnabled = false;
+        this.ctx.imageSmoothingEnabled = true;
+    }
+
+    /** Map pointer (client) coords to canvas layout space (matches viewport / upgrade UI). */
+    screenToCanvas(clientX, clientY) {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = rect.width > 0 ? this.screenW / rect.width : 1;
+        const scaleY = rect.height > 0 ? this.screenH / rect.height : 1;
+        return {
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY,
+        };
     }
 
     getViewport() {
@@ -65,9 +77,7 @@ class Renderer {
     }
 
     screenToGame(clientX, clientY) {
-        const rect = this.canvas.getBoundingClientRect();
-        const sx = clientX - rect.left;
-        const sy = clientY - rect.top;
+        const { x: sx, y: sy } = this.screenToCanvas(clientX, clientY);
         return {
             x: (sx - this.offsetX) / this.scale,
             y: (sy - this.offsetY) / this.scale,
@@ -80,15 +90,16 @@ class Renderer {
 
     beginGameDraw() {
         const ctx = this.ctx;
+        const d = this.dpr;
         ctx.setTransform(
-            this.scale, 0, 0, this.scale,
-            this.offsetX + this.shakeX,
-            this.offsetY + this.shakeY
+            this.scale * d, 0, 0, this.scale * d,
+            (this.offsetX + this.shakeX) * d,
+            (this.offsetY + this.shakeY) * d
         );
     }
 
     resetScreenDraw() {
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
 
     shake(magnitude, duration) {
@@ -117,7 +128,7 @@ class Renderer {
         const ctx = this.ctx;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = '#9a8b78';
-        ctx.fillRect(0, 0, this.screenW, this.screenH);
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
     beginClippedGameDraw() {

@@ -23,6 +23,7 @@ class Game {
 
         this.levelCleared = false;
         this.pendingLevelUp = false;
+        this._lastTouchUiTime = 0;
 
         this.upgrades.onSelect = () => {
             this.pendingLevelUp = false;
@@ -32,8 +33,17 @@ class Game {
         this.canvas.addEventListener('click', (e) => this.onClick(e));
         this.canvas.addEventListener('touchstart', (e) => {
             if (this.state === 'MENU' || this.state === 'GAME_OVER' ||
-                this.state === 'COMPLETE') {
+                this.state === 'COMPLETE' || this.state === 'LEVEL_UP') {
                 e.preventDefault();
+                if (this.state !== 'LEVEL_UP') {
+                    this.onClick(e);
+                }
+            }
+        }, { passive: false });
+        this.canvas.addEventListener('touchend', (e) => {
+            if (this.state === 'LEVEL_UP') {
+                e.preventDefault();
+                this._lastTouchUiTime = performance.now();
                 this.onClick(e);
             }
         }, { passive: false });
@@ -59,6 +69,10 @@ class Game {
     }
 
     onClick(e) {
+        if (e.type === 'click' && performance.now() - this._lastTouchUiTime < 400) {
+            return;
+        }
+
         const pos = this.getClickPos(e);
 
         if (this.state === 'MENU') {
@@ -92,8 +106,7 @@ class Game {
             clientX = e.clientX;
             clientY = e.clientY;
         }
-        const rect = this.canvas.getBoundingClientRect();
-        return { x: clientX - rect.left, y: clientY - rect.top };
+        return this.renderer.screenToCanvas(clientX, clientY);
     }
 
     startGame() {

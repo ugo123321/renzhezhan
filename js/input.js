@@ -32,10 +32,11 @@ class InputManager {
     }
 
     onStart(e) {
+        if (this.game.state !== 'PLAYING') return;
+
         e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.IDLE) return;
-        if (this.game.state !== 'PLAYING') return;
 
         const pos = this.getPos(e);
         if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
