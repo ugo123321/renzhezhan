@@ -96,7 +96,8 @@ class Game {
             this.renderer.resize();
             if (this.grass && this.ui) {
                 const playBottom = this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale);
-                this.grass.init(this.renderer.w, this.renderer.h, playBottom);
+                this.grass.init(
+                    this.renderer.w, this.renderer.h, playBottom, this._getGrassSafeZone());
             }
             if (this.player) {
                 this.player.homeX = this.renderer.w / 2;
@@ -116,6 +117,16 @@ class Game {
 
         this.lastTime = performance.now();
         requestAnimationFrame((t) => this.loop(t));
+    }
+
+    _getGrassSafeZone() {
+        const x = this.player ? this.player.homeX : this.renderer.w / 2;
+        const y = this.player ? this.player.homeY : this.renderer.h / 2;
+        const refW = (typeof CONFIG !== 'undefined' && CONFIG.DISPLAY)
+            ? CONFIG.DISPLAY.LOGICAL_WIDTH
+            : 390;
+        const triggerRadius = Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
+        return { x, y, r: triggerRadius };
     }
 
     _isOverlayState() {
@@ -212,7 +223,8 @@ class Game {
         this.sakura.active = false;
         this.grass.init(
             this.renderer.w, this.renderer.h,
-            this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale));
+            this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale),
+            this._getGrassSafeZone());
         this.levelCleared = false;
         this.pendingLevelUpCount = 0;
 

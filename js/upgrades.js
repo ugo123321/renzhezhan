@@ -193,6 +193,114 @@ class UpgradeManager {
         return lines.length;
     }
 
+    _drawPx(ctx, ox, oy, col, row, color, px) {
+        if (!color) return;
+        ctx.fillStyle = color;
+        ctx.fillRect(ox + col * px, oy + row * px, px, px);
+    }
+
+    _getUpgradeIconSprite(id) {
+        const T = '#f4f8ff';
+        const D = '#1e2738';
+        const B = '#57a8ff';
+        const Y = '#ffe070';
+        const O = '#ff9850';
+        const R = '#e84838';
+        const P = '#c8a8ff';
+        const G = '#86e0a0';
+
+        const map = {
+            ice_heart: [
+                [null, null, B, null, null],
+                [null, B, T, B, null],
+                [B, T, T, T, B],
+                [null, B, T, B, null],
+                [null, null, B, null, null],
+            ],
+            cheese: [
+                [Y, Y, Y, Y, null],
+                [Y, Y, Y, Y, Y],
+                [Y, D, Y, Y, Y],
+                [Y, Y, Y, D, Y],
+                [Y, Y, Y, Y, Y],
+            ],
+            lightning: [
+                [null, Y, Y, null, null],
+                [null, Y, null, null, null],
+                [Y, Y, Y, null, null],
+                [null, null, Y, null, null],
+                [null, Y, Y, Y, null],
+            ],
+            big_mushroom: [
+                [null, R, R, R, null],
+                [R, R, R, R, R],
+                [R, T, R, T, R],
+                [null, T, T, T, null],
+                [null, O, O, O, null],
+            ],
+            crescent: [
+                [null, T, T, null, null],
+                [T, T, null, null, null],
+                [T, null, null, null, null],
+                [T, T, null, null, null],
+                [null, T, T, null, null],
+            ],
+            black_hole: [
+                [null, P, P, P, null],
+                [P, D, D, D, P],
+                [P, D, null, D, P],
+                [P, D, D, D, P],
+                [null, P, P, P, null],
+            ],
+            blade_whirl: [
+                [null, B, T, B, null],
+                [B, null, T, null, B],
+                [T, T, T, T, T],
+                [B, null, T, null, B],
+                [null, B, T, B, null],
+            ],
+            fireball: [
+                [null, O, R, null, null],
+                [O, R, O, R, null],
+                [R, O, Y, O, R],
+                [null, R, O, R, null],
+                [null, null, R, null, null],
+            ],
+            shadow_clone: [
+                [null, D, D, D, null],
+                [D, T, T, T, D],
+                [D, D, T, D, D],
+                [D, D, D, D, D],
+                [null, P, D, P, null],
+            ],
+        };
+        return map[id] || map.shadow_clone;
+    }
+
+    _drawUpgradeIcon(ctx, id, centerX, centerY, color, size) {
+        const sprite = this._getUpgradeIconSprite(id);
+        const rows = sprite.length;
+        const cols = sprite[0].length;
+        const px = Math.max(2, Math.floor(size / Math.max(rows, cols)));
+        const w = cols * px;
+        const h = rows * px;
+        const ox = Math.floor(centerX - w / 2);
+        const oy = Math.floor(centerY - h / 2);
+
+        const bgPad = px;
+        ctx.fillStyle = 'rgba(15, 16, 28, 0.78)';
+        ctx.fillRect(ox - bgPad, oy - bgPad, w + bgPad * 2, h + bgPad * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ox - bgPad, oy - bgPad, w + bgPad * 2, h + bgPad * 2);
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                this._drawPx(ctx, ox, oy, c, r, sprite[r][c], px);
+            }
+        }
+    }
+
     drawUI(ctx, vp, uiScale) {
         if (!this.active) return;
 
@@ -237,11 +345,7 @@ class UpgradeManager {
 
             const iconSize = Math.round(32 * s);
             const iconY = y + innerPad + iconSize * 0.45;
-            ctx.font = `${iconSize}px serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#fff';
-            ctx.fillText(u.icon, cardCx, iconY);
+            this._drawUpgradeIcon(ctx, u.id, cardCx, iconY, u.color, iconSize);
 
             const nameSize = Math.round(17 * s);
             const nameY = iconY + iconSize * 0.55 + 14 * s;

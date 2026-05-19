@@ -83,6 +83,73 @@ class BossRewardManager {
         if (this.onSelect) this.onSelect();
     }
 
+    _drawPx(ctx, ox, oy, col, row, color, px) {
+        if (!color) return;
+        ctx.fillStyle = color;
+        ctx.fillRect(ox + col * px, oy + row * px, px, px);
+    }
+
+    _getRewardIconSprite(id) {
+        const T = '#f4f8ff';
+        const D = '#1d232e';
+        const B = '#80d8ff';
+        const C = '#48c8e8';
+        const O = '#ff9a48';
+        const R = '#f06030';
+        const G = '#7cc8ff';
+        const map = {
+            dual_wield: [
+                [null, T, null, null, T, null],
+                [null, T, O, O, T, null],
+                [null, T, O, O, T, null],
+                [null, T, null, null, T, null],
+                [null, D, null, null, D, null],
+                [null, D, null, null, D, null],
+            ],
+            iai_slash: [
+                [null, null, T, T, T, null],
+                [null, T, T, T, B, B],
+                [T, T, T, B, B, null],
+                [null, null, G, G, null, null],
+                [null, D, D, D, null, null],
+                [null, null, D, null, null, null],
+            ],
+            deep_breath: [
+                [null, C, null, C, null, null],
+                [C, B, C, B, C, null],
+                [null, C, B, C, null, null],
+                [null, null, C, null, null, null],
+                [null, C, B, C, null, null],
+                [C, B, C, B, C, null],
+            ],
+        };
+        return map[id] || map.iai_slash;
+    }
+
+    _drawRewardIcon(ctx, id, centerX, centerY, color, size) {
+        const sprite = this._getRewardIconSprite(id);
+        const rows = sprite.length;
+        const cols = sprite[0].length;
+        const px = Math.max(2, Math.floor(size / Math.max(rows, cols)));
+        const w = cols * px;
+        const h = rows * px;
+        const ox = Math.floor(centerX - w / 2);
+        const oy = Math.floor(centerY - h / 2);
+        const pad = px;
+
+        ctx.fillStyle = 'rgba(10, 14, 24, 0.82)';
+        ctx.fillRect(ox - pad, oy - pad, w + pad * 2, h + pad * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ox - pad, oy - pad, w + pad * 2, h + pad * 2);
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                this._drawPx(ctx, ox, oy, c, r, sprite[r][c], px);
+            }
+        }
+    }
+
     drawUI(ctx, vp, uiScale) {
         if (!this.active) return;
 
@@ -124,11 +191,8 @@ class BossRewardManager {
             }
 
             const iconSize = Math.round(40 * s);
-            ctx.font = `${iconSize}px serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#fff';
-            ctx.fillText(u.icon, cardCx, cardY + innerPad + iconSize * 0.5);
+            this._drawRewardIcon(
+                ctx, u.id, cardCx, cardY + innerPad + iconSize * 0.5, u.color, iconSize);
 
             const nameSize = Math.round(18 * s);
             ctx.font = `bold ${nameSize}px ${GAME_FONT}`;

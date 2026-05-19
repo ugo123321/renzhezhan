@@ -10,17 +10,30 @@ class GrassSystem {
         this.ready = false;
     }
 
-    init(worldW, worldH, playAreaBottom = worldH) {
+    init(worldW, worldH, playAreaBottom = worldH, safeZone = null) {
         this.blades = [];
         const count = Math.min(22, Math.floor((worldW * worldH) / 45000));
         const topPad = Math.max(100, worldH * 0.14);
         const grassBottom = Math.max(topPad + 40, playAreaBottom - 16);
+        const exclusionPad = 12;
+        const maxAttempts = count * 24;
+        let created = 0;
+        let attempts = 0;
 
-        for (let i = 0; i < count; i++) {
+        while (created < count && attempts < maxAttempts) {
+            attempts++;
+            const x = randRange(16, worldW - 16);
+            const y = randRange(topPad, grassBottom);
+            if (safeZone) {
+                const dx = x - safeZone.x;
+                const dy = y - safeZone.y;
+                const rr = (safeZone.r || 0) + exclusionPad;
+                if (dx * dx + dy * dy <= rr * rr) continue;
+            }
             const variant = Math.floor(Math.random() * 3);
             this.blades.push({
-                x: randRange(16, worldW - 16),
-                y: randRange(topPad, grassBottom),
+                x,
+                y,
                 variant,
                 scale: randRange(2, 3),
                 height: Math.floor(randRange(3, 6)),
@@ -29,6 +42,7 @@ class GrassSystem {
                 swayAmp: randRange(0.14, 0.28),
                 offset: randRange(-1, 1),
             });
+            created++;
         }
         this.ready = true;
     }

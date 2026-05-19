@@ -2359,6 +2359,114 @@ class UpgradeManager {
         return lines.length;
     }
 
+    _drawPx(ctx, ox, oy, col, row, color, px) {
+        if (!color) return;
+        ctx.fillStyle = color;
+        ctx.fillRect(ox + col * px, oy + row * px, px, px);
+    }
+
+    _getUpgradeIconSprite(id) {
+        const T = '#f4f8ff';
+        const D = '#1e2738';
+        const B = '#57a8ff';
+        const Y = '#ffe070';
+        const O = '#ff9850';
+        const R = '#e84838';
+        const P = '#c8a8ff';
+        const G = '#86e0a0';
+
+        const map = {
+            ice_heart: [
+                [null, null, B, null, null],
+                [null, B, T, B, null],
+                [B, T, T, T, B],
+                [null, B, T, B, null],
+                [null, null, B, null, null],
+            ],
+            cheese: [
+                [Y, Y, Y, Y, null],
+                [Y, Y, Y, Y, Y],
+                [Y, D, Y, Y, Y],
+                [Y, Y, Y, D, Y],
+                [Y, Y, Y, Y, Y],
+            ],
+            lightning: [
+                [null, Y, Y, null, null],
+                [null, Y, null, null, null],
+                [Y, Y, Y, null, null],
+                [null, null, Y, null, null],
+                [null, Y, Y, Y, null],
+            ],
+            big_mushroom: [
+                [null, R, R, R, null],
+                [R, R, R, R, R],
+                [R, T, R, T, R],
+                [null, T, T, T, null],
+                [null, O, O, O, null],
+            ],
+            crescent: [
+                [null, T, T, null, null],
+                [T, T, null, null, null],
+                [T, null, null, null, null],
+                [T, T, null, null, null],
+                [null, T, T, null, null],
+            ],
+            black_hole: [
+                [null, P, P, P, null],
+                [P, D, D, D, P],
+                [P, D, null, D, P],
+                [P, D, D, D, P],
+                [null, P, P, P, null],
+            ],
+            blade_whirl: [
+                [null, B, T, B, null],
+                [B, null, T, null, B],
+                [T, T, T, T, T],
+                [B, null, T, null, B],
+                [null, B, T, B, null],
+            ],
+            fireball: [
+                [null, O, R, null, null],
+                [O, R, O, R, null],
+                [R, O, Y, O, R],
+                [null, R, O, R, null],
+                [null, null, R, null, null],
+            ],
+            shadow_clone: [
+                [null, D, D, D, null],
+                [D, T, T, T, D],
+                [D, D, T, D, D],
+                [D, D, D, D, D],
+                [null, P, D, P, null],
+            ],
+        };
+        return map[id] || map.shadow_clone;
+    }
+
+    _drawUpgradeIcon(ctx, id, centerX, centerY, color, size) {
+        const sprite = this._getUpgradeIconSprite(id);
+        const rows = sprite.length;
+        const cols = sprite[0].length;
+        const px = Math.max(2, Math.floor(size / Math.max(rows, cols)));
+        const w = cols * px;
+        const h = rows * px;
+        const ox = Math.floor(centerX - w / 2);
+        const oy = Math.floor(centerY - h / 2);
+
+        const bgPad = px;
+        ctx.fillStyle = 'rgba(15, 16, 28, 0.78)';
+        ctx.fillRect(ox - bgPad, oy - bgPad, w + bgPad * 2, h + bgPad * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ox - bgPad, oy - bgPad, w + bgPad * 2, h + bgPad * 2);
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                this._drawPx(ctx, ox, oy, c, r, sprite[r][c], px);
+            }
+        }
+    }
+
     drawUI(ctx, vp, uiScale) {
         if (!this.active) return;
 
@@ -2403,11 +2511,7 @@ class UpgradeManager {
 
             const iconSize = Math.round(32 * s);
             const iconY = y + innerPad + iconSize * 0.45;
-            ctx.font = `${iconSize}px serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#fff';
-            ctx.fillText(u.icon, cardCx, iconY);
+            this._drawUpgradeIcon(ctx, u.id, cardCx, iconY, u.color, iconSize);
 
             const nameSize = Math.round(17 * s);
             const nameY = iconY + iconSize * 0.55 + 14 * s;
@@ -2535,6 +2639,73 @@ class BossRewardManager {
         if (this.onSelect) this.onSelect();
     }
 
+    _drawPx(ctx, ox, oy, col, row, color, px) {
+        if (!color) return;
+        ctx.fillStyle = color;
+        ctx.fillRect(ox + col * px, oy + row * px, px, px);
+    }
+
+    _getRewardIconSprite(id) {
+        const T = '#f4f8ff';
+        const D = '#1d232e';
+        const B = '#80d8ff';
+        const C = '#48c8e8';
+        const O = '#ff9a48';
+        const R = '#f06030';
+        const G = '#7cc8ff';
+        const map = {
+            dual_wield: [
+                [null, T, null, null, T, null],
+                [null, T, O, O, T, null],
+                [null, T, O, O, T, null],
+                [null, T, null, null, T, null],
+                [null, D, null, null, D, null],
+                [null, D, null, null, D, null],
+            ],
+            iai_slash: [
+                [null, null, T, T, T, null],
+                [null, T, T, T, B, B],
+                [T, T, T, B, B, null],
+                [null, null, G, G, null, null],
+                [null, D, D, D, null, null],
+                [null, null, D, null, null, null],
+            ],
+            deep_breath: [
+                [null, C, null, C, null, null],
+                [C, B, C, B, C, null],
+                [null, C, B, C, null, null],
+                [null, null, C, null, null, null],
+                [null, C, B, C, null, null],
+                [C, B, C, B, C, null],
+            ],
+        };
+        return map[id] || map.iai_slash;
+    }
+
+    _drawRewardIcon(ctx, id, centerX, centerY, color, size) {
+        const sprite = this._getRewardIconSprite(id);
+        const rows = sprite.length;
+        const cols = sprite[0].length;
+        const px = Math.max(2, Math.floor(size / Math.max(rows, cols)));
+        const w = cols * px;
+        const h = rows * px;
+        const ox = Math.floor(centerX - w / 2);
+        const oy = Math.floor(centerY - h / 2);
+        const pad = px;
+
+        ctx.fillStyle = 'rgba(10, 14, 24, 0.82)';
+        ctx.fillRect(ox - pad, oy - pad, w + pad * 2, h + pad * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ox - pad, oy - pad, w + pad * 2, h + pad * 2);
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                this._drawPx(ctx, ox, oy, c, r, sprite[r][c], px);
+            }
+        }
+    }
+
     drawUI(ctx, vp, uiScale) {
         if (!this.active) return;
 
@@ -2576,11 +2747,8 @@ class BossRewardManager {
             }
 
             const iconSize = Math.round(40 * s);
-            ctx.font = `${iconSize}px serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#fff';
-            ctx.fillText(u.icon, cardCx, cardY + innerPad + iconSize * 0.5);
+            this._drawRewardIcon(
+                ctx, u.id, cardCx, cardY + innerPad + iconSize * 0.5, u.color, iconSize);
 
             const nameSize = Math.round(18 * s);
             ctx.font = `bold ${nameSize}px ${GAME_FONT}`;
@@ -3596,17 +3764,30 @@ class GrassSystem {
         this.ready = false;
     }
 
-    init(worldW, worldH, playAreaBottom = worldH) {
+    init(worldW, worldH, playAreaBottom = worldH, safeZone = null) {
         this.blades = [];
         const count = Math.min(22, Math.floor((worldW * worldH) / 45000));
         const topPad = Math.max(100, worldH * 0.14);
         const grassBottom = Math.max(topPad + 40, playAreaBottom - 16);
+        const exclusionPad = 12;
+        const maxAttempts = count * 24;
+        let created = 0;
+        let attempts = 0;
 
-        for (let i = 0; i < count; i++) {
+        while (created < count && attempts < maxAttempts) {
+            attempts++;
+            const x = randRange(16, worldW - 16);
+            const y = randRange(topPad, grassBottom);
+            if (safeZone) {
+                const dx = x - safeZone.x;
+                const dy = y - safeZone.y;
+                const rr = (safeZone.r || 0) + exclusionPad;
+                if (dx * dx + dy * dy <= rr * rr) continue;
+            }
             const variant = Math.floor(Math.random() * 3);
             this.blades.push({
-                x: randRange(16, worldW - 16),
-                y: randRange(topPad, grassBottom),
+                x,
+                y,
                 variant,
                 scale: randRange(2, 3),
                 height: Math.floor(randRange(3, 6)),
@@ -3615,6 +3796,7 @@ class GrassSystem {
                 swayAmp: randRange(0.14, 0.28),
                 offset: randRange(-1, 1),
             });
+            created++;
         }
         this.ready = true;
     }
@@ -3891,6 +4073,20 @@ class UI {
         return bottom;
     }
 
+    _drawComboLabel(ctx, text, x, y, size, fillColor) {
+        const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2.5) : 1;
+        const px = Math.round(size * dpr) / dpr;
+        ctx.font = `bold ${px}px ${GAME_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = Math.max(2.5, px * 0.14);
+        ctx.strokeStyle = 'rgba(255, 248, 235, 0.92)';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, x, y);
+        ctx.fillStyle = fillColor;
+        ctx.fillText(text, x, y);
+    }
+
     drawComboBanner(ctx, player, vp, s, hasBoss = false) {
         const combo = player.comboDisplayPeak;
         if (combo < 2 || player.comboDisplayTimer <= 0) return;
@@ -3904,12 +4100,12 @@ class UI {
             : 1;
 
         const tier = combo >= 10 ? 2 : combo >= 5 ? 1 : 0;
-        const mainColors = ['#5a5048', '#6a4a38', '#7a3a28'];
+        const mainColors = ['#4a4038', '#8a5030', '#c04828'];
         const mainColor = mainColors[tier];
-        const bonusColor = '#2a4a78';
+        const bonusColor = '#1a4888';
 
-        const mainSize = Math.round((26 + Math.min(combo - 2, 16) * 1.4) * s);
-        const bonusSize = Math.round(mainSize * 0.7);
+        const mainSize = Math.round((28 + Math.min(combo - 2, 16) * 1.5) * s);
+        const bonusSize = Math.round(mainSize * 0.72);
         const y = this.getTopHudBottom(vp, s, hasBoss) + Math.round(32 * s);
 
         const mainLabel = `连击×${combo}`;
@@ -3919,17 +4115,17 @@ class UI {
         ctx.save();
         ctx.globalAlpha = alpha;
 
-        ctx.font = `${mainSize}px ${GAME_FONT}`;
+        ctx.font = `bold ${mainSize}px ${GAME_FONT}`;
         const mainW = ctx.measureText(mainLabel).width;
-        ctx.font = `${bonusSize}px ${GAME_FONT}`;
+        ctx.font = `bold ${bonusSize}px ${GAME_FONT}`;
         const bonusW = ctx.measureText(bonusLabel).width;
         const totalW = mainW + gap + bonusW;
 
         const mainX = vp.cx - totalW / 2 + mainW / 2;
         const bonusX = vp.cx - totalW / 2 + mainW + gap + bonusW / 2;
 
-        drawGameText(ctx, mainLabel, mainX, y, mainSize, mainColor);
-        drawGameText(ctx, bonusLabel, bonusX, y + 1 * s, bonusSize, bonusColor);
+        this._drawComboLabel(ctx, mainLabel, mainX, y, mainSize, mainColor);
+        this._drawComboLabel(ctx, bonusLabel, bonusX, y + 1 * s, bonusSize, bonusColor);
 
         ctx.restore();
     }
@@ -5315,7 +5511,8 @@ class Game {
             this.renderer.resize();
             if (this.grass && this.ui) {
                 const playBottom = this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale);
-                this.grass.init(this.renderer.w, this.renderer.h, playBottom);
+                this.grass.init(
+                    this.renderer.w, this.renderer.h, playBottom, this._getGrassSafeZone());
             }
             if (this.player) {
                 this.player.homeX = this.renderer.w / 2;
@@ -5335,6 +5532,16 @@ class Game {
 
         this.lastTime = performance.now();
         requestAnimationFrame((t) => this.loop(t));
+    }
+
+    _getGrassSafeZone() {
+        const x = this.player ? this.player.homeX : this.renderer.w / 2;
+        const y = this.player ? this.player.homeY : this.renderer.h / 2;
+        const refW = (typeof CONFIG !== 'undefined' && CONFIG.DISPLAY)
+            ? CONFIG.DISPLAY.LOGICAL_WIDTH
+            : 390;
+        const triggerRadius = Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
+        return { x, y, r: triggerRadius };
     }
 
     _isOverlayState() {
@@ -5431,7 +5638,8 @@ class Game {
         this.sakura.active = false;
         this.grass.init(
             this.renderer.w, this.renderer.h,
-            this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale));
+            this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale),
+            this._getGrassSafeZone());
         this.levelCleared = false;
         this.pendingLevelUpCount = 0;
 

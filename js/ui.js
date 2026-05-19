@@ -81,6 +81,20 @@ class UI {
         return bottom;
     }
 
+    _drawComboLabel(ctx, text, x, y, size, fillColor) {
+        const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2.5) : 1;
+        const px = Math.round(size * dpr) / dpr;
+        ctx.font = `bold ${px}px ${GAME_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = Math.max(2.5, px * 0.14);
+        ctx.strokeStyle = 'rgba(255, 248, 235, 0.92)';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, x, y);
+        ctx.fillStyle = fillColor;
+        ctx.fillText(text, x, y);
+    }
+
     drawComboBanner(ctx, player, vp, s, hasBoss = false) {
         const combo = player.comboDisplayPeak;
         if (combo < 2 || player.comboDisplayTimer <= 0) return;
@@ -94,12 +108,12 @@ class UI {
             : 1;
 
         const tier = combo >= 10 ? 2 : combo >= 5 ? 1 : 0;
-        const mainColors = ['#5a5048', '#6a4a38', '#7a3a28'];
+        const mainColors = ['#4a4038', '#8a5030', '#c04828'];
         const mainColor = mainColors[tier];
-        const bonusColor = '#2a4a78';
+        const bonusColor = '#1a4888';
 
-        const mainSize = Math.round((26 + Math.min(combo - 2, 16) * 1.4) * s);
-        const bonusSize = Math.round(mainSize * 0.7);
+        const mainSize = Math.round((28 + Math.min(combo - 2, 16) * 1.5) * s);
+        const bonusSize = Math.round(mainSize * 0.72);
         const y = this.getTopHudBottom(vp, s, hasBoss) + Math.round(32 * s);
 
         const mainLabel = `连击×${combo}`;
@@ -109,17 +123,17 @@ class UI {
         ctx.save();
         ctx.globalAlpha = alpha;
 
-        ctx.font = `${mainSize}px ${GAME_FONT}`;
+        ctx.font = `bold ${mainSize}px ${GAME_FONT}`;
         const mainW = ctx.measureText(mainLabel).width;
-        ctx.font = `${bonusSize}px ${GAME_FONT}`;
+        ctx.font = `bold ${bonusSize}px ${GAME_FONT}`;
         const bonusW = ctx.measureText(bonusLabel).width;
         const totalW = mainW + gap + bonusW;
 
         const mainX = vp.cx - totalW / 2 + mainW / 2;
         const bonusX = vp.cx - totalW / 2 + mainW + gap + bonusW / 2;
 
-        drawGameText(ctx, mainLabel, mainX, y, mainSize, mainColor);
-        drawGameText(ctx, bonusLabel, bonusX, y + 1 * s, bonusSize, bonusColor);
+        this._drawComboLabel(ctx, mainLabel, mainX, y, mainSize, mainColor);
+        this._drawComboLabel(ctx, bonusLabel, bonusX, y + 1 * s, bonusSize, bonusColor);
 
         ctx.restore();
     }
