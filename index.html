@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>忍者斩 - Ninja Slash</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="bootError" style="display:none;position:fixed;inset:0;padding:24px;background:#111;color:#fff;font:14px/1.6 monospace;z-index:10;overflow:auto;">
+        <h2 style="color:#f66;margin-bottom:12px;">游戏未能启动</h2>
+        <p id="bootErrorMsg"></p>
+        <p style="margin-top:16px;color:#aaa;">请尝试：双击运行 <b>start-game.bat</b>，或在当前目录执行<br><code>python -m http.server 8080</code><br>然后打开 <code>http://localhost:8080</code></p>
+    </div>
+    <script>
+        window.onerror = function (msg) {
+            var el = document.getElementById('bootError');
+            var msgEl = document.getElementById('bootErrorMsg');
+            if (el && msgEl) {
+                el.style.display = 'block';
+                msgEl.textContent = String(msg);
+            }
+        };
+    </script>
+    <script src="js/utils.js"></script>
+    <script src="js/textStyle.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/spriteData.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/particles.js"></script>
+    <script src="js/bloodStains.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/monster.js"></script>
+    <script src="js/projectile.js"></script>
+    <script src="js/experience.js"></script>
+    <script src="js/upgrades.js"></script>
+    <script src="js/levelManager.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/combat.js"></script>
+    <script src="js/monsterSpawner.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
