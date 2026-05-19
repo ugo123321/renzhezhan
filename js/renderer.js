@@ -13,15 +13,20 @@ class Renderer {
     resize() {
         const logicalW = CONFIG.DISPLAY.LOGICAL_WIDTH;
         const logicalH = CONFIG.DISPLAY.LOGICAL_HEIGHT;
+        const vv = window.visualViewport;
 
-        const screenW = Math.max(window.innerWidth || document.documentElement.clientWidth || logicalW, logicalW);
-        const screenH = Math.max(window.innerHeight || document.documentElement.clientHeight || logicalH, logicalH);
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+
+        const layoutW = vv ? vv.width : (window.innerWidth || document.documentElement.clientWidth || logicalW);
+        const layoutH = vv ? vv.height : (window.innerHeight || document.documentElement.clientHeight || logicalH);
+        const rect = this.canvas.getBoundingClientRect();
+        const screenW = Math.max(rect.width || layoutW, logicalW);
+        const screenH = Math.max(rect.height || layoutH, logicalH);
         this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
 
         this.canvas.width = Math.round(screenW * this.dpr);
         this.canvas.height = Math.round(screenH * this.dpr);
-        this.canvas.style.width = screenW + 'px';
-        this.canvas.style.height = screenH + 'px';
 
         this.screenW = screenW;
         this.screenH = screenH;
@@ -88,10 +93,14 @@ class Renderer {
         return gx >= 0 && gx <= this.w && gy >= 0 && gy <= this.h;
     }
 
+    /** Layout-space transform: CSS pixels → backing store (call before clip/UI). */
+    applyLayoutTransform() {
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    }
+
     beginGameDraw() {
-        const ctx = this.ctx;
         const d = this.dpr;
-        ctx.setTransform(
+        this.ctx.setTransform(
             this.scale * d, 0, 0, this.scale * d,
             (this.offsetX + this.shakeX) * d,
             (this.offsetY + this.shakeY) * d
@@ -99,7 +108,7 @@ class Renderer {
     }
 
     resetScreenDraw() {
-        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        this.applyLayoutTransform();
     }
 
     shake(magnitude, duration) {
@@ -133,6 +142,7 @@ class Renderer {
 
     beginClippedGameDraw() {
         this.ctx.save();
+        this.applyLayoutTransform();
         this.clipViewport(this.ctx);
         this.beginGameDraw();
         this.drawBackground();

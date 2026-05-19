@@ -52,7 +52,7 @@ class Game {
         document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
         document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
 
-        window.addEventListener('resize', () => {
+        const onViewportChange = () => {
             this.renderer.resize();
             if (this.player) {
                 this.player.homeX = this.renderer.w / 2;
@@ -62,7 +62,13 @@ class Game {
                     this.player.y = this.player.homeY;
                 }
             }
-        });
+        };
+        window.addEventListener('resize', onViewportChange);
+        window.addEventListener('orientationchange', onViewportChange);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', onViewportChange);
+            window.visualViewport.addEventListener('scroll', onViewportChange);
+        }
 
         this.lastTime = performance.now();
         requestAnimationFrame((t) => this.loop(t));
@@ -243,6 +249,7 @@ class Game {
         const h = this.renderer.h;
 
         this.renderer.clear();
+        this.renderer.resetScreenDraw();
         this.renderer.beginClippedGameDraw();
 
         if (this.state === 'MENU') {
