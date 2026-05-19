@@ -12,6 +12,7 @@ const ORDER = [
     'spriteData.js',
     'audio.js',
     'particles.js',
+    'bloodStains.js',
     'renderer.js',
     'player.js',
     'monster.js',

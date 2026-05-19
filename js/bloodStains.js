@@ -1,9 +1,9 @@
 class BloodStainSystem {
     constructor() {
         this.stains = [];
-        this.maxStains = 600;
+        this.maxStains = 1200;
         this.fadeDuration = 22;
-        this.minAlpha = 0.2;
+        this.minAlpha = 0.32;
     }
 
     clear() {
@@ -17,8 +17,17 @@ class BloodStainSystem {
     }
 
     _stainAlpha(age) {
-        const t = clamp(age / this.fadeDuration, 0, 1);
-        return 1 - t * (1 - this.minAlpha);
+        if (age >= this.fadeDuration) return this.minAlpha;
+        const t = age / this.fadeDuration;
+        return this.minAlpha + (1 - this.minAlpha) * (1 - t);
+    }
+
+    _trimStains() {
+        while (this.stains.length > this.maxStains) {
+            const fadedIdx = this.stains.findIndex(s => s.age >= this.fadeDuration);
+            if (fadedIdx < 0) break;
+            this.stains.splice(fadedIdx, 1);
+        }
     }
 
     spawn(x, y, intensity = 1, fromAngle = null) {
@@ -72,10 +81,7 @@ class BloodStainSystem {
         }
 
         this.stains.push({ x, y, drops, streaks, age: 0 });
-
-        if (this.stains.length > this.maxStains) {
-            this.stains.splice(0, this.stains.length - this.maxStains);
-        }
+        this._trimStains();
     }
 
     draw(ctx) {

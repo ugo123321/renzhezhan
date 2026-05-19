@@ -50,21 +50,8 @@ class Game {
         this.canvas.addEventListener('touchcancel', trackPointerUp);
         this.canvas.addEventListener('mouseup', trackPointerUp);
 
-        this.upgrades.onSelect = () => {
-            if (this.pendingLevelUpCount > 0) {
-                this._tryStartLevelUp();
-            } else {
-                this.state = 'PLAYING';
-            }
-        };
-
-        this.bossRewards.onSelect = () => {
-            if (this.pendingLevelUpCount > 0) {
-                this._tryStartLevelUp();
-            } else {
-                this.state = 'PLAYING';
-            }
-        };
+        this.upgrades.onSelect = () => this._finishRewardOverlay();
+        this.bossRewards.onSelect = () => this._finishRewardOverlay();
 
         const overlayDown = (e) => {
             if (this.state === 'PLAYING' && this.ui && this.player) {
@@ -228,21 +215,8 @@ class Game {
         this.levelCleared = false;
         this.pendingLevelUpCount = 0;
 
-        this.upgrades.onSelect = () => {
-            if (this.pendingLevelUpCount > 0) {
-                this._tryStartLevelUp();
-            } else {
-                this.state = 'PLAYING';
-            }
-        };
-
-        this.bossRewards.onSelect = () => {
-            if (this.pendingLevelUpCount > 0) {
-                this._tryStartLevelUp();
-            } else {
-                this.state = 'PLAYING';
-            }
-        };
+        this.upgrades.onSelect = () => this._finishRewardOverlay();
+        this.bossRewards.onSelect = () => this._finishRewardOverlay();
 
         if (!this.input) {
             this.input = new InputManager(this.canvas, this);
@@ -269,6 +243,11 @@ class Game {
     _queueLevelUps(count) {
         if (!this.player || !this.upgrades || count <= 0) return;
         this.pendingLevelUpCount += count;
+        this._tryStartLevelUp();
+    }
+
+    _finishRewardOverlay() {
+        this.state = 'PLAYING';
         this._tryStartLevelUp();
     }
 
@@ -459,6 +438,10 @@ class Game {
 
         if (this.state === 'LEVEL_UP' || this.state === 'BOSS_REWARD') {
             this.particles.update(realDt);
+            if ((this.state === 'LEVEL_UP' && !this.upgrades.active) ||
+                (this.state === 'BOSS_REWARD' && !this.bossRewards.active)) {
+                this._finishRewardOverlay();
+            }
             return;
         }
         if (this.state === 'PAUSED') {
