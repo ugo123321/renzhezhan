@@ -35,6 +35,10 @@ function angle(x1, y1, x2, y2) {
     return Math.atan2(y2 - y1, x2 - x1);
 }
 
+function easeInQuad(t) {
+    return t * t;
+}
+
 function easeOutQuad(t) {
     return t * (2 - t);
 }
@@ -46,6 +50,16 @@ function easeInOutQuad(t) {
 function circlesCollide(x1, y1, r1, x2, y2, r2) {
     const d = dist(x1, y1, x2, y2);
     return d < r1 + r2;
+}
+
+function distPointToSegment(px, py, ax, ay, bx, by) {
+    const vx = bx - ax;
+    const vy = by - ay;
+    const len2 = vx * vx + vy * vy;
+    if (len2 < 1e-8) return dist(px, py, ax, ay);
+    let t = ((px - ax) * vx + (py - ay) * vy) / len2;
+    t = clamp(t, 0, 1);
+    return dist(px, py, ax + vx * t, ay + vy * t);
 }
 
 function pickRandom(arr) {
@@ -64,100 +78,164 @@ function shuffleArray(arr) {
 
 // ---- config.js ----
 const CONFIG = {
-    BULLET_TIME_SCALE: 0.12,
+    BULLET_TIME_SCALE: 0.14,
+    BULLET_TIME_DIM_ALPHA: 0.42,
+    STAGE_INTRO_SLIDE_IN: 0.38,
+    STAGE_INTRO_LABEL_HOLD: 0.85,
+    STAGE_INTRO_SLIDE_OUT: 0.38,
+    MONSTER_SPAWN_ANIM: 0.42,
+    STAGE_CLEAR_FLASH: 0.55,
+    STAGE_FAIL_LABEL_DURATION: 0.85,
+    STAGE_FAIL_OVERLAY_FADE: 0.45,
+    STAGE_INTRO_SAKURA_EXTRA: 0.8,
+    FAIL_DEATH: {
+        WINDUP: 0.3,
+        SPEAR_STAGGER: 0.065,
+        SPEAR_SPEED: 640,
+        IMPACT_PAUSE: 0.24,
+        DEATH_DURATION: 0.9,
+    },
     NORMAL_TIME_SCALE: 1.0,
+
+    COMBAT_RESOLVE: {
+        FIRST_HIT_DELAY: 0.08,
+        HIT_INTERVAL: 0.048,
+        AFTERIMAGE_LIFE: 0.14,
+        DEATH_STAGGER: 0.07,
+    },
+
+    MONSTER_DEATH_FADE: 0.24,
 
     DISPLAY: {
         LOGICAL_WIDTH: 390,
         LOGICAL_HEIGHT: 700,
         NINJA_SPRITE_SCALE: 3,
-        MONSTER_SPRITE_SCALE: 3,
-        MONSTER_SPRITE_SCALE_STRONG: 4,
         GRID_SIZE: 28,
     },
 
     PLAYER: {
-        MAX_HEARTS: 3,
-        DAMAGE_PER_HIT: 0.5,
-        BASE_ATTACK: 18,
-        CRIT_RATE: 0.10,
-        CRIT_MULTIPLIER: 1.5,
-        KI_MAX: 100,
-        KI_DRAIN_RATE: 30,
-        KI_REGEN_RATE: 30,
-        ATTACK_SPEED: 2400,
-        RETURN_SPEED_INSTANT: 200,
-        RETURN_SPEED_SLOW: 48,
+        BASE_ATTACK: 95,
+        BASE_KI: 234,
+        BASE_CRIT_RATE: 0.08,
+        BASE_CRIT_DAMAGE: 1.6,
+        ATTACK_SPEED: 2300,
         HITBOX_RADIUS: 12,
         TRIGGER_RADIUS_RATIO: 0.11,
-        MAGNET_RADIUS: 120,
+        KI_PER_PIXEL: 0.18,
         SIZE_SCALE: 1.0,
-        INVINCIBLE_AFTER_HIT: 1.0,
-        HIT_FLASH_DURATION: 0.28,
         COMBO_DAMAGE_BONUS: 0.10,
-        COMBO_DISPLAY_HOLD: 0.55,
-        COMBO_END_FADE: 0.35,
+        COMBO_DISPLAY_HOLD: 0.6,
+        COMBO_END_FADE: 0.4,
+        COMBO_TEXT_BASE: 30,
+        COMBO_TEXT_GROW: 1.4,
+        COMBO_TEXT_MAX_GROW: 22,
+        COMBO_SHAKE_DURATION: 0.24,
     },
+
+    TURN: {
+        BASE_TURNS: 8,
+    },
+
+    EXP: {
+        BASE_TO_LEVEL: 100,
+        GROWTH: 1.22,
+        BAR_HEIGHT: 24,
+        KILL_REWARD: {
+            NORMAL: 5,
+            ELITE: 8,
+            SHIELD: 7,
+            BERSERKER: 9,
+            SPLITTER: 6,
+        },
+    },
+
+    STAGE_MONSTER_SCALE: 1.3,
+
+    STAGES: [
+        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0 },
+        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0 },
+        { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0 },
+        { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0 },
+        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0 },
+        { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0 },
+        { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0 },
+        { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0 },
+    ],
 
     MONSTERS: {
-        NORMAL_MELEE: {
-            name: 'Skeleton',
-            hp: 30, def: 3, range: 42, size: 11, speed: 22,
-            atkSpeed: 1.0, atkDamage: 1, type: 'melee',
-            color: '#8b9dc3', xp: 10,
+        NORMAL: {
+            name: '普通怪',
+            hp: 80,
+            def: 4,
+            size: 13,
+            speed: 19,
+            color: '#7a8ca2',
+            grade: 'B',
+            canMove: true,
         },
-        NORMAL_RANGED: {
-            name: 'Dark Mage',
-            hp: 20, def: 3, range: 140, size: 11, speed: 17,
-            atkSpeed: 1.8, atkDamage: 1, type: 'ranged',
-            color: '#9b59b6', xp: 15,
+        ELITE: {
+            name: '高级怪',
+            hp: 110,
+            def: 6,
+            size: 14,
+            speed: 21,
+            color: '#8a6aa8',
+            grade: 'B+',
+            canMove: true,
         },
-        STRONG_MELEE: {
-            name: 'Oni',
-            hp: 50, def: 5, range: 48, size: 15, speed: 19,
-            atkSpeed: 1.2, atkDamage: 1, type: 'melee',
-            color: '#e74c3c', xp: 25,
+        SHIELD: {
+            name: '盾牌怪',
+            hp: 120,
+            def: 5,
+            size: 15,
+            speed: 16,
+            color: '#5f7a88',
+            grade: 'B+',
+            canMove: true,
         },
-        STRONG_RANGED: {
-            name: 'Warlock',
-            hp: 35, def: 3, range: 180, size: 15, speed: 15,
-            atkSpeed: 2.0, atkDamage: 1, type: 'ranged',
-            color: '#8e44ad', xp: 30,
+        BERSERKER: {
+            name: '狂战士',
+            hp: 90,
+            def: 2,
+            size: 14,
+            speed: 26,
+            color: '#b85a4a',
+            grade: 'C/B',
+            canMove: true,
+            kiDrainOnHit: 10,
+        },
+        SPLITTER: {
+            name: '分裂怪',
+            hp: 70,
+            def: 2,
+            size: 18,
+            speed: 14,
+            color: '#7b9f5a',
+            grade: 'A+/C/C',
+            canMove: true,
+            maxSplitTier: 3,
+            splitCount: 2,
         },
     },
 
-    PROJECTILE: {
-        SPEED: 120,
-        RADIUS: 6,
-    },
-
-    BOSSES: {
-        FIRE_DRAGON: {
-            name: '火龙',
-            hp: 1400,
-            def: 10,
-            hitboxRadius: 56,
-            spriteScale: 5,
-            attackInterval: 2.0,
-            introDelay: 1.2,
-            xp: 250,
-            color: '#f84',
-            fireballCount: 18,
-            fireballSpeed: 210,
-            fireballRadius: 9,
-            fireballSpread: 0.55,
+    BUFF_ORB: {
+        BASE_TYPES: ['attack', 'ki', 'combo'],
+        RADIUS: 13,
+        MAX_PER_TYPE: 4,
+        SPAWN_CHANCE: {
+            attack: 0.55,
+            ki: 0.45,
+            combo: 0.42,
+            ice: 0.28,
         },
+        EXTRA_SPAWN_CHANCE: 0.48,
     },
 
-    SPAWN_FADE_DURATION: 1.0,
-
-    XP: {
-        BASE_REQUIRED: 30,
-        SCALE_FACTOR: 1.35,
-        ORB_VALUE_SCALE: 0.25,
-        ORB_SPEED: 180,
-        ORB_RADIUS: 5,
-        PICKUP_DELAY: 0.3,
+    UPGRADE_RARITY: {
+        white: { chance: 0.60, color: '#d8d8d8', name: '白色' },
+        blue: { chance: 0.25, color: '#58a8ff', name: '蓝色' },
+        purple: { chance: 0.10, color: '#b070ff', name: '紫色' },
+        orange: { chance: 0.05, color: '#ff9830', name: '橙色' },
     },
 
     SHAKE: {
@@ -166,58 +244,7 @@ const CONFIG = {
         COMBO_MAG_PER_HIT: 0.1,
         COMBO_MAG_CAP: 1.5,
     },
-
-    LEVELS: [
-        {
-            types: ['NORMAL_MELEE'],
-            count: 56, waves: 3,
-        },
-        {
-            types: ['NORMAL_MELEE'],
-            count: 90, waves: 4,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED'],
-            count: 120, waves: 4,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED'],
-            count: 150, waves: 5,
-            boss: 'FIRE_DRAGON',
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED', 'STRONG_MELEE'],
-            count: 190, waves: 5,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED', 'STRONG_MELEE'],
-            count: 230, waves: 6,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED', 'STRONG_MELEE', 'STRONG_RANGED'],
-            count: 270, waves: 6,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED', 'STRONG_MELEE', 'STRONG_RANGED'],
-            count: 320, waves: 8,
-            boss: null,
-        },
-    ],
 };
-
-function isBossLevel(levelIndex) {
-    return (levelIndex + 1) % 4 === 0;
-}
-
-function getBossKeyForLevel(levelIndex) {
-    const cfg = CONFIG.LEVELS[levelIndex];
-    if (!cfg || !isBossLevel(levelIndex)) return null;
-    if (cfg.boss === null) return null;
-    if (cfg.boss) return cfg.boss;
-    const chapterBoss = Math.floor(levelIndex / 4);
-    if (chapterBoss === 0) return 'FIRE_DRAGON';
-    return null;
-}
 
 
 // ---- spriteData.js ----
@@ -725,6 +752,11 @@ class ParticleSystem {
         }
     }
 
+    clear() {
+        for (const p of this.pool) p.active = false;
+        this.lightningBolts = [];
+    }
+
     emit(x, y, vx, vy, life, size, color, gravity = 0, shrink = true, glow = false) {
         for (const p of this.pool) {
             if (!p.active) {
@@ -860,8 +892,10 @@ class ParticleSystem {
     }
 
     lightningEffect(x1, y1, x2, y2) {
-        const segments = 12;
-        const jitter = 16;
+        const dist = Math.hypot(x2 - x1, y2 - y1);
+        const segments = Math.max(18, Math.floor(dist / 14));
+        const jitter = Math.max(22, dist * 0.14);
+        const life = clamp(0.75 + dist * 0.0022, 0.85, 1.25);
         const points = [{ x: x1, y: y1 }];
         for (let i = 1; i < segments; i++) {
             const t = i / segments;
@@ -871,25 +905,26 @@ class ParticleSystem {
             });
         }
         points.push({ x: x2, y: y2 });
-        this.lightningBolts.push({ points, life: 0.5, maxLife: 0.5 });
+        this.lightningBolts.push({ points, life, maxLife: life });
 
-        for (let i = 0; i <= 24; i++) {
-            const t = i / 24;
-            const px = x1 + (x2 - x1) * t + randRange(-10, 10);
-            const py = y1 + (y2 - y1) * t + randRange(-10, 10);
-            this.emit(px, py, randRange(-30, 30), randRange(-30, 30),
-                randRange(0.28, 0.5), randRange(4, 9),
+        const sparkCount = Math.max(28, Math.floor(dist / 10));
+        for (let i = 0; i <= sparkCount; i++) {
+            const t = i / sparkCount;
+            const px = x1 + (x2 - x1) * t + randRange(-14, 14);
+            const py = y1 + (y2 - y1) * t + randRange(-14, 14);
+            this.emit(px, py, randRange(-40, 40), randRange(-40, 40),
+                randRange(0.35, 0.65), randRange(5, 11),
                 ['#ff0', '#fff', '#8ef', '#cef'][Math.floor(Math.random() * 4)],
                 0, true, true);
         }
 
-        for (let i = 0; i < 10; i++) {
-            const a = (i / 10) * Math.PI * 2;
-            const spd = randRange(60, 140);
+        for (let i = 0; i < 14; i++) {
+            const a = (i / 14) * Math.PI * 2;
+            const spd = randRange(80, 180);
             this.emit(x1, y1, Math.cos(a) * spd, Math.sin(a) * spd,
-                randRange(0.2, 0.4), randRange(5, 10), '#fff', 0, true, true);
+                randRange(0.28, 0.5), randRange(6, 12), '#fff', 0, true, true);
             this.emit(x2, y2, Math.cos(a) * spd, Math.sin(a) * spd,
-                randRange(0.2, 0.4), randRange(5, 10), '#ff0', 0, true, true);
+                randRange(0.28, 0.5), randRange(6, 12), '#ff0', 0, true, true);
         }
     }
 
@@ -914,25 +949,25 @@ class ParticleSystem {
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
-            ctx.strokeStyle = 'rgba(140, 220, 255, 0.55)';
-            ctx.lineWidth = 10;
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.65)';
+            ctx.lineWidth = 16;
             ctx.shadowColor = '#8cf';
-            ctx.shadowBlur = 18;
+            ctx.shadowBlur = 28;
             ctx.beginPath();
             ctx.moveTo(pts[0].x, pts[0].y);
             for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
             ctx.stroke();
 
             ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 4;
-            ctx.shadowBlur = 10;
+            ctx.lineWidth = 6;
+            ctx.shadowBlur = 16;
             ctx.beginPath();
             ctx.moveTo(pts[0].x, pts[0].y);
             for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
             ctx.stroke();
 
-            ctx.strokeStyle = '#ff0';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ffe840';
+            ctx.lineWidth = 3;
             ctx.shadowBlur = 0;
             ctx.beginPath();
             ctx.moveTo(pts[0].x, pts[0].y);
@@ -953,8 +988,8 @@ class ParticleSystem {
 class BloodStainSystem {
     constructor() {
         this.stains = [];
-        this.maxStains = 1200;
-        this.fadeDuration = 22;
+        this.maxStains = 800;
+        this.fadeDuration = 16;
         this.minAlpha = 0.32;
     }
 
@@ -963,99 +998,50 @@ class BloodStainSystem {
     }
 
     update(dt) {
-        for (const stain of this.stains) {
-            stain.age += dt;
+        for (const s of this.stains) s.age += dt;
+        this._trim();
+    }
+
+    _trim() {
+        while (this.stains.length > this.maxStains) {
+            const idx = this.stains.findIndex(s => s.age >= this.fadeDuration);
+            if (idx < 0) break;
+            this.stains.splice(idx, 1);
         }
     }
 
-    _stainAlpha(age) {
+    _alpha(age) {
         if (age >= this.fadeDuration) return this.minAlpha;
         const t = age / this.fadeDuration;
         return this.minAlpha + (1 - this.minAlpha) * (1 - t);
     }
 
-    _trimStains() {
-        while (this.stains.length > this.maxStains) {
-            const fadedIdx = this.stains.findIndex(s => s.age >= this.fadeDuration);
-            if (fadedIdx < 0) break;
-            this.stains.splice(fadedIdx, 1);
-        }
-    }
-
     spawn(x, y, intensity = 1, fromAngle = null) {
         const base = fromAngle !== null ? fromAngle : Math.random() * Math.PI * 2;
         const drops = [];
-        const streaks = [];
-
-        drops.push({
-            x: randRange(-2, 2),
-            y: randRange(-1, 2),
-            r: randRange(3, 5) * intensity,
-            color: '#ff2222',
-        });
-
-        const dropCount = Math.floor(10 + Math.random() * 14 * intensity);
-        for (let i = 0; i < dropCount; i++) {
-            const spread = randRange(-1.1, 1.1);
-            const a = base + spread;
-            const dist = randRange(6, 32 * intensity);
+        const n = Math.floor(8 + 12 * intensity);
+        for (let i = 0; i < n; i++) {
+            const a = base + randRange(-1.2, 1.2);
+            const d = randRange(3, 28 * intensity);
             drops.push({
-                x: Math.cos(a) * dist,
-                y: Math.sin(a) * dist * 0.75,
-                r: randRange(1, 3.5) * intensity,
-                color: pickRandom(['#ff1a1a', '#ff3333', '#e60000', '#ff4444', '#cc0000']),
+                x: Math.cos(a) * d,
+                y: Math.sin(a) * d * 0.75,
+                r: randRange(1.2, 3.8) * intensity,
+                c: pickRandom(['#cc1010', '#e61a1a', '#b80808']),
             });
         }
-
-        const streakCount = Math.floor(4 + Math.random() * 6 * intensity);
-        for (let i = 0; i < streakCount; i++) {
-            const a = base + randRange(-0.8, 0.8);
-            const len = randRange(8, 22 * intensity);
-            streaks.push({
-                x1: Math.cos(a) * 2,
-                y1: Math.sin(a) * 2,
-                x2: Math.cos(a) * len,
-                y2: Math.sin(a) * len * 0.7,
-                width: randRange(1, 2.5),
-                color: pickRandom(['#ff1a1a', '#e60000', '#ff4444']),
-            });
-        }
-
-        for (let i = 0; i < Math.floor(2 + Math.random() * 3); i++) {
-            const a = base + randRange(-1.5, 1.5);
-            const dist = randRange(4, 14);
-            drops.push({
-                x: Math.cos(a) * dist,
-                y: Math.sin(a) * dist * 0.6,
-                r: randRange(4, 7) * intensity,
-                color: pickRandom(['#ff2222', '#e61010']),
-            });
-        }
-
-        this.stains.push({ x, y, drops, streaks, age: 0 });
-        this._trimStains();
+        this.stains.push({ x, y, drops, age: 0 });
+        this._trim();
     }
 
     draw(ctx) {
-        for (const stain of this.stains) {
-            const alpha = this._stainAlpha(stain.age);
-
-            for (const s of stain.streaks) {
-                ctx.strokeStyle = s.color;
-                ctx.lineWidth = s.width;
-                ctx.lineCap = 'round';
-                ctx.globalAlpha = alpha * 0.92;
+        for (const s of this.stains) {
+            const a = this._alpha(s.age);
+            for (const d of s.drops) {
+                ctx.globalAlpha = a;
+                ctx.fillStyle = d.c;
                 ctx.beginPath();
-                ctx.moveTo(stain.x + s.x1, stain.y + s.y1);
-                ctx.lineTo(stain.x + s.x2, stain.y + s.y2);
-                ctx.stroke();
-            }
-
-            for (const d of stain.drops) {
-                ctx.fillStyle = d.color;
-                ctx.globalAlpha = alpha * 0.95;
-                ctx.beginPath();
-                ctx.arc(stain.x + d.x, stain.y + d.y, d.r, 0, Math.PI * 2);
+                ctx.arc(s.x + d.x, s.y + d.y, d.r, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
@@ -1179,19 +1165,20 @@ class Renderer {
     }
 
     shake(magnitude, duration) {
-        if (magnitude > this.shakeMag) {
+        if (!Number.isFinite(magnitude) || magnitude <= 0) return;
+        if (!Number.isFinite(duration) || duration <= 0) return;
+        if (magnitude >= this.shakeMag) {
             this.shakeMag = magnitude;
             this.shakeDur = duration;
-            this.shakeTimer = duration;
         }
+        this.shakeTimer = Math.max(this.shakeTimer, duration);
     }
 
     shakeAttackHit(isCrit, combo = 1) {
         const base = isCrit ? CONFIG.SHAKE.CRIT : CONFIG.SHAKE.NORMAL;
-        const bonus = Math.min(
-            CONFIG.SHAKE.COMBO_MAG_CAP,
-            Math.max(0, combo - 1) * CONFIG.SHAKE.COMBO_MAG_PER_HIT
-        );
+        const perHit = CONFIG.SHAKE.COMBO_MAG_PER_HIT ?? 0.1;
+        const cap = CONFIG.SHAKE.COMBO_MAG_CAP ?? 1.5;
+        const bonus = Math.min(cap, Math.max(0, combo - 1) * perHit);
         this.shake(base.magnitude + bonus, base.duration);
     }
 
@@ -1270,1010 +1257,720 @@ class Player {
         this.y = y;
         this.state = PlayerState.IDLE;
 
-        this.maxHearts = CONFIG.PLAYER.MAX_HEARTS;
-        this.hearts = this.maxHearts;
-        this.ki = CONFIG.PLAYER.KI_MAX;
-        this.kiMax = CONFIG.PLAYER.KI_MAX;
-        this.baseDamage = CONFIG.PLAYER.BASE_ATTACK;
-        this.critRate = CONFIG.PLAYER.CRIT_RATE;
-        this.critMultiplier = CONFIG.PLAYER.CRIT_MULTIPLIER;
+        this.baseAttack = CONFIG.PLAYER.BASE_ATTACK;
+        this.attackPowerScale = 1;
+        this.critRate = CONFIG.PLAYER.BASE_CRIT_RATE;
+        this.critDamage = CONFIG.PLAYER.BASE_CRIT_DAMAGE;
         this.sizeScale = CONFIG.PLAYER.SIZE_SCALE;
-        this.damageBonus = 0;
-        this.comboDamageBonus = CONFIG.PLAYER.COMBO_DAMAGE_BONUS;
+
+        this.baseKi = CONFIG.PLAYER.BASE_KI;
+        this.kiMax = this.baseKi;
+        this.ki = this.kiMax;
+        this.nextTurnKiBonus = 0;
+
         this.comboCount = 0;
         this.comboDisplayPeak = 0;
         this.comboDisplayTimer = 0;
-        this.hitboxRadius = CONFIG.PLAYER.HITBOX_RADIUS;
-
-        this.freezeChance = 0;
-        this.freezeDuration = 2.0;
-        this.lightningChains = 0;
-
-        this.shurikenCount = 0;
-        this.shurikenLevel = 0;
-        this.crescentLevel = 0;
-        this.crescentWaves = 0;
-        this.crescentCharge = 0;
-        this.blackHoleLevel = 0;
-        this.bladeWhirlLevel = 0;
-        this.fireballLevel = 0;
-        this.fireballCount = 0;
-
-        this.shadowCloneLevel = 0;
-        this.shadowCloneCount = 0;
-        this.shadowCloneDamageRatio = 0.30;
-        this.shadowClonesPending = 0;
-        this.shadowClonesActive = false;
-        this.shadowCloneSlots = [];
-
-        this.invincibleTimer = 0;
-        this.flashTimer = 0;
-        this.hitFlashTimer = 0;
+        this.comboShakeTimer = 0;
+        this.waterTornadoCharge = 0;
+        this.whirlCharge = 0;
+        this.comboDamageBonus = CONFIG.PLAYER.COMBO_DAMAGE_BONUS;
 
         this.attackPath = [];
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment = new Set();
+        this.invalidPathTimer = 0;
+        this.kiAtDrawStart = this.ki;
 
-        this.animFrame = 0;
-        this.animTimer = 0;
-        this.facingRight = true;
-        this.lastX = x;
-        this.lastY = y;
+        this.turnBuffs = {
+            attackMult: 1,
+            comboMult: 1,
+            iceReady: false,
+        };
+        this.shadowClones = [];
 
-        this.level = 1;
-        this.xp = 0;
-        this.xpToNext = CONFIG.XP.BASE_REQUIRED;
-
-        this.bossRewardDualWield = false;
-        this.bossRewardIai = false;
-        this.bossRewardDeepBreath = false;
-        this.attackFirstCritUsed = false;
+        this.upgradeStacks = {};
+        this.collectedOrbBuffs = [];
+        this.drawSessionSnapshot = null;
+        this.activeMessage = '';
+        this.messageTimer = 0;
     }
 
     get effectiveRadius() {
-        return this.hitboxRadius * this.sizeScale;
+        return CONFIG.PLAYER.HITBOX_RADIUS * this.sizeScale;
+    }
+
+    get triggerRadius() {
+        const refW = CONFIG.DISPLAY.LOGICAL_WIDTH;
+        const base = Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
+        return base * this.sizeScale;
     }
 
     get spriteScale() {
         return CONFIG.DISPLAY.NINJA_SPRITE_SCALE * this.sizeScale;
     }
 
-    get triggerRadius() {
-        const refW = (typeof CONFIG !== 'undefined' && CONFIG.DISPLAY)
-            ? CONFIG.DISPLAY.LOGICAL_WIDTH
-            : 390;
-        return Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
-    }
-
     isInAttackMode() {
-        return this.state === PlayerState.ATTACKING ||
-            this.state === PlayerState.RETURNING;
+        return this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING;
     }
 
-    isVulnerable() {
-        if (this.isInAttackMode() || this.state === PlayerState.BULLET_TIME) {
+    resetLineBuffs() {
+        this.collectedOrbBuffs = [];
+        this.turnBuffs.attackMult = 1;
+        this.turnBuffs.comboMult = 1;
+        this.turnBuffs.iceReady = false;
+    }
+
+    beginTurn() {
+        this.deathAnim = null;
+        this.state = PlayerState.IDLE;
+        this.attackPath = [];
+        this.pathIndex = 0;
+        this.pathProgress = 0;
+        this.hitMonstersInSegment.clear();
+        this.invalidPathTimer = 0;
+        this.comboCount = 0;
+        this.comboDisplayPeak = 0;
+        this.comboDisplayTimer = 0;
+        this.comboShakeTimer = 0;
+        this.waterTornadoCharge = 0;
+        this.drawSessionSnapshot = null;
+        if (this.game && this.game.buffOrbs) {
+            this.game.buffOrbs.drawSessionEaten = [];
+        }
+        this.resetLineBuffs();
+        const turnKiMax = Math.round(this.baseKi * (1 + this.nextTurnKiBonus));
+        this.kiMax = Math.max(20, turnKiMax);
+        this.ki = this.kiMax;
+        this.nextTurnKiBonus = 0;
+    }
+
+    invalidatePath() {
+        this.invalidPathTimer = 0.3;
+        this.state = PlayerState.IDLE;
+        if (this.game && this.game.buffOrbs) this.game.buffOrbs.cancelDrawSession();
+        this.pathIndex = 0;
+        this.pathProgress = 0;
+        this.hitMonstersInSegment.clear();
+        this.queueMessage('路径无效');
+    }
+
+    consumeKiByDistance(d) {
+        const cost = d * CONFIG.PLAYER.KI_PER_PIXEL;
+        this.ki = Math.max(0, this.ki - cost);
+        return this.ki > 0;
+    }
+
+    startBulletTime() {
+        this.state = PlayerState.BULLET_TIME;
+        if (this.game && this.game.buffOrbs) this.game.buffOrbs.beginDrawSession();
+        this.invalidPathTimer = 0;
+        this.attackPath = [];
+        this.pathIndex = 0;
+        this.pathProgress = 0;
+        this.hitMonstersInSegment.clear();
+    }
+
+    addPathPoint(x, y) {
+        const last = this.attackPath[this.attackPath.length - 1];
+        if (!last || dist(last.x, last.y, x, y) > 4) this.attackPath.push({ x, y });
+    }
+
+    startAttack() {
+        if (this.attackPath.length < 2) {
+            this.state = PlayerState.IDLE;
+            this.attackPath = [];
             return false;
         }
-        return this.invincibleTimer <= 0;
-    }
-
-    getComboDamageMultiplier() {
-        if (this.comboCount <= 1) return 1;
-        return 1 + this.comboDamageBonus * (this.comboCount - 1);
+        this.state = PlayerState.ATTACKING;
+        if (this.game && this.game.buffOrbs) this.game.buffOrbs.commitDrawSession();
+        this.pathIndex = 0;
+        this.pathProgress = 0;
+        this.hitMonstersInSegment.clear();
+        this.comboCount = 0;
+        this.comboDisplayPeak = 0;
+        this.comboDisplayTimer = 0;
+        this.comboShakeTimer = 0;
+        this.waterTornadoCharge = 0;
+        this.whirlCharge = 0;
+        return true;
     }
 
     registerComboHit() {
-        if (this.state !== PlayerState.ATTACKING) return 0;
-        const inc = this.bossRewardDualWield ? 2 : 1;
+        const baseInc = this.getUpgradeLevel('dual_wield') > 0 ? 2 : 1;
+        const inc = baseInc * this.turnBuffs.comboMult;
         this.comboCount += inc;
         this.comboDisplayPeak = Math.max(this.comboDisplayPeak, this.comboCount);
         this.comboDisplayTimer = CONFIG.PLAYER.COMBO_DISPLAY_HOLD;
         return this.comboCount;
     }
 
-    resetCombo() {
-        if (this.comboDisplayPeak >= 2) {
-            this.comboDisplayTimer = CONFIG.PLAYER.COMBO_END_FADE;
-        } else {
-            this.comboDisplayTimer = 0;
-            this.comboDisplayPeak = 0;
+    _getShadowCloneAnchor() {
+        if (this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING) {
+            return { x: this.x, y: this.y };
         }
+        return { x: this.homeX, y: this.homeY };
+    }
+
+    _syncShadowClones() {
+        if (!this.shadowClones.length) return;
+        const anchor = this._getShadowCloneAnchor();
+        for (const c of this.shadowClones) {
+            c.x = anchor.x + c.ox;
+            c.y = anchor.y + c.oy;
+        }
+    }
+
+    addShadowClones(count) {
+        if (count <= 0) return;
+        for (let i = 0; i < count; i++) {
+            const idx = this.shadowClones.length;
+            const side = idx % 2 === 0 ? -1 : 1;
+            const tier = Math.floor(idx / 2);
+            this.shadowClones.push({
+                ox: side * (18 + tier * 14),
+                oy: -10 - tier * 4,
+            });
+        }
+        this._syncShadowClones();
+    }
+
+    endCombo() {
+        if (this.getUpgradeLevel('shadow_clone') > 0 && this.comboDisplayPeak > 10) {
+            this.addShadowClones(this.getUpgradeLevel('shadow_clone'));
+        }
+        if (this.comboDisplayPeak >= 2) this.comboDisplayTimer = CONFIG.PLAYER.COMBO_END_FADE;
         this.comboCount = 0;
     }
 
     getComboBonusPercent(combo) {
         if (combo <= 1) return 0;
-        return Math.round(this.comboDamageBonus * (combo - 1) * 100);
-    }
-
-    updateComboDisplay(dt) {
-        if (this.comboDisplayTimer > 0) {
-            this.comboDisplayTimer -= dt;
-            if (this.comboDisplayTimer <= 0) {
-                this.comboDisplayPeak = 0;
-            }
-        }
+        return Math.round((combo - 1) * this.comboDamageBonus * 100);
     }
 
     getDamage() {
-        const isCrit = Math.random() < this.critRate;
-        let dmg = this.baseDamage * (1 + this.damageBonus);
-        dmg *= this.getComboDamageMultiplier();
-        let isIaiCrit = false;
-        if (isCrit) {
-            if (this.bossRewardIai && !this.attackFirstCritUsed) {
-                this.attackFirstCritUsed = true;
-                dmg *= 3;
-                isIaiCrit = true;
-            } else {
-                dmg *= this.critMultiplier;
+        const crit = Math.random() < this.critRate;
+        let dmg = this.baseAttack * this.attackPowerScale;
+        dmg *= this.turnBuffs.attackMult;
+        dmg *= 1 + Math.max(0, this.comboCount - 1) * this.comboDamageBonus;
+        if (crit) dmg *= this.critDamage;
+        return { damage: Math.round(dmg), isCrit: crit };
+    }
+
+    getAbilityDamage(mult) {
+        return Math.max(1, Math.round(this.baseAttack * this.attackPowerScale * mult));
+    }
+
+    queueMessage(text) {
+        this.activeMessage = text;
+        this.messageTimer = 1.25;
+    }
+
+    getUpgradeLevel(id) {
+        return this.upgradeStacks[id] || 0;
+    }
+
+    applyUpgrade(upgrade) {
+        this.upgradeStacks[upgrade.id] = (this.upgradeStacks[upgrade.id] || 0) + 1;
+        upgrade.apply(this, this.upgradeStacks[upgrade.id]);
+        this.queueMessage(`获得强化: ${upgrade.name}`);
+    }
+
+    update(dt) {
+        if (this.messageTimer > 0) this.messageTimer -= dt;
+        if (this.invalidPathTimer > 0) {
+            this.invalidPathTimer -= dt;
+            if (this.invalidPathTimer <= 0) {
+                this.attackPath = [];
             }
         }
-        return { damage: Math.round(dmg), isCrit, isIaiCrit, combo: this.comboCount };
-    }
 
-    getCloneDamage() {
-        const isCrit = Math.random() < this.critRate;
-        let dmg = this.baseDamage * (1 + this.damageBonus) * this.shadowCloneDamageRatio;
-        if (isCrit) dmg *= this.critMultiplier;
-        return { damage: Math.round(dmg), isCrit };
-    }
-
-    _getShadowHomePosition(index, total) {
-        const backAng = Math.atan2(this.homeY - this.y, this.homeX - this.x) || Math.PI;
-        const perpX = -Math.sin(backAng);
-        const perpY = Math.cos(backAng);
-        const side = index % 2 === 0 ? -1 : 1;
-        const tier = Math.floor(index / 2);
-        const lateral = (22 + tier * 16) * side;
-        const back = 18 + tier * 6;
-        return {
-            x: this.homeX - Math.cos(backAng) * back + perpX * lateral,
-            y: this.homeY - Math.sin(backAng) * back + perpY * lateral,
-        };
-    }
-
-    _armShadowClonesForAttack() {
-        if (this.shadowClonesPending <= 0) return;
-        this.shadowClonesActive = true;
-        this.shadowCloneSlots = [];
-        const count = this.shadowClonesPending;
-        for (let i = 0; i < count; i++) {
-            const side = i % 2 === 0 ? -1 : 1;
-            const tier = Math.floor(i / 2);
-            this.shadowCloneSlots.push({
-                side,
-                lateralDist: 22 + tier * 16,
-                backOffset: 6,
-                x: this.x,
-                y: this.y,
-                hitMonstersInSegment: new Set(),
-            });
+        if (this.comboDisplayTimer > 0) {
+            this.comboDisplayTimer -= dt;
+            if (this.comboDisplayTimer <= 0) this.comboDisplayPeak = 0;
         }
-        this.shadowClonesPending = 0;
-    }
-
-    _updateShadowClonePositions() {
-        if (!this.shadowClonesActive || !this.shadowCloneSlots.length) return;
-
-        let moveAng = this.facingRight ? 0 : Math.PI;
-        if (this.pathIndex < this.attackPath.length - 1) {
-            const to = this.attackPath[this.pathIndex + 1];
-            moveAng = Math.atan2(to.y - this.y, to.x - this.x);
-        }
-        const perpX = -Math.sin(moveAng);
-        const perpY = Math.cos(moveAng);
-        const backX = -Math.cos(moveAng);
-        const backY = -Math.sin(moveAng);
-
-        for (const slot of this.shadowCloneSlots) {
-            slot.x = this.x + perpX * slot.lateralDist * slot.side + backX * slot.backOffset;
-            slot.y = this.y + perpY * slot.lateralDist * slot.side + backY * slot.backOffset;
-        }
-    }
-
-    _tryLeaveShadowClones() {
-        if (this.shadowCloneLevel <= 0 || this.comboCount <= 10) return;
-        this.shadowClonesPending = this.shadowCloneCount || 1;
-    }
-
-    takeDamage(amount) {
-        if (!this.isVulnerable()) return false;
-        this.hearts -= amount;
-        if (this.hearts < 0) this.hearts = 0;
-        this.invincibleTimer = CONFIG.PLAYER.INVINCIBLE_AFTER_HIT;
-        this.flashTimer = CONFIG.PLAYER.INVINCIBLE_AFTER_HIT;
-        this.hitFlashTimer = CONFIG.PLAYER.HIT_FLASH_DURATION;
-        return true;
-    }
-
-    isDead() {
-        return this.hearts <= 0;
-    }
-
-    startBulletTime() {
-        this.state = PlayerState.BULLET_TIME;
-        this.attackPath = [];
-        this.hitMonstersInSegment.clear();
-        this.animFrame = 0;
-        this.animTimer = 0;
-    }
-
-    addPathPoint(x, y) {
-        const last = this.attackPath[this.attackPath.length - 1];
-        if (!last || dist(last.x, last.y, x, y) > 5) {
-            this.attackPath.push({ x, y });
-        }
-    }
-
-    startAttack() {
-        if (this.attackPath.length < 2) {
-            this.state = PlayerState.IDLE;
-            return;
-        }
-        this.state = PlayerState.ATTACKING;
-        this.attackFirstCritUsed = false;
-        this.resetCombo();
-        this.crescentCharge = 0;
-        this.comboDisplayPeak = 0;
-        this.comboDisplayTimer = 0;
-        this.pathIndex = 0;
-        this.pathProgress = 0;
-        this.hitMonstersInSegment.clear();
-        this._armShadowClonesForAttack();
-        this.animFrame = 0;
-        this.animTimer = 0;
-    }
-
-    updateAnimation(realDt) {
-        let interval = 0.35;
-        let frameCount = SPRITES.ninja.idle.length;
-
-        if (this.state === PlayerState.ATTACKING) {
-            interval = 0.055;
-            frameCount = SPRITES.ninja.attack.length;
-        } else if (this.state === PlayerState.RETURNING) {
-            interval = 0.1;
-            frameCount = SPRITES.ninja.run.length;
+        if (this.comboShakeTimer > 0) {
+            this.comboShakeTimer = Math.max(0, this.comboShakeTimer - dt);
         }
 
-        this.animTimer += realDt;
-        if (this.animTimer >= interval) {
-            this.animTimer = 0;
-            this.animFrame = (this.animFrame + 1) % frameCount;
-        }
-
+        if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
+        else if (this.state === PlayerState.RETURNING) this._updateReturn(dt);
+        this._syncShadowClones();
     }
 
-    update(dt, realDt) {
-        this.lastX = this.x;
-        this.lastY = this.y;
-        this.updateAnimation(realDt);
-
-        if (this.invincibleTimer > 0) {
-            this.invincibleTimer -= realDt;
-            this.flashTimer -= realDt;
-        }
-        if (this.hitFlashTimer > 0) {
-            this.hitFlashTimer -= realDt;
-        }
-
-        this.updateComboDisplay(realDt);
-
-        if (this.state === PlayerState.BULLET_TIME) {
-            this.ki -= CONFIG.PLAYER.KI_DRAIN_RATE * realDt;
-            if (this.ki < 0) this.ki = 0;
-        } else {
-            this.ki += CONFIG.PLAYER.KI_REGEN_RATE * realDt;
-            if (this.ki > this.kiMax) this.ki = this.kiMax;
-        }
-
-        if (this.state === PlayerState.ATTACKING) {
-            this.updateAttack(dt);
-        } else if (this.state === PlayerState.RETURNING) {
-            this.updateReturn(dt);
-        }
-    }
-
-    beginReturnHome() {
-        this._tryLeaveShadowClones();
-        this.resetCombo();
-        this.crescentCharge = 0;
-        this.state = PlayerState.RETURNING;
-        this.animFrame = 0;
-        this.animTimer = 0;
-    }
-
-    updateAttack(dt) {
+    _updateAttack(dt) {
         if (this.pathIndex >= this.attackPath.length - 1) {
-            this.beginReturnHome();
+            this.state = PlayerState.RETURNING;
             return;
         }
-
-        const speed = CONFIG.PLAYER.ATTACK_SPEED;
-        let remaining = speed * dt;
-
+        let remaining = CONFIG.PLAYER.ATTACK_SPEED * dt;
         while (remaining > 0 && this.pathIndex < this.attackPath.length - 1) {
             const from = this.attackPath[this.pathIndex];
             const to = this.attackPath[this.pathIndex + 1];
-            const segDist = dist(from.x, from.y, to.x, to.y);
-
-            if (segDist === 0) {
-                this.pathIndex++;
-                continue;
-            }
-
-            const segRemaining = segDist * (1 - this.pathProgress);
-            if (remaining >= segRemaining) {
-                remaining -= segRemaining;
+            const segment = dist(from.x, from.y, to.x, to.y);
+            if (segment < 0.001) {
                 this.pathIndex++;
                 this.pathProgress = 0;
+                continue;
+            }
+            const left = segment * (1 - this.pathProgress);
+            if (remaining >= left) {
+                remaining -= left;
                 this.x = to.x;
                 this.y = to.y;
+                this.pathIndex++;
+                this.pathProgress = 0;
+                this.hitMonstersInSegment.clear();
             } else {
-                this.pathProgress += remaining / segDist;
-                const t = this.pathProgress;
-                this.x = from.x + (to.x - from.x) * t;
-                this.y = from.y + (to.y - from.y) * t;
+                this.pathProgress += remaining / segment;
+                this.x = lerp(from.x, to.x, this.pathProgress);
+                this.y = lerp(from.y, to.y, this.pathProgress);
                 remaining = 0;
             }
         }
-
-        if (this.pathIndex < this.attackPath.length - 1) {
-            const to = this.attackPath[this.pathIndex + 1];
-            this.facingRight = to.x > this.x;
-        }
-
-        this._updateShadowClonePositions();
-
         if (this.pathIndex >= this.attackPath.length - 1) {
-            this.beginReturnHome();
+            this.state = PlayerState.RETURNING;
         }
     }
 
-    updateReturn(dt) {
+    _updateReturn(dt) {
         const d = dist(this.x, this.y, this.homeX, this.homeY);
-        if (d < 3) {
+        if (d <= 3) {
+            if (this.game && this.game.combat) {
+                this.game.combat.recordFinalPathSegment();
+            }
+            const pathSnapshot = this.attackPath.map(pt => ({ x: pt.x, y: pt.y }));
             this.x = this.homeX;
             this.y = this.homeY;
             this.state = PlayerState.IDLE;
-            this.shadowClonesActive = false;
-            this.shadowCloneSlots = [];
+            this.attackPath = [];
+            if (this.game) {
+                this.game.endBulletTimeDim();
+                if (this.game.combat) this.game.combat.beginResolve(pathSnapshot);
+            }
             return;
         }
-
         const n = normalize(this.homeX - this.x, this.homeY - this.y);
-        const move = CONFIG.PLAYER.ATTACK_SPEED * dt;
-        this.x += n.x * Math.min(move, d);
-        this.y += n.y * Math.min(move, d);
-        this.facingRight = n.x > 0;
-    }
-
-    addXP(amount) {
-        this.xp += amount;
-        if (this.xp >= this.xpToNext) {
-            this.xp -= this.xpToNext;
-            this.level++;
-            this.xpToNext = Math.floor(CONFIG.XP.BASE_REQUIRED * Math.pow(CONFIG.XP.SCALE_FACTOR, this.level - 1));
-            return true;
-        }
-        return false;
-    }
-
-    getCurrentSprite() {
-        if (this.state === PlayerState.ATTACKING) {
-            return SPRITES.ninja.attack[this.animFrame % SPRITES.ninja.attack.length];
-        }
-        if (this.state === PlayerState.RETURNING) {
-            return SPRITES.ninja.run[this.animFrame % SPRITES.ninja.run.length];
-        }
-        return SPRITES.ninja.idle[this.animFrame % SPRITES.ninja.idle.length];
-    }
-
-    draw(ctx) {
-        const isInvincibleBlink = this.invincibleTimer > 0 &&
-            Math.floor(this.flashTimer * 10) % 2 === 0 &&
-            this.state !== PlayerState.RETURNING;
-
-        const spriteScale = this.spriteScale;
-
-        this._drawBossRewardAuras(ctx, spriteScale);
-
-        if (this.state === PlayerState.ATTACKING) {
-            drawSlashArc(ctx, this.x, this.y, this.facingRight, this.animFrame, spriteScale);
-            if (this.bossRewardDualWield) {
-                drawSlashArc(ctx, this.x, this.y, !this.facingRight,
-                    (this.animFrame + 2) % 4, spriteScale * 0.92);
-            }
-        }
-
-        let tintAmount = 0;
-        if (this.hitFlashTimer > 0) {
-            const flashDur = CONFIG.PLAYER.HIT_FLASH_DURATION;
-            const t = this.hitFlashTimer / flashDur;
-            const pulse = 0.55 + Math.sin((1 - t) * Math.PI * 6) * 0.45;
-            tintAmount = pulse * t;
-        }
-
-        this._drawShadowClones(ctx, spriteScale);
-
-        if (this.bossRewardDualWield) {
-            const offHandX = this.facingRight ? -spriteScale * 5 : spriteScale * 5;
-            drawSprite(ctx, this.getCurrentSprite(),
-                Math.floor(this.x + offHandX), Math.floor(this.y),
-                spriteScale * 0.92, 0.88, this.facingRight, 0.35);
-        }
-
-        if (isInvincibleBlink) {
-            ctx.save();
-            ctx.globalAlpha = 0.45;
-        }
-
-        drawSprite(ctx, this.getCurrentSprite(), Math.floor(this.x), Math.floor(this.y),
-            spriteScale, 1, !this.facingRight, tintAmount);
-
-        if (isInvincibleBlink) {
-            ctx.restore();
-        }
-
-        this._drawBossRewardAccessories(ctx, spriteScale);
-    }
-
-    _drawBossRewardAuras(ctx, spriteScale) {
-        const t = Date.now() * 0.001;
-
-        if (this.bossRewardDeepBreath) {
-            const pulse = 0.75 + Math.sin(t * 3.2) * 0.25;
-            for (let ring = 0; ring < 3; ring++) {
-                const r = (22 + ring * 11) * this.sizeScale * pulse;
-                ctx.save();
-                ctx.globalAlpha = (0.22 - ring * 0.05) * pulse;
-                ctx.strokeStyle = ['#28d8f0', '#68e8ff', '#a8f4ff'][ring];
-                ctx.lineWidth = 3 + ring;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.restore();
-            }
-        }
-
-        if (this.bossRewardIai) {
-            const pulse = 0.8 + Math.sin(t * 4) * 0.2;
-            ctx.save();
-            ctx.globalAlpha = 0.28 * pulse;
-            const grad = ctx.createRadialGradient(
-                this.x, this.y, 8, this.x, this.y, 38 * this.sizeScale);
-            grad.addColorStop(0, 'rgba(160, 200, 255, 0.9)');
-            grad.addColorStop(1, 'rgba(80, 120, 200, 0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, 38 * this.sizeScale * pulse, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
-    }
-
-    _drawBossRewardAccessories(ctx, spriteScale) {
-        const flip = !this.facingRight;
-        const dir = this.facingRight ? 1 : -1;
-
-        if (this.bossRewardIai) {
-            ctx.save();
-            ctx.translate(this.x, this.y);
-            if (flip) ctx.scale(-1, 1);
-            ctx.strokeStyle = '#c8e8ff';
-            ctx.lineWidth = Math.max(2, spriteScale * 0.35);
-            ctx.shadowColor = '#8cf';
-            ctx.shadowBlur = 8;
-            ctx.beginPath();
-            ctx.moveTo(-spriteScale * 1.2, spriteScale * 0.3);
-            ctx.lineTo(-spriteScale * 2.8, -spriteScale * 0.8);
-            ctx.stroke();
-            ctx.fillStyle = '#6a88b8';
-            ctx.fillRect(-spriteScale * 2.9, -spriteScale * 1.1,
-                spriteScale * 0.5, spriteScale * 0.7);
-            ctx.restore();
-        }
-
-        if (this.bossRewardDualWield) {
-            ctx.save();
-            ctx.translate(this.x, this.y);
-            if (flip) ctx.scale(-1, 1);
-            const bladeLen = spriteScale * 3.2;
-            ctx.strokeStyle = '#ff9040';
-            ctx.lineWidth = Math.max(2, spriteScale * 0.4);
-            ctx.shadowColor = '#f84';
-            ctx.shadowBlur = 10;
-            ctx.beginPath();
-            ctx.moveTo(spriteScale * 0.8, -spriteScale * 0.2);
-            ctx.lineTo(spriteScale * 0.8 + bladeLen * dir, -spriteScale * 1.4);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        if (this.bossRewardDeepBreath) {
-            const puff = Math.sin(Date.now() * 0.006) * 0.5 + 0.5;
-            ctx.save();
-            ctx.globalAlpha = 0.35 + puff * 0.25;
-            ctx.fillStyle = '#a8f0ff';
-            ctx.beginPath();
-            ctx.arc(this.x - 14 * dir, this.y - 22, 5 + puff * 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(this.x + 10 * dir, this.y - 26, 4 + puff * 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
-    }
-
-    _drawShadowClones(ctx, spriteScale) {
-        const sprite = this.state === PlayerState.ATTACKING
-            ? SPRITES.ninja.attack[0]
-            : SPRITES.ninja.idle[0];
-
-        if (this.shadowClonesActive && this.shadowCloneSlots.length) {
-            for (const slot of this.shadowCloneSlots) {
-                ctx.save();
-                ctx.globalAlpha = 0.42;
-                drawSprite(ctx, sprite, Math.floor(slot.x), Math.floor(slot.y),
-                    spriteScale, 1, !this.facingRight, 0);
-                ctx.fillStyle = 'rgba(40, 30, 60, 0.35)';
-                ctx.beginPath();
-                ctx.arc(slot.x, slot.y, 10, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
-            }
-            return;
-        }
-
-        if (this.shadowClonesPending > 0 &&
-            (this.state === PlayerState.IDLE ||
-                this.state === PlayerState.RETURNING ||
-                this.state === PlayerState.BULLET_TIME)) {
-            for (let i = 0; i < this.shadowClonesPending; i++) {
-                const pos = this._getShadowHomePosition(i, this.shadowClonesPending);
-                ctx.save();
-                ctx.globalAlpha = 0.38 + Math.sin(Date.now() * 0.005 + i) * 0.08;
-                drawSprite(ctx, SPRITES.ninja.idle[0], Math.floor(pos.x), Math.floor(pos.y),
-                    spriteScale, 1, i % 2 === 0, 0);
-                ctx.restore();
-            }
-        }
+        const step = Math.min(d, CONFIG.PLAYER.ATTACK_SPEED * dt);
+        this.x += n.x * step;
+        this.y += n.y * step;
     }
 
     drawTriggerZone(ctx) {
         if (this.state === PlayerState.BULLET_TIME) return;
-
-        const showZone =
-            this.state === PlayerState.IDLE ||
-            this.state === PlayerState.ATTACKING ||
-            this.state === PlayerState.RETURNING;
-
-        if (!showZone) return;
-
-        const pulse = 0.85 + Math.sin(Date.now() * 0.006) * 0.15;
-
+        ctx.save();
+        ctx.strokeStyle = 'rgba(90, 110, 130, 0.42)';
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(90, 110, 130, 0.4)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
         ctx.stroke();
         ctx.setLineDash([]);
-
+        ctx.fillStyle = 'rgba(90, 110, 130, 0.08)';
         ctx.beginPath();
         ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(90, 110, 130, 0.08)';
         ctx.fill();
+        ctx.restore();
     }
 
     drawPath(ctx) {
         if (this.attackPath.length < 2) return;
 
-        const isDrawing = this.state === PlayerState.BULLET_TIME;
-        const outerW = isDrawing ? 12 : 5;
-        const midW = isDrawing ? 7 : 2.5;
-        const innerW = isDrawing ? 3 : 1;
+        const invalidFlash = this.invalidPathTimer > 0;
+        const redOn = !invalidFlash || Math.floor(this.invalidPathTimer * 16) % 2 === 0;
+        const colorOuter = invalidFlash
+            ? (redOn ? 'rgba(255, 45, 35, 0.95)' : 'rgba(180, 25, 20, 0.5)')
+            : 'rgba(70, 90, 120, 0.45)';
+        const colorInner = invalidFlash
+            ? (redOn ? 'rgba(255, 200, 190, 1)' : 'rgba(255, 120, 110, 0.45)')
+            : 'rgba(220, 230, 255, 0.95)';
+        const pathThick = 1.25;
+        const drawing = this.state === PlayerState.BULLET_TIME || invalidFlash;
+        const flying = this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING;
+        const outerBase = drawing ? 12 : (flying ? 11 : 6);
+        const innerBase = drawing ? 5 : (flying ? 4.5 : 3);
+        const outerW = outerBase * pathThick;
+        const innerW = innerBase * pathThick;
 
+        ctx.save();
         ctx.beginPath();
         ctx.moveTo(this.attackPath[0].x, this.attackPath[0].y);
-        for (let i = 1; i < this.attackPath.length; i++) {
-            ctx.lineTo(this.attackPath[i].x, this.attackPath[i].y);
-        }
+        for (let i = 1; i < this.attackPath.length; i++) ctx.lineTo(this.attackPath[i].x, this.attackPath[i].y);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        ctx.strokeStyle = colorOuter;
+        ctx.lineWidth = outerW;
+        ctx.stroke();
+        ctx.strokeStyle = colorInner;
+        ctx.lineWidth = innerW;
+        ctx.stroke();
+        ctx.restore();
+    }
 
-        if (isDrawing) {
-            ctx.strokeStyle = 'rgba(50, 55, 70, 0.55)';
-            ctx.lineWidth = outerW;
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(170, 185, 210, 0.92)';
-            ctx.lineWidth = midW;
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)';
-            ctx.lineWidth = innerW;
-            ctx.stroke();
-        } else {
-            ctx.strokeStyle = 'rgba(90, 100, 115, 0.18)';
-            ctx.lineWidth = outerW;
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(160, 175, 195, 0.22)';
-            ctx.lineWidth = midW;
-            ctx.stroke();
+    draw(ctx) {
+        const failDeath = this.game && this.game.failDeath;
+        if (this.deathAnim && failDeath && failDeath.showFailPose()) {
+            const d = failDeath.death;
+            const shakeX = d.shake || 0;
+            const fallY = (d.fall || 0) * 22;
+            const rot = (d.fall || 0) * 1.05;
+            const alpha = d.alpha != null ? d.alpha : 1;
+            const px = Math.floor(this.x + shakeX);
+            const py = Math.floor(this.y + fallY);
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(px, py);
+            ctx.rotate(rot);
+            const sprite = SPRITES.ninja.idle[0];
+            drawSprite(ctx, sprite, 0, 0, this.spriteScale);
+            failDeath.drawImpaledSpears(ctx, 0, 0);
+            ctx.restore();
+
+            ctx.save();
+            ctx.globalAlpha = alpha * 0.55;
+            ctx.fillStyle = '#6a1010';
+            ctx.fillRect(px - 10, py + 10, 20, 8);
+            ctx.restore();
+            return;
+        }
+
+        const sprite = this.state === PlayerState.ATTACKING
+            ? SPRITES.ninja.attack[Math.floor(Date.now() / 80) % SPRITES.ninja.attack.length]
+            : this.state === PlayerState.RETURNING
+                ? SPRITES.ninja.run[Math.floor(Date.now() / 120) % SPRITES.ninja.run.length]
+                : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
+        drawSprite(ctx, sprite, Math.floor(this.x), Math.floor(this.y), this.spriteScale);
+
+        if (this.getUpgradeLevel('luck') > 0) {
+            const lv = this.getUpgradeLevel('luck');
+            for (let i = 0; i < Math.min(8, lv * 2); i++) {
+                const a = Date.now() * 0.002 + i * 0.6;
+                const rx = this.x + Math.cos(a) * (6 + i * 1.3);
+                const ry = this.y + 12 + Math.sin(a * 0.8) * 4;
+                ctx.fillStyle = 'rgba(90,170,255,0.22)';
+                ctx.fillRect(Math.floor(rx), Math.floor(ry), 3, 3);
+            }
+        }
+
+        if (this.shadowClones.length) {
+            for (const c of this.shadowClones) {
+                ctx.save();
+                ctx.globalAlpha = 0.35;
+                drawSprite(ctx, SPRITES.ninja.idle[0], Math.floor(c.x), Math.floor(c.y), this.spriteScale * 0.92);
+                ctx.restore();
+            }
         }
     }
 }
 
 
 // ---- monster.js ----
+const MonsterKind = {
+    NORMAL: 'NORMAL',
+    ELITE: 'ELITE',
+    SHIELD: 'SHIELD',
+    BERSERKER: 'BERSERKER',
+    SPLITTER: 'SPLITTER',
+};
+
+let nextMonsterId = 1;
+
 class Monster {
-    constructor(x, y, config, id) {
-        this.id = id;
+    constructor(x, y, kind, splitTier = 0) {
+        this.game = null;
+        this.id = nextMonsterId++;
+        this.kind = kind;
+        this.splitTier = splitTier;
+        this.base = CONFIG.MONSTERS[kind];
+
+        const splitScale = kind === MonsterKind.SPLITTER ? Math.pow(0.72, splitTier) : 1;
+        this.maxHp = Math.max(8, Math.round(this.base.hp * (kind === MonsterKind.SPLITTER ? Math.pow(0.66, splitTier) : 1)));
+        this.hp = this.maxHp;
+        this.def = Math.max(0, Math.round(this.base.def * (kind === MonsterKind.SPLITTER ? Math.pow(0.86, splitTier) : 1)));
+        this.size = Math.max(6, Math.round(this.base.size * splitScale));
+        this.speed = this.base.speed * (kind === MonsterKind.SPLITTER ? 1 + splitTier * 0.08 : 1);
+        this.color = this.base.color;
+
         this.x = x;
         this.y = y;
-        this.config = { ...config };
-        this.hp = config.hp;
-        this.maxHp = config.hp;
-        this.def = config.def;
-        this.range = config.range;
-        this.size = config.size;
-        this.speed = config.speed;
-        this.atkSpeed = config.atkSpeed;
-        this.atkDamage = config.atkDamage;
-        this.monsterType = config.type;
-        this.color = config.color;
-        this.xpValue = config.xp;
+        this.facing = randRange(0, Math.PI * 2);
+        this.moveDir = randRange(0, Math.PI * 2);
+        this.moveTimer = randRange(0.6, 1.4);
+        this.walkPhase = randRange(0, Math.PI * 2);
+        this.animPulse = randRange(0, Math.PI * 2);
 
         this.alive = true;
-        this.atkTimer = 0;
-        this.animFrame = 0;
-        this.animTimer = 0;
-        this.isMoving = false;
-        this.walkPhase = 0;
-
-        this.spawnTimer = CONFIG.SPAWN_FADE_DURATION;
-        this.spawning = true;
-        this.deathTimer = 0;
         this.dying = false;
-
-        this.frozen = false;
+        this.deathDelay = 0;
+        this.deathTimer = 0;
+        this.deathFade = CONFIG.MONSTER_DEATH_FADE;
+        this.spawnedChildren = false;
         this.frozenTimer = 0;
+        this.vulnerableMark = false;
+        this.spawning = false;
+        this.spawnTimer = 0;
+        this.spawnDuration = 0;
+        this.failThrowTimer = 0;
+    }
 
-        this.configKey = '';
+    beginSpawn(duration = CONFIG.MONSTER_SPAWN_ANIM) {
+        this.spawning = true;
+        this.spawnTimer = duration;
+        this.spawnDuration = duration;
+    }
+
+    getSpawnVisual() {
+        if (!this.spawning) return { scale: 1, alpha: 1 };
+        const t = 1 - clamp(this.spawnTimer / Math.max(0.001, this.spawnDuration), 0, 1);
+        return {
+            scale: 0.35 + 0.65 * easeOutQuad(t),
+            alpha: clamp(t * 1.15, 0, 1),
+        };
     }
 
     get hitboxRadius() {
         return this.size;
     }
 
-    update(dt, playerX, playerY) {
-        if (this.spawning) {
-            this.spawnTimer -= dt;
-            if (this.spawnTimer <= 0) {
-                this.spawning = false;
-            }
-            return null;
-        }
-
-        if (this.dying) {
-            this.deathTimer -= dt;
-            if (this.deathTimer <= 0) {
-                this.alive = false;
-            }
-            return null;
-        }
-
-        if (this.frozen) {
-            this.frozenTimer -= dt;
-            if (this.frozenTimer <= 0) {
-                this.frozen = false;
-            }
-            return null;
-        }
-
-        const d = dist(this.x, this.y, playerX, playerY);
-        this.isMoving = d > this.range;
-
-        this.walkPhase += dt * (this.isMoving ? 14 : 4);
-        const animInterval = this.isMoving ? 0.14 : 0.45;
-        this.animTimer += dt;
-        if (this.animTimer >= animInterval) {
-            this.animTimer = 0;
-            this.animFrame = (this.animFrame + 1) % 2;
-        }
-
-        if (this.isMoving) {
-            const n = normalize(playerX - this.x, playerY - this.y);
-            this.x += n.x * this.speed * dt;
-            this.y += n.y * this.speed * dt;
-        }
-
-        this.atkTimer += dt;
-        if (d <= this.range && this.atkTimer >= this.atkSpeed) {
-            this.atkTimer = 0;
-            if (this.monsterType === 'ranged') {
-                const a = angle(this.x, this.y, playerX, playerY);
-                return {
-                    type: 'shoot',
-                    x: this.x, y: this.y,
-                    angle: a,
-                };
-            } else {
-                return {
-                    type: 'melee',
-                    damage: this.atkDamage,
-                    targetX: playerX,
-                    targetY: playerY,
-                };
-            }
-        }
-
-        return null;
-    }
-
-    takeDamage(rawDamage) {
-        const actual = Math.max(1, rawDamage - this.def);
-        this.hp -= actual;
-        if (this.hp <= 0) {
-            this.hp = 0;
-            this.dying = true;
-            this.deathTimer = 0.3;
-            this.deathHandled = false;
-        }
-        return actual;
+    canSplit() {
+        return this.kind === MonsterKind.SPLITTER && this.splitTier < this.base.maxSplitTier;
     }
 
     freeze(duration) {
-        this.frozen = true;
-        this.frozenTimer = duration;
+        this.frozenTimer = Math.max(this.frozenTimer, duration);
     }
 
-    getSpriteKey() {
-        switch (this.configKey) {
-            case 'NORMAL_MELEE': return SPRITES.normalMelee;
-            case 'NORMAL_RANGED': return SPRITES.normalRanged;
-            case 'STRONG_MELEE': return SPRITES.strongMelee;
-            case 'STRONG_RANGED': return SPRITES.strongRanged;
-            default: return SPRITES.normalMelee;
+    isFrozen() {
+        return this.frozenTimer > 0;
+    }
+
+    _pushOutOfPlayerZone(playerZone) {
+        if (!playerZone) return;
+        const dx = this.x - playerZone.x;
+        const dy = this.y - playerZone.y;
+        let d = Math.hypot(dx, dy);
+        const minDist = playerZone.r + this.hitboxRadius;
+        if (d >= minDist) return;
+
+        let nx, ny;
+        if (d < 0.001) {
+            const a = randRange(0, Math.PI * 2);
+            nx = Math.cos(a);
+            ny = Math.sin(a);
+        } else {
+            nx = dx / d;
+            ny = dy / d;
+        }
+        this.x = playerZone.x + nx * minDist;
+        this.y = playerZone.y + ny * minDist;
+
+        const vx = Math.cos(this.moveDir);
+        const vy = Math.sin(this.moveDir);
+        const dot = vx * nx + vy * ny;
+        if (dot < 0) {
+            this.moveDir = Math.atan2(vy - 2 * dot * ny, vx - 2 * dot * nx);
         }
     }
 
-    getWalkBob() {
-        if (!this.isMoving || this.spawning || this.dying) return 0;
-        return Math.sin(this.walkPhase) * 3;
+    _move(dt, w, h, playBottom, playerZone) {
+        this.moveTimer -= dt;
+        if (this.moveTimer <= 0) {
+            this.moveTimer = randRange(0.55, 1.6);
+            this.moveDir += randRange(-1.5, 1.5);
+        }
+        this.walkPhase += dt * 7;
+        this.animPulse += dt * 3.6;
+        const step = this.speed * dt;
+        this.x += Math.cos(this.moveDir) * step;
+        this.y += Math.sin(this.moveDir) * step;
+
+        const margin = 24;
+        const top = 84;
+        const bottom = Math.max(top + 60, playBottom - 20);
+        if (this.x < margin || this.x > w - margin) {
+            this.moveDir = Math.PI - this.moveDir;
+            this.x = clamp(this.x, margin, w - margin);
+        }
+        if (this.y < top || this.y > bottom) {
+            this.moveDir = -this.moveDir;
+            this.y = clamp(this.y, top, bottom);
+        }
+        this._pushOutOfPlayerZone(playerZone);
+        this.facing = this.moveDir;
+    }
+
+    update(dt, w, h, playBottom, playerZone) {
+        if (!this.alive) return;
+        if (this.failThrowTimer > 0) {
+            this.failThrowTimer -= dt;
+            return;
+        }
+        if (this.spawning) {
+            this.spawnTimer -= dt;
+            if (this.spawnTimer <= 0) this.spawning = false;
+            return;
+        }
+        if (this.dying) {
+            if (this.deathDelay > 0) {
+                this.deathDelay -= dt;
+                return;
+            }
+            this.deathTimer -= dt;
+            if (this.deathTimer <= 0) this.alive = false;
+            return;
+        }
+        if (this.frozenTimer > 0) {
+            this.frozenTimer -= dt;
+            return;
+        }
+        if (this.base.canMove) this._move(dt, w, h, playBottom, playerZone);
+    }
+
+    takeDamage(rawDamage, hitAngle = null) {
+        let blockedByShield = false;
+        if (this.kind === MonsterKind.SHIELD && hitAngle !== null) {
+            const diff = Math.abs(Math.atan2(
+                Math.sin(hitAngle - this.facing),
+                Math.cos(hitAngle - this.facing)
+            ));
+            // Front hemisphere blocks damage.
+            if (diff < Math.PI * 0.55) blockedByShield = true;
+        }
+        if (blockedByShield) return { actualDamage: 0, blockedByShield: true };
+
+        const vulnerableMult = this.vulnerableMark ? 2 : 1;
+        this.vulnerableMark = false;
+        const actualDamage = Math.max(1, Math.round((rawDamage - this.def) * vulnerableMult));
+        this.hp -= actualDamage;
+        if (this.hp <= 0) {
+            this.hp = 0;
+            this.dying = true;
+            this.deathFade = CONFIG.MONSTER_DEATH_FADE;
+            this.deathTimer = this.deathFade;
+            this.deathDelay = (this.game && this.game.combat)
+                ? this.game.combat.scheduleDeathFade()
+                : 0;
+        }
+        return { actualDamage, blockedByShield: false };
     }
 
     draw(ctx) {
         if (!this.alive) return;
+        const spawnVis = this.getSpawnVisual();
+        const fadeDur = this.deathFade || CONFIG.MONSTER_DEATH_FADE;
+        const deathAlpha = this.dying
+            ? (this.deathDelay > 0 ? 1 : clamp(this.deathTimer / fadeDur, 0, 1))
+            : 1;
+        const alpha = deathAlpha * spawnVis.alpha;
+        const bobY = this.dying || this.spawning ? 0 : Math.sin(this.walkPhase) * 1.6;
+        const x = Math.floor(this.x);
+        const y = Math.floor(this.y + bobY);
+        const r = this.hitboxRadius;
+        const spriteSet = this._getSpriteSet();
+        const frameIdx = Math.floor(this.walkPhase * 0.22) % 2;
+        const sprite = (spriteSet.idle || [])[frameIdx % (spriteSet.idle || [spriteSet]).length] || spriteSet;
+        const scale = clamp(Math.round(this.size / 4), 2, 4);
+        const flipX = Math.cos(this.facing) < 0;
+        const tint = this.kind === MonsterKind.BERSERKER ? 0.16 : 0;
 
-        let alpha = 1;
+        ctx.save();
+        if (spawnVis.scale !== 1) {
+            ctx.translate(x, y);
+            ctx.scale(spawnVis.scale, spawnVis.scale);
+            ctx.translate(-x, -y);
+        }
         if (this.spawning) {
-            alpha = 1 - (this.spawnTimer / CONFIG.SPAWN_FADE_DURATION);
-        }
-        if (this.dying) {
-            alpha = this.deathTimer / 0.3;
-        }
-
-        const spriteSet = this.getSpriteKey();
-        const isAttacking = !this.isMoving && this.atkTimer < 0.35 && !this.spawning;
-        let frames = spriteSet.walk || spriteSet.idle;
-        if (isAttacking && spriteSet.attack) {
-            frames = spriteSet.attack;
-        }
-        const sprite = frames[this.animFrame % frames.length];
-        const scale = this.size > 13
-            ? CONFIG.DISPLAY.MONSTER_SPRITE_SCALE_STRONG
-            : CONFIG.DISPLAY.MONSTER_SPRITE_SCALE;
-
-        const drawY = Math.floor(this.y + this.getWalkBob());
-
-        if (this.frozen) {
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+            const ringR = r * (1.4 - spawnVis.scale * 0.5);
+            ctx.strokeStyle = `rgba(255, 220, 140, ${0.35 * spawnVis.alpha})`;
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(this.x, drawY, this.hitboxRadius + 4, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha = 1;
+            ctx.arc(x, y, ringR, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        drawSprite(ctx, sprite, x, y, scale, alpha, flipX, tint);
+
+        const failDeath = this.game && this.game.failDeath;
+        if (failDeath && failDeath.isThrowing() && this.failThrowTimer > 0) {
+            failDeath.drawMonsterThrowSpear(ctx, this);
         }
 
-        drawSprite(ctx, sprite, Math.floor(this.x), drawY, scale, alpha);
-
-        if (!this.spawning && !this.dying && this.hp < this.maxHp) {
-            this.drawHpBar(ctx, drawY);
+        if (this.kind === MonsterKind.SHIELD) {
+            const sx = x + Math.cos(this.facing) * (r + 2);
+            const sy = y + Math.sin(this.facing) * (r + 2);
+            ctx.strokeStyle = '#bfd8ee';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x - Math.sin(this.facing) * r * 0.7, y + Math.cos(this.facing) * r * 0.7);
+            ctx.lineTo(x + Math.sin(this.facing) * r * 0.7, y - Math.cos(this.facing) * r * 0.7);
+            ctx.stroke();
+            ctx.fillStyle = '#d6e7f8';
+            ctx.fillRect(Math.floor(sx - 2), Math.floor(sy - 2), 4, 4);
+        } else if (this.kind === MonsterKind.BERSERKER) {
+            ctx.fillStyle = '#ff8a68';
+            ctx.fillRect(x - 2, y - r - 4, 4, 4);
+        } else if (this.kind === MonsterKind.SPLITTER) {
+            ctx.fillStyle = '#d2f6a8';
+            ctx.fillRect(x - 2, y - 2, 4, 4);
+            ctx.fillRect(x + 3, y - 2, 3, 3);
+            if (this.splitTier > 0) {
+                ctx.fillStyle = '#4e7c38';
+                ctx.fillRect(x - 6, y + r * 0.5, 3, 3);
+            }
         }
+
+        if (this.isFrozen()) {
+            ctx.strokeStyle = 'rgba(120,220,255,0.9)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        if (!this.dying && this.hp < this.maxHp) {
+            const w = Math.max(18, r * 1.6);
+            const h = 4;
+            const bx = x - w / 2;
+            const by = y - r - 14;
+            const ratio = this.hp / this.maxHp;
+            ctx.fillStyle = '#231a14';
+            ctx.fillRect(bx, by, w, h);
+            ctx.fillStyle = ratio > 0.5 ? '#68d070' : ratio > 0.25 ? '#f0c850' : '#e05840';
+            ctx.fillRect(bx, by, w * ratio, h);
+        }
+        ctx.restore();
     }
 
-    drawHpBar(ctx, drawY) {
-        const barW = 22;
-        const barH = 3;
-        const x = this.x - barW / 2;
-        const y = drawY - this.hitboxRadius - 10;
-        const ratio = this.hp / this.maxHp;
-
-        ctx.fillStyle = '#333';
-        ctx.fillRect(x, y, barW, barH);
-        ctx.fillStyle = ratio > 0.5 ? '#4f4' : ratio > 0.25 ? '#ff0' : '#f44';
-        ctx.fillRect(x, y, barW * ratio, barH);
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x, y, barW, barH);
+    _getSpriteSet() {
+        switch (this.kind) {
+            case MonsterKind.NORMAL: return SPRITES.normalMelee;
+            case MonsterKind.ELITE: return SPRITES.strongMelee;
+            case MonsterKind.SHIELD: return SPRITES.strongRanged;
+            case MonsterKind.BERSERKER: return SPRITES.strongMelee;
+            case MonsterKind.SPLITTER: return SPRITES.normalRanged;
+            default: return SPRITES.normalMelee;
+        }
     }
 }
 
 
 // ---- projectile.js ----
-class Projectile {
-    constructor(x, y, angle) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle) * CONFIG.PROJECTILE.SPEED;
-        this.vy = Math.sin(angle) * CONFIG.PROJECTILE.SPEED;
-        this.radius = CONFIG.PROJECTILE.RADIUS;
-        this.alive = true;
-        this.animTimer = 0;
-    }
-
-    update(dt, canvasW, canvasH) {
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
-        this.animTimer += dt;
-
-        if (this.x < -20 || this.x > canvasW + 20 ||
-            this.y < -20 || this.y > canvasH + 20) {
-            this.alive = false;
-        }
-    }
-
-    draw(ctx) {
-        if (!this.alive) return;
-        drawSprite(ctx, SPRITES.bullet, Math.floor(this.x), Math.floor(this.y), 4);
-
-        ctx.globalAlpha = 0.4 + Math.sin(this.animTimer * 8) * 0.2;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius + 2, 0, Math.PI * 2);
-        ctx.fillStyle = '#f4f';
-        ctx.fill();
-        ctx.globalAlpha = 1;
-    }
-}
-
 class ProjectileManager {
     constructor() {
         this.projectiles = [];
     }
 
-    spawn(x, y, angle) {
-        this.projectiles.push(new Projectile(x, y, angle));
+    reset() {
+        this.projectiles = [];
     }
 
-    update(dt, canvasW, canvasH) {
-        for (const p of this.projectiles) {
-            p.update(dt, canvasW, canvasH);
-        }
-        this.projectiles = this.projectiles.filter(p => p.alive);
+    update() {
+        // New version currently has no enemy ranged projectile system.
     }
 
-    draw(ctx) {
-        for (const p of this.projectiles) {
-            p.draw(ctx);
-        }
-    }
-}
-
-
-// ---- experience.js ----
-class XpOrb {
-    constructor(x, y, value) {
-        this.x = x;
-        this.y = y;
-        this.value = value;
-        this.vx = randRange(-40, 40);
-        this.vy = randRange(-60, -20);
-        this.alive = true;
-        this.age = 0;
-        this.bobTimer = Math.random() * Math.PI * 2;
-        this.settled = false;
-        this.magnetized = false;
-        this.radius = CONFIG.XP.ORB_RADIUS;
-        this.pickupDelay = CONFIG.XP.PICKUP_DELAY;
-    }
-
-    canPickup() {
-        return this.age >= this.pickupDelay;
-    }
-
-    update(dt, playerX, playerY, magnetRadius) {
-        this.age += dt;
-        this.bobTimer += dt * 3;
-
-        if (!this.settled) {
-            this.vy += 120 * dt;
-            this.x += this.vx * dt;
-            this.y += this.vy * dt;
-            if (this.age > 0.4) {
-                this.settled = true;
-                this.vx = 0;
-                this.vy = 0;
-            }
-        }
-
-        const d = dist(this.x, this.y, playerX, playerY);
-        const pickupReady = this.canPickup();
-
-        if (pickupReady && d < magnetRadius) {
-            this.magnetized = true;
-        }
-
-        if (pickupReady && this.magnetized) {
-            const n = normalize(playerX - this.x, playerY - this.y);
-            let speed;
-            if (d < magnetRadius) {
-                speed = CONFIG.XP.ORB_SPEED * (1 - d / magnetRadius + 0.3);
-            } else {
-                speed = CONFIG.XP.ORB_SPEED * 1.4;
-            }
-            this.x += n.x * speed * dt;
-            this.y += n.y * speed * dt;
-        }
-
-        if (pickupReady && d < 15) {
-            this.alive = false;
-            return this.value;
-        }
-        return 0;
-    }
-
-    draw(ctx) {
-        if (!this.alive) return;
-        const bobY = Math.sin(this.bobTimer) * 2;
-        if (!this.canPickup()) {
-            ctx.save();
-            ctx.globalAlpha = 0.55;
-        }
-        drawSprite(ctx, SPRITES.xpOrb, Math.floor(this.x), Math.floor(this.y + bobY), 3);
-        if (!this.canPickup()) {
-            ctx.restore();
-        }
-
-        const glowAlpha = this.magnetized
-            ? 0.55 + Math.sin(this.bobTimer) * 0.25
-            : this.canPickup()
-                ? 0.45 + Math.sin(this.bobTimer) * 0.2
-                : 0.22;
-        ctx.globalAlpha = glowAlpha;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y + bobY, 6, 0, Math.PI * 2);
-        ctx.fillStyle = '#3a7bd5';
-        ctx.fill();
-        ctx.globalAlpha = 1;
-    }
-}
-
-class ExperienceManager {
-    constructor() {
-        this.orbs = [];
-    }
-
-    spawnOrb(x, y, value) {
-        const scale = CONFIG.XP.ORB_VALUE_SCALE ?? 1;
-        const xp = Math.max(1, Math.floor(value * scale));
-        this.orbs.push(new XpOrb(x, y, xp));
-    }
-
-    update(dt, playerX, playerY, magnetRadius) {
-        let totalXp = 0;
-        for (const orb of this.orbs) {
-            totalXp += orb.update(dt, playerX, playerY, magnetRadius);
-        }
-        this.orbs = this.orbs.filter(o => o.alive);
-        return totalXp;
-    }
-
-    draw(ctx) {
-        for (const orb of this.orbs) {
-            orb.draw(ctx);
-        }
+    draw() {
+        // intentionally empty
     }
 }
 
@@ -2281,166 +1978,148 @@ class ExperienceManager {
 // ---- upgrades.js ----
 const UPGRADE_DEFS = [
     {
-        id: 'ice_heart',
-        name: '冰冻之心',
-        desc: '伤害+5%，攻击有30%概率冰冻敌人2秒',
-        stackDesc: '冰冻概率+5%，伤害+5%',
-        icon: '❄️',
-        color: '#0cf',
-        apply(player, stacks) {
-            if (stacks === 1) {
-                player.damageBonus += 0.05;
-                player.freezeChance = 0.30;
-            } else {
-                player.damageBonus += 0.05;
-                player.freezeChance += 0.05;
-            }
+        id: 'luck',
+        rarity: 'white',
+        name: '运气',
+        icon: '🧘',
+        desc: '增加20%气力',
+        apply(player) {
+            player.baseKi = Math.round(player.baseKi * 1.20);
+            player.kiMax = Math.round(player.baseKi * (1 + player.nextTurnKiBonus));
+            player.ki = player.kiMax;
         },
     },
     {
-        id: 'cheese',
-        name: '奶酪',
-        desc: '增加半颗心最大血量',
-        stackDesc: '增加半颗心最大血量',
-        icon: '🧀',
-        color: '#fd0',
-        apply(player, stacks) {
-            player.maxHearts += 0.5;
-            player.hearts += 0.5;
+        id: 'shuriken',
+        rarity: 'blue',
+        name: '手里剑',
+        icon: '🎯',
+        desc: '结算时在路径上释放像素手里剑(10%攻击力)',
+        apply(player) {
+            player.upgradeStacks.shuriken = (player.upgradeStacks.shuriken || 0) + 1;
         },
     },
     {
-        id: 'lightning',
+        id: 'lightning_chain',
+        rarity: 'blue',
         name: '闪电链',
-        desc: '攻击时释放闪电链，连锁3个敌人',
-        stackDesc: '闪电链目标+1',
         icon: '⚡',
-        color: '#ff0',
-        apply(player, stacks) {
-            if (stacks === 1) {
-                player.lightningChains = 3;
-            } else {
-                player.lightningChains += 1;
-            }
-        },
-    },
-    {
-        id: 'big_mushroom',
-        name: '大蘑菇',
-        desc: '体型放大6%，暴击率+10%',
-        stackDesc: '体型放大6%，暴击率+10%',
-        icon: '🍄',
-        color: '#e44',
-        apply(player, stacks) {
-            player.sizeScale *= 1.06;
-            player.critRate += 0.10;
-        },
-    },
-    {
-        id: 'crescent',
-        name: '月牙天冲',
-        desc: '暴击率+5%，每连击3次对最近敌人释放穿透月牙波',
-        stackDesc: '暴击率+2%，月牙波+1',
-        icon: '🌙',
-        color: '#bdf',
-        apply(player, stacks) {
-            if (stacks === 1) {
-                player.critRate += 0.05;
-                player.crescentLevel = 1;
-                player.crescentWaves = 1;
-            } else {
-                player.critRate += 0.02;
-                player.crescentLevel = stacks;
-                player.crescentWaves += 1;
-            }
-        },
-    },
-    {
-        id: 'black_hole',
-        name: '黑洞',
-        desc: '每连击8次在攻击位置生成黑洞，吸附范围内敌人',
-        stackDesc: '吸附范围+10，吸力+18',
-        icon: '🕳️',
-        color: '#86a',
-        apply(player, stacks) {
-            player.blackHoleLevel = stacks;
-        },
-    },
-    {
-        id: 'blade_whirl',
-        name: '刀阵旋风',
-        desc: '每连击5次以自身为中心释放刀阵旋风',
-        stackDesc: '刀阵旋风伤害+12%',
-        icon: '🌀',
-        color: '#aab',
-        apply(player, stacks) {
-            player.bladeWhirlLevel = stacks;
-        },
-    },
-    {
-        id: 'fireball',
-        name: '火球术',
-        desc: '暴击伤害+10%，每2秒对最近敌人释放火球',
-        stackDesc: '暴击伤害+5%，火球+1',
-        icon: '🔥',
-        color: '#f84',
-        apply(player, stacks) {
-            if (stacks === 1) {
-                player.critMultiplier += 0.10;
-                player.fireballLevel = 1;
-                player.fireballCount = 1;
-            } else {
-                player.critMultiplier += 0.05;
-                player.fireballCount += 1;
-                player.fireballLevel = stacks;
-            }
+        desc: '结算连击每+5在命中点释放闪电链(3目标)',
+        apply(player) {
+            player.upgradeStacks.lightning_chain = (player.upgradeStacks.lightning_chain || 0) + 1;
         },
     },
     {
         id: 'shadow_clone',
+        rarity: 'blue',
         name: '影分身',
-        desc: '连击>10时留下影分身，下次攻击协同作战(30%伤害)',
-        stackDesc: '影分身+1',
         icon: '👤',
-        color: '#668',
-        apply(player, stacks) {
-            player.shadowCloneLevel = stacks;
-            player.shadowCloneCount = stacks;
+        desc: '连击>10时永久召唤影分身(20%伤害)',
+        apply() {},
+    },
+    {
+        id: 'water_tornado',
+        rarity: 'purple',
+        name: '水龙卷术',
+        icon: '🌊',
+        desc: '暴击率+5%，连击每+3对最近敌人释放穿透水龙卷',
+        apply(player) {
+            player.critRate += 0.05;
+        },
+    },
+    {
+        id: 'black_hole',
+        rarity: 'purple',
+        name: '黑洞',
+        icon: '🕳️',
+        desc: '连击每+8在攻击点生成黑洞',
+        apply(player) {
+            player.upgradeStacks.black_hole = (player.upgradeStacks.black_hole || 0) + 1;
+        },
+    },
+    {
+        id: 'blade_whirl',
+        rarity: 'purple',
+        name: '刀阵旋风',
+        icon: '🌀',
+        desc: '连击每+5在攻击点释放刀阵旋风',
+        apply() {},
+    },
+    {
+        id: 'great_fireball',
+        rarity: 'orange',
+        name: '豪火球术',
+        icon: '🔥',
+        desc: '结算开始时沿路径发射豪火球(100%攻击力)',
+        apply(player) {
+            player.upgradeStacks.great_fireball = (player.upgradeStacks.great_fireball || 0) + 1;
         },
     },
 ];
 
 class UpgradeManager {
     constructor() {
-        this.stacks = {};
-        for (const u of UPGRADE_DEFS) {
-            this.stacks[u.id] = 0;
-        }
-        this.choices = [];
         this.active = false;
+        this.choices = [];
         this.onSelect = null;
+        this._cardRects = [];
+        this.popupTimer = 0;
+        this.popupDuration = 0.45;
+    }
+
+    _rollRarity() {
+        const r = Math.random();
+        let acc = 0;
+        for (const key of ['white', 'blue', 'purple', 'orange']) {
+            acc += CONFIG.UPGRADE_RARITY[key].chance;
+            if (r <= acc) return key;
+        }
+        return 'white';
+    }
+
+    _pickByRarity(rarity) {
+        const pool = UPGRADE_DEFS.filter(u => u.rarity === rarity);
+        if (pool.length === 0) return pickRandom(UPGRADE_DEFS);
+        return pickRandom(pool);
     }
 
     generateChoices() {
-        const shuffled = shuffleArray(UPGRADE_DEFS);
-        this.choices = shuffled.slice(0, 3);
         this.active = true;
+        this.popupTimer = 0;
+        this.choices = [];
+        const used = new Set();
+        for (let i = 0; i < 3; i++) {
+            let pick = null;
+            for (let k = 0; k < 12; k++) {
+                pick = this._pickByRarity(this._rollRarity());
+                if (!used.has(pick.id) || k > 8) break;
+            }
+            used.add(pick.id);
+            this.choices.push(pick);
+        }
+    }
+
+    update(dt) {
+        if (!this.active) return;
+        if (this.popupTimer < this.popupDuration) this.popupTimer += dt;
+    }
+
+    getPopupT() {
+        return clamp(this.popupTimer / this.popupDuration, 0, 1);
+    }
+
+    canInteract() {
+        return this.active && this.getPopupT() >= 0.55;
     }
 
     selectUpgrade(index, player) {
+        if (!this.canInteract()) return;
         if (index < 0 || index >= this.choices.length) return;
-        const upgrade = this.choices[index];
-        this.stacks[upgrade.id]++;
-        upgrade.apply(player, this.stacks[upgrade.id]);
+        const u = this.choices[index];
+        player.applyUpgrade(u);
         this.active = false;
         this.choices = [];
-        if (this.onSelect) this.onSelect();
-    }
-
-    getDesc(upgrade) {
-        const stk = this.stacks[upgrade.id];
-        if (stk > 0) return upgrade.stackDesc;
-        return upgrade.desc;
+        if (this.onSelect) this.onSelect(u);
     }
 
     _wrapLines(ctx, text, maxW) {
@@ -2460,139 +2139,68 @@ class UpgradeManager {
     }
 
     _drawWrappedTextCentered(ctx, text, centerX, y, maxW, fontSize, lineHeight, color) {
-        ctx.font = `${fontSize}px "Segoe UI", Arial, "Microsoft YaHei", sans-serif`;
+        ctx.font = `${fontSize}px ${GAME_FONT}`;
         ctx.fillStyle = color;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-
         const lines = this._wrapLines(ctx, text, maxW);
         let lineY = y;
         for (const ln of lines) {
             ctx.fillText(ln, centerX, lineY);
             lineY += lineHeight;
         }
-        return lines.length;
     }
 
-    _drawPx(ctx, ox, oy, col, row, color, px) {
-        if (!color) return;
-        ctx.fillStyle = color;
-        ctx.fillRect(ox + col * px, oy + row * px, px, px);
-    }
+    _drawCard(ctx, u, x, y, cardW, cardH, cardCx, innerPad, textMaxW, s, player, alpha) {
+        const rarity = CONFIG.UPGRADE_RARITY[u.rarity];
+        ctx.save();
+        ctx.globalAlpha = alpha;
 
-    _getUpgradeIconSprite(id) {
-        const T = '#f4f8ff';
-        const D = '#1e2738';
-        const B = '#57a8ff';
-        const Y = '#ffe070';
-        const O = '#ff9850';
-        const R = '#e84838';
-        const P = '#c8a8ff';
-        const G = '#86e0a0';
+        drawPixelPanel(ctx, x, y, cardW, cardH, 'rgba(30, 30, 60, 0.96)', rarity.color, 2);
 
-        const map = {
-            ice_heart: [
-                [null, null, B, null, null],
-                [null, B, T, B, null],
-                [B, T, T, T, B],
-                [null, B, T, B, null],
-                [null, null, B, null, null],
-            ],
-            cheese: [
-                [Y, Y, Y, Y, null],
-                [Y, Y, Y, Y, Y],
-                [Y, D, Y, Y, Y],
-                [Y, Y, Y, D, Y],
-                [Y, Y, Y, Y, Y],
-            ],
-            lightning: [
-                [null, Y, Y, null, null],
-                [null, Y, null, null, null],
-                [Y, Y, Y, null, null],
-                [null, null, Y, null, null],
-                [null, Y, Y, Y, null],
-            ],
-            big_mushroom: [
-                [null, R, R, R, null],
-                [R, R, R, R, R],
-                [R, T, R, T, R],
-                [null, T, T, T, null],
-                [null, O, O, O, null],
-            ],
-            crescent: [
-                [null, T, T, null, null],
-                [T, T, null, null, null],
-                [T, null, null, null, null],
-                [T, T, null, null, null],
-                [null, T, T, null, null],
-            ],
-            black_hole: [
-                [null, P, P, P, null],
-                [P, D, D, D, P],
-                [P, D, null, D, P],
-                [P, D, D, D, P],
-                [null, P, P, P, null],
-            ],
-            blade_whirl: [
-                [null, B, T, B, null],
-                [B, null, T, null, B],
-                [T, T, T, T, T],
-                [B, null, T, null, B],
-                [null, B, T, B, null],
-            ],
-            fireball: [
-                [null, O, R, null, null],
-                [O, R, O, R, null],
-                [R, O, Y, O, R],
-                [null, R, O, R, null],
-                [null, null, R, null, null],
-            ],
-            shadow_clone: [
-                [null, D, D, D, null],
-                [D, T, T, T, D],
-                [D, D, T, D, D],
-                [D, D, D, D, D],
-                [null, P, D, P, null],
-            ],
-        };
-        return map[id] || map.shadow_clone;
-    }
+        const iconSize = Math.round(32 * s);
+        const iconY = y + innerPad + iconSize * 0.45;
+        ctx.font = `${iconSize}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(u.icon, cardCx, iconY);
 
-    _drawUpgradeIcon(ctx, id, centerX, centerY, color, size) {
-        const sprite = this._getUpgradeIconSprite(id);
-        const rows = sprite.length;
-        const cols = sprite[0].length;
-        const px = Math.max(2, Math.floor(size / Math.max(rows, cols)));
-        const w = cols * px;
-        const h = rows * px;
-        const ox = Math.floor(centerX - w / 2);
-        const oy = Math.floor(centerY - h / 2);
+        const nameY = iconY + iconSize * 0.55 + 14 * s;
+        drawPixelText(ctx, u.name, cardCx, nameY, Math.round(16 * s), rarity.color);
 
-        const bgPad = px;
-        ctx.fillStyle = 'rgba(15, 16, 28, 0.78)';
-        ctx.fillRect(ox - bgPad, oy - bgPad, w + bgPad * 2, h + bgPad * 2);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(ox - bgPad, oy - bgPad, w + bgPad * 2, h + bgPad * 2);
-
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                this._drawPx(ctx, ox, oy, c, r, sprite[r][c], px);
-            }
+        const stack = player.getUpgradeLevel(u.id);
+        if (stack > 0) {
+            drawPixelText(ctx, `Lv.${stack + 1}`, x + cardW - innerPad, y + innerPad * 0.6,
+                Math.round(11 * s), '#aaa', 'right', 'top');
         }
+
+        const descY = nameY + 28 * s;
+        this._drawWrappedTextCentered(
+            ctx, u.desc, cardCx, descY,
+            textMaxW, Math.round(12 * s), Math.round(17 * s), '#ccc'
+        );
+        ctx.restore();
     }
 
-    drawUI(ctx, vp, uiScale) {
+    drawUI(ctx, vp, uiScale, player) {
         if (!this.active) return;
-
         const s = uiScale || 1;
+        const popT = easeOutQuad(this.getPopupT());
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.save();
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.78 * popT})`;
         ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
 
         const titleY = vp.y + vp.h * 0.14;
-        drawGameText(ctx, '升级！选择一个强化', vp.cx, titleY,
-            Math.round(22 * s), '#fff', 'center', 'middle');
+        const titleScale = 0.75 + 0.25 * popT;
+        ctx.save();
+        ctx.translate(vp.cx, titleY);
+        ctx.scale(titleScale, titleScale);
+        ctx.translate(-vp.cx, -titleY);
+        ctx.globalAlpha = popT;
+        drawPixelText(ctx, '升级！选择一个强化', vp.cx, titleY, Math.round(20 * s), '#ffe8c8');
+        ctx.restore();
 
         const cardW = vp.w * 0.84;
         const cardH = 118 * s;
@@ -2600,1166 +2208,1077 @@ class UpgradeManager {
         const startY = vp.y + vp.h * 0.21;
         const innerPad = 20 * s;
         const textMaxW = cardW - innerPad * 2;
-
         this._cardRects = [];
 
         for (let i = 0; i < this.choices.length; i++) {
             const u = this.choices[i];
-            const y = startY + i * (cardH + gap);
+            const baseY = startY + i * (cardH + gap);
             const x = vp.x + (vp.w - cardW) / 2;
             const cardCx = x + cardW / 2;
+            const cardDelay = i * 0.1;
+            const cardT = clamp((popT - cardDelay) / (1 - cardDelay * 0.6), 0, 1);
+            const cardEase = easeOutQuad(cardT);
+            const scale = 0.72 + 0.28 * cardEase;
+            const offsetY = (1 - cardEase) * 36 * s;
+            const y = baseY + offsetY;
 
             this._cardRects.push({ x, y, w: cardW, h: cardH, index: i });
 
-            ctx.fillStyle = 'rgba(30, 30, 60, 0.95)';
-            ctx.strokeStyle = u.color;
-            ctx.lineWidth = 2;
-            if (typeof ctx.roundRect === 'function') {
-                ctx.beginPath();
-                ctx.roundRect(x, y, cardW, cardH, 8);
-                ctx.fill();
-                ctx.stroke();
-            } else {
-                ctx.fillRect(x, y, cardW, cardH);
-                ctx.strokeRect(x, y, cardW, cardH);
-            }
-
-            const iconSize = Math.round(32 * s);
-            const iconY = y + innerPad + iconSize * 0.45;
-            this._drawUpgradeIcon(ctx, u.id, cardCx, iconY, u.color, iconSize);
-
-            const nameSize = Math.round(17 * s);
-            const nameY = iconY + iconSize * 0.55 + 14 * s;
-            ctx.font = `bold ${nameSize}px "Segoe UI", Arial, "Microsoft YaHei", sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = u.color;
-            ctx.fillText(u.name, cardCx, nameY);
-
-            const stk = this.stacks[u.id];
-            if (stk > 0) {
-                const lvSize = Math.round(12 * s);
-                ctx.font = `bold ${lvSize}px "Segoe UI", Arial, sans-serif`;
-                ctx.textAlign = 'right';
-                ctx.textBaseline = 'top';
-                ctx.fillStyle = '#aaa';
-                ctx.fillText(`Lv.${stk + 1}`, x + cardW - innerPad, y + innerPad * 0.7);
-            }
-
-            const descSize = Math.round(13 * s);
-            const lineHeight = Math.round(18 * s);
-            const descY = nameY + 16 * s;
-            this._drawWrappedTextCentered(
-                ctx, this.getDesc(u), cardCx, descY,
-                textMaxW, descSize, lineHeight, '#ccc'
-            );
+            ctx.save();
+            ctx.translate(cardCx, y + cardH / 2);
+            ctx.scale(scale, scale);
+            ctx.translate(-cardCx, -(y + cardH / 2));
+            this._drawCard(ctx, u, x, y, cardW, cardH, cardCx, innerPad, textMaxW, s, player, cardEase);
+            ctx.restore();
         }
+        ctx.restore();
     }
 
     handleClick(x, y) {
-        if (!this.active || !this._cardRects) return -1;
+        if (!this.canInteract()) return -1;
+        if (!this.active) return -1;
         for (const r of this._cardRects) {
-            if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
-                return r.index;
-            }
+            if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return r.index;
         }
         return -1;
     }
 }
 
 
-// ---- bossRewards.js ----
-const PIXEL_CHEST_SPRITE = [
-    [null, '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', null],
-    ['#2a1810', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#2a1810'],
-    ['#3a2818', '#7a5830', '#ffd850', '#ffe878', '#ffd850', '#7a5830', '#3a2818', '#2a1810'],
-    ['#2a1810', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a4018', '#5a1810', '#2a1810'],
-    ['#2a1810', '#4a3010', '#6a5028', '#6a5028', '#6a5028', '#6a5028', '#4a3010', '#2a1810'],
-    ['#2a1810', '#3a2818', '#4a3818', '#4a3818', '#4a3818', '#4a3818', '#3a2818', '#2a1810'],
-    ['#1a1008', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#2a1810', '#1a1008'],
-];
-
-const BOSS_REWARD_DEFS = [
-    {
-        id: 'dual_wield',
-        name: '二刀流',
-        desc: '攻击时连击次数翻倍',
-        icon: '⚔️',
-        color: '#e85828',
-        apply(player) {
-            player.bossRewardDualWield = true;
-        },
-    },
-    {
-        id: 'iai_slash',
-        name: '居合斩',
-        desc: '每次攻击的第一次暴击造成3倍伤害',
-        icon: '🗡️',
-        color: '#a8d8ff',
-        apply(player) {
-            player.bossRewardIai = true;
-        },
-    },
-    {
-        id: 'deep_breath',
-        name: '深呼吸',
-        desc: '气力上限+30%',
-        icon: '🌬️',
-        color: '#48c8e8',
-        apply(player) {
-            player.bossRewardDeepBreath = true;
-            const bonus = Math.floor(player.kiMax * 0.3);
-            player.kiMax += bonus;
-            player.ki = Math.min(player.kiMax, player.ki + bonus);
-        },
-    },
-];
-
-class BossRewardManager {
-    constructor() {
-        this.owned = new Set();
-        this.choices = [];
-        this.active = false;
-        this.onSelect = null;
-        this._cardRects = [];
+// ---- buffOrbs.js ----
+class BuffOrbManager {
+    constructor(game) {
+        this.game = game;
+        this.orbs = [];
+        this.notice = '';
+        this.noticeTimer = 0;
+        this.pickupFlashes = [];
+        this.drawSessionEaten = [];
     }
 
     reset() {
-        this.owned.clear();
-        this.choices = [];
-        this.active = false;
-        this._cardRects = [];
+        this.orbs = [];
+        this.notice = '';
+        this.noticeTimer = 0;
+        this.pickupFlashes = [];
+        this.drawSessionEaten = [];
     }
 
-    hasAvailable() {
-        return BOSS_REWARD_DEFS.some(r => !this.owned.has(r.id));
+    _pickPos(w, h, playBottom, safeZone) {
+        const pad = 28;
+        const top = 92;
+        const bottom = Math.max(top + 80, playBottom - 30);
+        for (let i = 0; i < 80; i++) {
+            const x = randRange(pad, w - pad);
+            const y = randRange(top, bottom);
+            if (!safeZone || dist(x, y, safeZone.x, safeZone.y) > safeZone.r + 30) return { x, y };
+        }
+        return { x: w * 0.5, y: (top + bottom) * 0.5 };
     }
 
-    generateChoices() {
-        const available = BOSS_REWARD_DEFS.filter(r => !this.owned.has(r.id));
-        if (available.length === 0) return false;
-        const shuffled = shuffleArray(available);
-        this.choices = shuffled.slice(0, Math.min(2, shuffled.length));
-        this.active = true;
+    _spawn(type, x, y) {
+        this.orbs.push({
+            type,
+            x,
+            y,
+            r: CONFIG.BUFF_ORB.RADIUS,
+            pulse: randRange(0, Math.PI * 2),
+            alive: true,
+        });
+    }
+
+    _posClear(pos, minDist) {
+        for (const o of this.orbs) {
+            if (dist(pos.x, pos.y, o.x, o.y) < minDist) return false;
+        }
         return true;
     }
 
-    selectReward(index, player) {
-        if (index < 0 || index >= this.choices.length) return;
-        const reward = this.choices[index];
-        this.owned.add(reward.id);
-        reward.apply(player);
-        this.active = false;
-        this.choices = [];
-        if (this.onSelect) this.onSelect();
-    }
-
-    _drawPx(ctx, ox, oy, col, row, color, px) {
-        if (!color) return;
-        ctx.fillStyle = color;
-        ctx.fillRect(ox + col * px, oy + row * px, px, px);
-    }
-
-    _getRewardIconSprite(id) {
-        const T = '#f4f8ff';
-        const D = '#1d232e';
-        const B = '#80d8ff';
-        const C = '#48c8e8';
-        const O = '#ff9a48';
-        const R = '#f06030';
-        const G = '#7cc8ff';
-        const map = {
-            dual_wield: [
-                [null, T, null, null, T, null],
-                [null, T, O, O, T, null],
-                [null, T, O, O, T, null],
-                [null, T, null, null, T, null],
-                [null, D, null, null, D, null],
-                [null, D, null, null, D, null],
-            ],
-            iai_slash: [
-                [null, null, T, T, T, null],
-                [null, T, T, T, B, B],
-                [T, T, T, B, B, null],
-                [null, null, G, G, null, null],
-                [null, D, D, D, null, null],
-                [null, null, D, null, null, null],
-            ],
-            deep_breath: [
-                [null, C, null, C, null, null],
-                [C, B, C, B, C, null],
-                [null, C, B, C, null, null],
-                [null, null, C, null, null, null],
-                [null, C, B, C, null, null],
-                [C, B, C, B, C, null],
-            ],
-        };
-        return map[id] || map.iai_slash;
-    }
-
-    _drawRewardIcon(ctx, id, centerX, centerY, color, size) {
-        const sprite = this._getRewardIconSprite(id);
-        const rows = sprite.length;
-        const cols = sprite[0].length;
-        const px = Math.max(2, Math.floor(size / Math.max(rows, cols)));
-        const w = cols * px;
-        const h = rows * px;
-        const ox = Math.floor(centerX - w / 2);
-        const oy = Math.floor(centerY - h / 2);
-        const pad = px;
-
-        ctx.fillStyle = 'rgba(10, 14, 24, 0.82)';
-        ctx.fillRect(ox - pad, oy - pad, w + pad * 2, h + pad * 2);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(ox - pad, oy - pad, w + pad * 2, h + pad * 2);
-
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                this._drawPx(ctx, ox, oy, c, r, sprite[r][c], px);
-            }
+    _pickSpawnPos(w, h, playBottom, safeZone) {
+        for (let i = 0; i < 50; i++) {
+            const pos = this._pickPos(w, h, playBottom, safeZone);
+            if (this._posClear(pos, 34)) return pos;
         }
+        return this._pickPos(w, h, playBottom, safeZone);
     }
 
-    drawUI(ctx, vp, uiScale) {
-        if (!this.active) return;
-
-        const s = uiScale || 1;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
-        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
-
-        drawGameText(ctx, 'Boss奖励！选择一个', vp.cx, vp.y + vp.h * 0.16,
-            Math.round(24 * s), '#ffd080', 'center', 'middle');
-
-        const cardW = vp.w * 0.42;
-        const cardH = 200 * s;
-        const gap = 14 * s;
-        const totalW = this.choices.length * cardW + (this.choices.length - 1) * gap;
-        let startX = vp.x + (vp.w - totalW) / 2;
-        const cardY = vp.y + vp.h * 0.28;
-        const innerPad = 16 * s;
-
-        this._cardRects = [];
-
-        for (let i = 0; i < this.choices.length; i++) {
-            const u = this.choices[i];
-            const x = startX;
-            const cardCx = x + cardW / 2;
-
-            this._cardRects.push({ x, y: cardY, w: cardW, h: cardH, index: i });
-
-            ctx.fillStyle = 'rgba(24, 18, 48, 0.96)';
-            ctx.strokeStyle = u.color;
-            ctx.lineWidth = 3;
-            if (typeof ctx.roundRect === 'function') {
-                ctx.beginPath();
-                ctx.roundRect(x, cardY, cardW, cardH, 10);
-                ctx.fill();
-                ctx.stroke();
-            } else {
-                ctx.fillRect(x, cardY, cardW, cardH);
-                ctx.strokeRect(x, cardY, cardW, cardH);
-            }
-
-            const iconSize = Math.round(40 * s);
-            this._drawRewardIcon(
-                ctx, u.id, cardCx, cardY + innerPad + iconSize * 0.5, u.color, iconSize);
-
-            const nameSize = Math.round(18 * s);
-            ctx.font = `bold ${nameSize}px ${GAME_FONT}`;
-            ctx.fillStyle = u.color;
-            ctx.fillText(u.name, cardCx, cardY + innerPad + iconSize + 18 * s);
-
-            const descSize = Math.round(13 * s);
-            ctx.font = `${descSize}px ${GAME_FONT}`;
-            ctx.fillStyle = '#ccc';
-            const lines = this._wrapLines(ctx, u.desc, cardW - innerPad * 2);
-            let lineY = cardY + innerPad + iconSize + 44 * s;
-            for (const ln of lines) {
-                ctx.fillText(ln, cardCx, lineY);
-                lineY += Math.round(18 * s);
-            }
-
-            startX += cardW + gap;
-        }
-    }
-
-    _wrapLines(ctx, text, maxW) {
-        const lines = [];
-        let line = '';
-        for (let i = 0; i < text.length; i++) {
-            const test = line + text[i];
-            if (ctx.measureText(test).width > maxW && line.length > 0) {
-                lines.push(line);
-                line = text[i];
-            } else {
-                line = test;
-            }
-        }
-        if (line) lines.push(line);
-        return lines;
-    }
-
-    handleClick(x, y) {
-        if (!this.active || !this._cardRects) return -1;
-        for (const r of this._cardRects) {
-            if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
-                return r.index;
-            }
-        }
-        return -1;
-    }
-}
-
-class BossChestManager {
-    constructor(game) {
-        this.game = game;
-        this.chests = [];
-    }
-
-    reset() {
-        this.chests = [];
-    }
-
-    hasActiveChest() {
-        return this.chests.some(c => !c.opened);
-    }
-
-    getSpawnPos(boss) {
-        const player = this.game.player;
+    spawnForStage(stageIndex, safeZone, enableIce = false) {
+        this.orbs = [];
         const w = this.game.renderer.w;
         const h = this.game.renderer.h;
-        if (!player) {
-            return { x: boss.x, y: clamp(boss.y + 90, h * 0.35, h * 0.65) };
+        const playBottom = this.game.ui.getPlayAreaBottom(h, this.game.renderer.uiScale);
+        const types = [...CONFIG.BUFF_ORB.BASE_TYPES];
+        if (enableIce) types.push('ice');
+        const maxPerType = CONFIG.BUFF_ORB.MAX_PER_TYPE || 4;
+        const extraChance = CONFIG.BUFF_ORB.EXTRA_SPAWN_CHANCE ?? 0.48;
+
+        for (const type of types) {
+            for (let i = 0; i < maxPerType; i++) {
+                const chance = i === 0
+                    ? (CONFIG.BUFF_ORB.SPAWN_CHANCE[type] || 0)
+                    : extraChance;
+                if (Math.random() > chance) break;
+                const pos = this._pickSpawnPos(w, h, playBottom, safeZone);
+                this._spawn(type, pos.x, pos.y);
+            }
         }
-        const t = 0.58;
-        let x = boss.x + (player.x - boss.x) * t;
-        let y = boss.y + (player.y - boss.y) * t;
-        y = clamp(y, h * 0.30, h * 0.70);
-        x = clamp(x, 48, w - 48);
-        return { x, y };
+        this.notice = '';
+        this.noticeTimer = 0;
+        this.pickupFlashes = [];
+        this.drawSessionEaten = [];
     }
 
-    spawnForBoss(boss) {
-        if (!boss || boss.chestDropped || this.hasActiveChest()) return;
-        boss.chestDropped = true;
-        const pos = this.getSpawnPos(boss);
-        this.spawn(pos.x, pos.y);
+    restoreDrawSessionOrbs() {
+        for (const snap of this.drawSessionEaten) {
+            this.orbs.push({
+                type: snap.type,
+                x: snap.x,
+                y: snap.y,
+                r: snap.r,
+                pulse: snap.pulse,
+                alive: true,
+            });
+        }
+        this.drawSessionEaten = [];
+        this.pickupFlashes = [];
     }
 
-    spawn(x, y) {
-        this.chests.push({
-            x,
-            y,
-            bob: Math.random() * Math.PI * 2,
-            glow: 0,
-            opened: false,
-            spawnPop: 0.45,
-            pickupDelay: 0.35,
+    cancelDrawSession() {
+        const p = this.game.player;
+        if (p && p.drawSessionSnapshot) {
+            p.ki = p.drawSessionSnapshot.ki;
+            p.turnBuffs.attackMult = p.drawSessionSnapshot.attackMult;
+            p.turnBuffs.comboMult = p.drawSessionSnapshot.comboMult;
+            p.turnBuffs.iceReady = p.drawSessionSnapshot.iceReady;
+            p.drawSessionSnapshot = null;
+        }
+        if (p) p.collectedOrbBuffs = [];
+        this.restoreDrawSessionOrbs();
+    }
+
+    beginDrawSession() {
+        this.cancelDrawSession();
+        const p = this.game.player;
+        if (!p) return;
+        p.drawSessionSnapshot = {
+            ki: p.ki,
+            attackMult: p.turnBuffs.attackMult,
+            comboMult: p.turnBuffs.comboMult,
+            iceReady: p.turnBuffs.iceReady,
+        };
+        p.collectedOrbBuffs = [];
+        p.kiAtDrawStart = p.ki;
+    }
+
+    commitDrawSession() {
+        const p = this.game.player;
+        if (p) p.drawSessionSnapshot = null;
+        this.drawSessionEaten = [];
+    }
+
+    _applyOrb(type) {
+        const p = this.game.player;
+        if (!p) return;
+        p.collectedOrbBuffs.push(type);
+        if (type === 'attack') {
+            p.turnBuffs.attackMult *= 1.3;
+            this.notice = '攻击+30%';
+        } else if (type === 'ki') {
+            const bonus = Math.round(p.kiMax * 0.30);
+            p.ki = Math.min(p.kiMax, p.ki + bonus);
+            this.notice = '气力+30%';
+        } else if (type === 'combo') {
+            p.turnBuffs.comboMult *= 2;
+            this.notice = '连击×2';
+        } else if (type === 'ice') {
+            p.turnBuffs.iceReady = true;
+            this.notice = '冰冻球';
+        } else {
+            return;
+        }
+        p.queueMessage(this.notice);
+        this.noticeTimer = 1.6;
+        this.game.renderer.shake(9, 0.16);
+    }
+
+    _emitPickupBurst(o) {
+        const pal = this._orbPalette(o.type);
+        const colors = [pal.hi, pal.core, '#fff8e8'];
+        for (let i = 0; i < 28; i++) {
+            const a = (i / 28) * Math.PI * 2 + randRange(-0.2, 0.2);
+            const spd = randRange(90, 200);
+            this.game.particles.emit(
+                o.x, o.y,
+                Math.cos(a) * spd,
+                Math.sin(a) * spd,
+                randRange(0.28, 0.55), randRange(5, 11),
+                colors[i % colors.length],
+                0, true, true
+            );
+        }
+        this.pickupFlashes.push({
+            x: o.x,
+            y: o.y,
+            type: o.type,
+            timer: 0.5,
+            maxTimer: 0.5,
         });
-        const { particles, renderer } = this.game;
-        renderer.shake(5, 0.12);
-        for (let i = 0; i < 24; i++) {
-            const a = (i / 24) * Math.PI * 2;
-            particles.emit(
-                x + Math.cos(a) * 12, y + Math.sin(a) * 8,
-                Math.cos(a) * randRange(50, 130), Math.sin(a) * randRange(30, 100),
-                randRange(0.35, 0.7), randRange(4, 9),
-                ['#ffd080', '#ffb040', '#fff8c0'][Math.floor(Math.random() * 3)],
-                0, true, true);
+    }
+
+    _collectOrb(o) {
+        if (!o.alive) return;
+        const p = this.game.player;
+        const trackSession = p && p.state === PlayerState.BULLET_TIME;
+        if (trackSession) {
+            this.drawSessionEaten.push({
+                type: o.type,
+                x: o.x,
+                y: o.y,
+                r: o.r,
+                pulse: o.pulse,
+            });
         }
+        o.alive = false;
+        this._applyOrb(o.type);
+        this._emitPickupBurst(o);
+    }
+
+    checkPathSegment(from, to) {
+        if (!from || !to) return;
+        const segLen = dist(from.x, from.y, to.x, to.y);
+        const steps = Math.max(1, Math.ceil(segLen / 5));
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const px = lerp(from.x, to.x, t);
+            const py = lerp(from.y, to.y, t);
+            for (const o of this.orbs) {
+                if (!o.alive) continue;
+                if (dist(px, py, o.x, o.y) <= o.r + 10) this._collectOrb(o);
+            }
+        }
+    }
+
+    _orbPalette(type) {
+        if (type === 'attack') return { core: '#ff9a58', hi: '#ffd8a8', edge: '#7a2c10' };
+        if (type === 'ki') return { core: '#58d0ff', hi: '#b8f0ff', edge: '#1e4e70' };
+        if (type === 'combo') return { core: '#ffa0f8', hi: '#ffd8ff', edge: '#5a2a6a' };
+        if (type === 'ice') return { core: '#80d8ff', hi: '#d8f6ff', edge: '#245a7a' };
+        return { core: '#f0d880', hi: '#ffe8a8', edge: '#6a4a18' };
+    }
+
+    _drawPixelOrb(ctx, o) {
+        const pulse = 0.86 + Math.sin(o.pulse) * 0.14;
+        const rPx = Math.max(5, Math.round(o.r * pulse));
+        const pal = this._orbPalette(o.type);
+        const cx = Math.floor(o.x);
+        const cy = Math.floor(o.y);
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, rPx + 3, 0, Math.PI * 2);
+        ctx.fillStyle = `${pal.hi}33`;
+        ctx.fill();
+
+        for (let y = -rPx; y <= rPx; y++) {
+            for (let x = -rPx; x <= rPx; x++) {
+                const d2 = x * x + y * y;
+                if (d2 > rPx * rPx) continue;
+                if (d2 >= (rPx - 1) * (rPx - 1)) ctx.fillStyle = pal.edge;
+                else if (y < -rPx * 0.2 || x < -rPx * 0.2) ctx.fillStyle = pal.hi;
+                else ctx.fillStyle = pal.core;
+                ctx.fillRect(cx + x, cy + y, 1, 1);
+            }
+        }
+
+        const iconPx = Math.max(2, Math.floor(rPx / 3));
+        drawPixelIcon(ctx, getBuffOrbIconSprite(o.type), cx, cy, iconPx);
+    }
+
+    _drawPickupFlash(ctx, f) {
+        const t = 1 - f.timer / f.maxTimer;
+        const pal = this._orbPalette(f.type);
+        const cx = f.x;
+        const cy = f.y;
+        const ringR = 14 + t * 42;
+        const alpha = 1 - t;
+
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.strokeStyle = pal.hi;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = `${pal.core}88`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringR * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+
+        const iconPx = Math.max(3, Math.floor(4 + (1 - t) * 3));
+        drawPixelIcon(ctx, getBuffOrbIconSprite(f.type), cx, cy - t * 18, iconPx);
+
+        const label = getBuffOrbShortLabel(f.type);
+        const labelY = cy - 28 - t * 12;
+        const labelSize = Math.round(12 + (1 - t) * 2);
+        const tw = label.length * labelSize * 0.65 + 12;
+        const th = labelSize + 8;
+        drawPixelPanel(ctx, cx - tw / 2, labelY - th / 2, tw, th, 'rgba(42,24,16,0.92)', this._orbPalette(f.type).hi, 2);
+        drawPixelText(ctx, label, cx, labelY, labelSize, '#fff8d8');
+        ctx.restore();
     }
 
     update(dt) {
-        const player = this.game.player;
-        if (!player) return;
-
-        for (const chest of this.chests) {
-            if (chest.opened) continue;
-            chest.bob += dt * 4;
-            chest.glow = Math.min(1, chest.glow + dt * 2);
-            if (chest.spawnPop > 0) chest.spawnPop -= dt;
-            if (chest.pickupDelay > 0) chest.pickupDelay -= dt;
-
-            // Require intentional pickup: only when player is idle and close enough.
-            const canPickup = player.state === PlayerState.IDLE;
-            if (!canPickup) continue;
-            if (chest.pickupDelay > 0) continue;
-            if (dist(player.x, player.y, chest.x, chest.y) > 26) continue;
-
-            chest.opened = true;
-            this._openChest(chest);
-            break;
+        const p = this.game.player;
+        if (!p) return;
+        for (const o of this.orbs) {
+            if (!o.alive) continue;
+            o.pulse += dt * 4.2;
+            if (p.state === PlayerState.ATTACKING || p.state === PlayerState.RETURNING) {
+                if (dist(p.x, p.y, o.x, o.y) <= p.effectiveRadius + o.r) {
+                    this._collectOrb(o);
+                }
+            }
         }
-
-        this.chests = this.chests.filter(c => !c.opened);
-    }
-
-    getActiveChest() {
-        return this.chests.find(c => !c.opened) || null;
-    }
-
-    _openChest(chest) {
-        if (this.game.state === 'BOSS_REWARD' || this.game.state === 'LEVEL_UP') return;
-
-        const { particles, renderer, bossRewards } = this.game;
-        for (let i = 0; i < 20; i++) {
-            const a = randRange(0, Math.PI * 2);
-            particles.emit(
-                chest.x, chest.y - 8,
-                Math.cos(a) * randRange(40, 120), Math.sin(a) * randRange(-80, -20),
-                randRange(0.25, 0.55), randRange(4, 8),
-                ['#ffd080', '#fff', '#ffb850'][Math.floor(Math.random() * 3)],
-                80, true, true);
+        this.orbs = this.orbs.filter(o => o.alive);
+        for (let i = this.pickupFlashes.length - 1; i >= 0; i--) {
+            this.pickupFlashes[i].timer -= dt;
+            if (this.pickupFlashes[i].timer <= 0) this.pickupFlashes.splice(i, 1);
         }
-        renderer.shake(6, 0.18);
-
-        if (bossRewards.hasAvailable()) {
-            bossRewards.generateChoices();
-            this.game.state = 'BOSS_REWARD';
-            this.game._lockOverlayInput();
-        }
+        if (this.noticeTimer > 0) this.noticeTimer -= dt;
     }
 
     draw(ctx) {
-        for (const chest of this.chests) {
-            if (chest.opened) continue;
-            const bobY = Math.sin(chest.bob) * 4;
-            const pop = chest.spawnPop > 0 ? 1 + chest.spawnPop * 0.25 : 1;
-            const x = chest.x;
-            const y = chest.y + bobY;
-            const pulse = 0.75 + Math.sin(chest.bob * 1.4) * 0.25;
-            const pixelScale = Math.round(3 * pop);
-
+        for (const o of this.orbs) {
             ctx.save();
-            ctx.globalAlpha = 0.35 + chest.glow * 0.2;
-            const beamH = 90 * pop;
-            const beam = ctx.createLinearGradient(x, y, x, y - beamH);
-            beam.addColorStop(0, 'rgba(255, 210, 90, 0.5)');
-            beam.addColorStop(1, 'rgba(255, 200, 80, 0)');
-            ctx.fillStyle = beam;
-            ctx.fillRect(x - 10 * pop, y - beamH, 20 * pop, beamH);
-
-            const grad = ctx.createRadialGradient(x, y - 4, 4, x, y - 4, 36 * pulse);
-            grad.addColorStop(0, 'rgba(255, 210, 100, 0.7)');
-            grad.addColorStop(1, 'rgba(255, 160, 50, 0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(x, y - 4, 36 * pulse, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.globalAlpha = 1;
-            const sz = getSpriteSize(PIXEL_CHEST_SPRITE, pixelScale);
-            drawSprite(ctx, PIXEL_CHEST_SPRITE, x, y - sz.h * 0.08, pixelScale);
+            this._drawPixelOrb(ctx, o);
             ctx.restore();
+        }
+    }
+
+    drawPickupEffects(ctx) {
+        for (const f of this.pickupFlashes) {
+            this._drawPickupFlash(ctx, f);
         }
     }
 }
 
 
 // ---- abilities.js ----
+const FIREBALL_PIXEL = 4;
+const FIREBALL_RADIUS_BLOCKS = 8;
+const SHURIKEN_PIXEL = 4;
+const WATER_TORNADO_PIXEL = 5;
+const WATER_TORNADO_SIZE_SCALE = 3.2;
+const WATER_TORNADO_SPEED = 360;
+const WATER_TORNADO_LIFE = 1.85;
+const SHURIKEN_SPEED_MIN = 340;
+const SHURIKEN_SPEED_MAX = 500;
+const SHURIKEN_LIFE_MIN = 0.42;
+const SHURIKEN_LIFE_MAX = 0.62;
+const WHIRL_SIZE_SCALE = 1.5;
+
+const SHURIKEN_SPRITE = [
+    [null, '#7a8aa8', null, '#7a8aa8', null],
+    ['#7a8aa8', '#e8f4ff', '#b8cce8', '#e8f4ff', '#7a8aa8'],
+    [null, '#b8cce8', '#586878', '#b8cce8', null],
+    ['#7a8aa8', '#e8f4ff', '#b8cce8', '#e8f4ff', '#7a8aa8'],
+    [null, '#7a8aa8', null, '#7a8aa8', null],
+];
+
 class AbilityManager {
     constructor(game) {
         this.game = game;
-        this.reset();
+        this.fireballs = [];
+        this.waterTornados = [];
+        this.blackHoles = [];
+        this.whirls = [];
+        this.shurikens = [];
+        this.resolveFxTimer = 0;
+        this.lightningChain = null;
     }
 
     reset() {
-        this.orbitAngle = 0;
-        this.shurikenHitCd = new Map();
-        this.shurikenTrails = [];
-        this.crescents = [];
-        this.blackHoles = [];
-        this.whirlwinds = [];
         this.fireballs = [];
-        this.fireballTimer = 2;
-        this.lastCrescentAtCombo = 0;
-        this.lastWhirlAtCombo = 0;
-        this.lastBlackHoleAtCombo = 0;
+        this.waterTornados = [];
+        this.blackHoles = [];
+        this.whirls = [];
+        this.shurikens = [];
+        this.resolveFxTimer = 0;
+        this.lightningChain = null;
     }
 
-    onComboHit(combo) {
-        const player = this.game.player;
-        if (!player) return;
+    _hasFlyingProjectiles() {
+        return this.fireballs.length > 0 || this.waterTornados.length > 0 || this.blackHoles.length > 0
+            || this.whirls.length > 0 || this.shurikens.length > 0 || this.lightningChain != null;
+    }
 
-        if (player.crescentLevel > 0) {
-            player.crescentCharge = (player.crescentCharge || 0) + 1;
-            if (player.crescentCharge >= 3) {
-                player.crescentCharge = 0;
-                const waves = player.crescentWaves || 1;
-                const target = this._nearestMonster(player.x, player.y);
-                for (let i = 0; i < waves; i++) {
-                    this._spawnCrescent(player, target, i, waves);
+    hasActiveFx() {
+        return this.resolveFxTimer > 0 || this.game.combat.isResolving() || this._hasFlyingProjectiles();
+    }
+
+    _isResolvePhase() {
+        return this.game.combat.isResolving() || this.resolveFxTimer > 0 || this._hasFlyingProjectiles();
+    }
+
+    _ctxPos(ctx) {
+        if (ctx) return { x: ctx.x, y: ctx.y };
+        const p = this.game.player;
+        return { x: p.homeX, y: p.homeY };
+    }
+
+    onResolveStarted(attackPath) {
+        const p = this.game.player;
+        if (!p || !attackPath || attackPath.length < 2) return;
+
+        const start = attackPath[0];
+        if (p.getUpgradeLevel('great_fireball') > 0) {
+            const cnt = 3 + Math.max(0, p.getUpgradeLevel('great_fireball') - 1);
+            const baseAng = angle(start.x, start.y, attackPath[1].x, attackPath[1].y);
+            for (let i = 0; i < cnt; i++) {
+                const a = baseAng + randRange(-0.9, 0.9);
+                this.fireballs.push({
+                    x: start.x, y: start.y,
+                    vx: Math.cos(a) * 280, vy: Math.sin(a) * 280,
+                    life: 0.95,
+                    maxLife: 0.95,
+                    rot: a,
+                    hit: new Set(),
+                    dmgMul: 1.0,
+                    kind: 'great',
+                });
+            }
+        }
+    }
+
+    onResolveHit(hit, combo) {
+        const p = this.game.player;
+        if (!p) return;
+
+        const mx = (hit.pathFrom.x + hit.pathTo.x) * 0.5;
+        const my = (hit.pathFrom.y + hit.pathTo.y) * 0.5;
+        const segAng = angle(hit.pathFrom.x, hit.pathFrom.y, hit.pathTo.x, hit.pathTo.y);
+        const ctx = { x: mx, y: my, segAng, hit };
+
+        this._emitPathShurikens(ctx);
+        this.onComboHit(combo, ctx);
+    }
+
+    onComboHit(combo, ctx) {
+        const p = this.game.player;
+        if (!p || !this.game.combat.isResolving()) return;
+        const pos = this._ctxPos(ctx);
+
+        if (p.getUpgradeLevel('lightning_chain') > 0 && combo % 5 === 0) {
+            this._spawnLightningChain(3, pos.x, pos.y);
+        }
+        if (p.getUpgradeLevel('water_tornado') > 0) {
+            p.waterTornadoCharge = (p.waterTornadoCharge || 0) + 1;
+            while (p.waterTornadoCharge >= 3) {
+                p.waterTornadoCharge -= 3;
+                const cnt = p.getUpgradeLevel('water_tornado');
+                for (let i = 0; i < cnt; i++) {
+                    this._spawnWaterTornado(pos.x, pos.y, ctx?.segAng ?? 0, i, cnt);
                 }
             }
         }
-
-        if (player.bladeWhirlLevel > 0 && combo >= 5 && combo % 5 === 0 && combo !== this.lastWhirlAtCombo) {
-            this.lastWhirlAtCombo = combo;
-            this._spawnWhirlwind(player.x, player.y, player.bladeWhirlLevel);
+        if (p.getUpgradeLevel('black_hole') > 0 && combo % 8 === 0) {
+            this._spawnBlackHole(pos.x, pos.y);
         }
-
-        if (player.blackHoleLevel > 0 && combo >= 8 && combo % 8 === 0 &&
-            combo !== this.lastBlackHoleAtCombo) {
-            this.lastBlackHoleAtCombo = combo;
-            this._spawnBlackHoleAt(player.x, player.y, player.blackHoleLevel);
-        }
-    }
-
-    update(dt) {
-        const player = this.game.player;
-        if (!player) return;
-
-        this.orbitAngle += dt * 4.8;
-        this._updateShurikens(dt, player);
-        this._updateCrescents(dt);
-        this._updateBlackHoles(dt);
-        this._updateWhirlwinds(dt);
-        this._updateFireballs(dt);
-
-        if (player.fireballLevel > 0) {
-            this.fireballTimer -= dt;
-            if (this.fireballTimer <= 0) {
-                this.fireballTimer = 2;
-                this._spawnFireballVolley(player);
+        if (p.getUpgradeLevel('blade_whirl') > 0) {
+            p.whirlCharge = (p.whirlCharge || 0) + 1;
+            while (p.whirlCharge >= 5) {
+                p.whirlCharge -= 5;
+                this._spawnWhirl(pos.x, pos.y);
             }
         }
     }
 
-    drawBehind(ctx) {
-        for (const h of this.blackHoles) this._drawBlackHole(ctx, h);
-        for (const w of this.whirlwinds) this._drawWhirlwind(ctx, w);
-    }
-
-    drawFront(ctx) {
-        for (const c of this.crescents) this._drawCrescent(ctx, c);
-        for (const f of this.fireballs) this._drawFireball(ctx, f);
-        this._drawShurikenTrails(ctx);
-        this._drawShurikens(ctx);
-    }
-
-    draw(ctx) {
-        this.drawBehind(ctx);
-        this.drawFront(ctx);
-    }
-
-    _burstParticles(x, y, count, colors, speedMin, speedMax, life, size, glow) {
-        const particles = this.game.particles;
+    _emitPathShurikens(ctx) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('shuriken');
+        if (lv <= 0) return;
+        const segAng = ctx.segAng ?? 0;
+        const count = Math.min(6, lv + 2);
         for (let i = 0; i < count; i++) {
-            const a = randRange(0, Math.PI * 2);
-            const sp = randRange(speedMin, speedMax);
-            particles.emit(x, y,
-                Math.cos(a) * sp, Math.sin(a) * sp,
-                randRange(life * 0.7, life), randRange(size * 0.8, size * 1.2),
-                colors[Math.floor(Math.random() * colors.length)],
-                0, true, glow);
+            const spread = segAng + randRange(-1.1, 1.1);
+            const spd = randRange(SHURIKEN_SPEED_MIN, SHURIKEN_SPEED_MAX);
+            this.shurikens.push({
+                x: ctx.x + randRange(-4, 4),
+                y: ctx.y + randRange(-4, 4),
+                vx: Math.cos(spread) * spd,
+                vy: Math.sin(spread) * spd,
+                rot: randRange(0, Math.PI * 2),
+                spin: randRange(10, 18) * (Math.random() < 0.5 ? 1 : -1),
+                life: randRange(SHURIKEN_LIFE_MIN, SHURIKEN_LIFE_MAX),
+                hit: new Set(),
+                dmgMul: 0.10,
+            });
         }
     }
 
-    _abilityDamage(player, mult) {
-        let dmg = player.baseDamage * (1 + player.damageBonus) * mult;
-        const isCrit = Math.random() < player.critRate;
-        if (isCrit) dmg *= player.critMultiplier;
-        return { damage: Math.round(dmg), isCrit };
+    _spawnLightningChain(maxTargets, fromX, fromY) {
+        const monsters = this.game.spawner.getActiveMonsters();
+        if (monsters.length === 0) return;
+        monsters.sort((a, b) => dist(fromX, fromY, a.x, a.y) - dist(fromX, fromY, b.x, b.y));
+        this.lightningChain = {
+            targets: monsters.slice(0, maxTargets),
+            cx: fromX,
+            cy: fromY,
+            idx: 0,
+            timer: 0,
+            stepDelay: 0.09,
+            dmg: this.game.player.getAbilityDamage(0.45),
+        };
     }
 
-    _hitMonster(m, damage, isCrit, color) {
-        const actual = m.takeDamage(damage);
-        this.game.combat.spawnDamageNumber(
-            m.x, m.y - m.hitboxRadius - 5, actual, isCrit, color || '#cef');
-        this.game.particles.hitSpark(m.x, m.y, isCrit);
-        if (m.dying) this.game.combat.onMonsterKilled(m);
-        return actual;
-    }
+    _updateLightningChain(dt) {
+        const ch = this.lightningChain;
+        if (!ch) return;
+        ch.timer -= dt;
+        if (ch.timer > 0) return;
 
-    _nearestMonster(x, y, maxDist = 9999) {
-        let best = null;
-        let bestD = maxDist;
-        const boss = this.game.bossManager && this.game.bossManager.boss;
-        if (boss && boss.alive && !boss.dying) {
-            const d = dist(x, y, boss.x, boss.y + 10);
-            if (d < bestD) {
-                bestD = d;
-                best = boss;
-            }
+        if (ch.idx >= ch.targets.length) {
+            this.lightningChain = null;
+            return;
         }
-        for (const m of this.game.spawner.monsters) {
-            if (!m.alive || m.dying || m.spawning) continue;
+
+        const m = ch.targets[ch.idx];
+        if (!m.alive || m.dying) {
+            ch.idx++;
+            ch.timer = ch.stepDelay * 0.35;
+            return;
+        }
+
+        this.game.particles.lightningEffect(ch.cx, ch.cy, m.x, m.y);
+        const hit = m.takeDamage(ch.dmg, angle(ch.cx, ch.cy, m.x, m.y));
+        if (hit.actualDamage > 0) {
+            this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#f8d020');
+            this.game.particles.hitSpark(m.x, m.y, false);
+        }
+        if (m.dying) this.game.combat._handleMonsterKilled(m);
+
+        ch.cx = m.x;
+        ch.cy = m.y;
+        ch.idx++;
+        ch.timer = ch.stepDelay;
+        if (ch.idx === 1) this.game.renderer.shake(10, 0.28);
+    }
+
+    _nearestMonsterAngle(x, y, segAng) {
+        const monsters = this.game.spawner.getActiveMonsters();
+        if (!monsters.length) return segAng;
+        let nearest = monsters[0];
+        let best = dist(x, y, nearest.x, nearest.y);
+        for (let i = 1; i < monsters.length; i++) {
+            const m = monsters[i];
             const d = dist(x, y, m.x, m.y);
-            if (d < bestD) {
-                bestD = d;
-                best = m;
+            if (d < best) {
+                best = d;
+                nearest = m;
             }
         }
-        return best;
+        return angle(x, y, nearest.x, nearest.y);
     }
 
-    _nearestMonsters(x, y, count, usedIds = new Set()) {
-        const candidates = [];
-        const boss = this.game.bossManager && this.game.bossManager.boss;
-        if (boss && boss.alive && !boss.dying && !usedIds.has('boss')) {
-            candidates.push({ m: boss, d: dist(x, y, boss.x, boss.y + 10) });
-        }
-        for (const m of this.game.spawner.monsters) {
-            if (!m.alive || m.dying || m.spawning || usedIds.has(m.id)) continue;
-            candidates.push({ m, d: dist(x, y, m.x, m.y) });
-        }
-        candidates.sort((a, b) => a.d - b.d);
-        const picked = [];
-        for (const c of candidates) {
-            if (picked.length >= count) break;
-            picked.push(c.m);
-            usedIds.add(c.m.id);
-        }
-        return picked;
-    }
-
-    _spawnFireballVolley(player) {
-        const count = Math.max(1, player.fireballCount || 1);
-        const used = new Set();
-        const targets = this._nearestMonsters(player.x, player.y, count, used);
-
-        for (let i = 0; i < count; i++) {
-            const target = targets[i] || targets[0] || null;
-            let ang;
-            if (target) {
-                ang = Math.atan2(target.y - player.y, target.x - player.x);
-            } else {
-                ang = player.facingRight ? 0 : Math.PI;
-            }
-            if (count > 1 && !target) {
-                ang += (i - (count - 1) / 2) * 0.35;
-            } else if (count > 1 && target && i > 0 && targets.length <= 1) {
-                ang += (i - (count - 1) / 2) * 0.22;
-            }
-            this._spawnFireball(player, ang);
-        }
-    }
-
-    _spawnFireball(player, ang) {
-        const lvl = player.fireballLevel || 1;
-        const speed = 340 + lvl * 22;
-        this.fireballs.push({
-            x: player.x,
-            y: player.y,
-            vx: Math.cos(ang) * speed,
-            vy: Math.sin(ang) * speed,
-            radius: 11 + lvl * 1.5,
-            damageMult: 0.62 + (lvl - 1) * 0.09,
-            life: 2.4,
-            maxLife: 2.4,
-            hitIds: new Set(),
-            spin: 0,
+    _spawnWaterTornado(x, y, segAng, idx, total) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('water_tornado');
+        const spread = total > 1 ? (idx - (total - 1) * 0.5) * 0.22 : 0;
+        const a = this._nearestMonsterAngle(x, y, segAng) + spread;
+        this.waterTornados.push({
+            x, y,
+            vx: Math.cos(a) * WATER_TORNADO_SPEED,
+            vy: Math.sin(a) * WATER_TORNADO_SPEED,
+            life: WATER_TORNADO_LIFE,
+            maxLife: WATER_TORNADO_LIFE,
+            spin: randRange(0, Math.PI * 2),
+            spinSpeed: 14 + lv * 1.5,
+            hit: new Set(),
+            dmgMul: 0.55 + 0.1 * lv,
         });
-        this._burstParticles(player.x, player.y, 10,
-            ['#ff6620', '#ffaa44', '#ff4400', '#ffcc66'], 60, 160, 0.28, 4, true);
-    }
-
-    _updateFireballs(dt) {
-        const player = this.game.player;
-        if (!player) return;
-        const w = this.game.renderer.w;
-        const h = this.game.renderer.h;
-
-        for (const f of this.fireballs) {
-            f.life -= dt;
-            f.spin += dt * 14;
-            f.x += f.vx * dt;
-            f.y += f.vy * dt;
-
-            if (Math.random() < 0.55) {
-                this.game.particles.emit(
-                    f.x - f.vx * 0.03, f.y - f.vy * 0.03,
-                    -f.vx * 0.05 + randRange(-20, 20), -f.vy * 0.05 + randRange(-20, 20),
-                    randRange(0.1, 0.22), randRange(3, 5),
-                    ['#ff6620', '#ffaa44', '#ff8830'][Math.floor(Math.random() * 3)],
-                    0, true, true);
-            }
-
-            for (const m of this.game.spawner.monsters) {
-                if (!m.alive || m.dying || m.spawning || f.hitIds.has(m.id)) continue;
-                if (!circlesCollide(f.x, f.y, f.radius, m.x, m.y, m.hitboxRadius)) continue;
-                f.hitIds.add(m.id);
-                const { damage, isCrit } = this._abilityDamage(player, f.damageMult);
-                this._hitMonster(m, damage, isCrit, '#f84');
-                this._burstParticles(f.x, f.y, 14,
-                    ['#ff6620', '#ffaa44', '#ff4400', '#fff4c0'], 80, 200, 0.32, 5, true);
-                f.life = 0;
-                break;
-            }
+        const colors = ['#b8f8ff', '#68d0f8', '#38a8e8', '#e8ffff'];
+        for (let i = 0; i < 22; i++) {
+            const burst = a + randRange(-0.7, 0.7);
+            const bspd = randRange(100, 260);
+            this.game.particles.emit(
+                x, y,
+                Math.cos(burst) * bspd, Math.sin(burst) * bspd,
+                randRange(0.2, 0.4), randRange(5, 10),
+                colors[Math.floor(Math.random() * colors.length)],
+                0, true, false
+            );
         }
-        this.fireballs = this.fireballs.filter(f =>
-            f.life > 0 && f.x > -40 && f.x < w + 40 && f.y > -40 && f.y < h + 40);
+        this.game.renderer.shake(8, 0.18);
     }
 
-    _drawFireball(ctx, f) {
-        const alpha = clamp(f.life / f.maxLife, 0, 1);
-        const r = f.radius;
+    _drawPixelWaterTornado(ctx, t) {
+        const px = WATER_TORNADO_PIXEL;
+        const s = WATER_TORNADO_SIZE_SCALE;
+        const lifeT = t.maxLife ? t.life / t.maxLife : 1;
+        const pulse = 0.92 + Math.sin((1 - lifeT) * 10 + t.spin) * 0.08;
+        const cx = Math.floor(t.x);
+        const cy = Math.floor(t.y);
+        const block = Math.ceil(px * s * pulse);
 
         ctx.save();
-        ctx.translate(f.x, f.y);
+        ctx.imageSmoothingEnabled = false;
+        ctx.translate(cx, cy);
+        ctx.rotate(t.spin);
+        ctx.globalAlpha = clamp(0.55 + lifeT * 0.45, 0.45, 1);
 
-        ctx.globalAlpha = 0.25 * alpha;
-        const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2.2);
-        glow.addColorStop(0, 'rgba(255, 180, 80, 0.9)');
-        glow.addColorStop(0.5, 'rgba(255, 80, 20, 0.35)');
-        glow.addColorStop(1, 'rgba(255, 40, 0, 0)');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 2.2, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.rotate(f.spin);
-        ctx.globalAlpha = 0.9 * alpha;
-        ctx.fillStyle = '#ff6620';
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#ffcc66';
-        ctx.beginPath();
-        ctx.arc(-r * 0.15, -r * 0.1, r * 0.55, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#fff8e0';
-        ctx.beginPath();
-        ctx.arc(-r * 0.2, -r * 0.15, r * 0.28, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-    }
-
-    _canHitMonster(id, cooldown) {
-        const t = this.shurikenHitCd.get(id) || 0;
-        return performance.now() - t > cooldown * 1000;
-    }
-
-    _markHitMonster(id) {
-        this.shurikenHitCd.set(id, performance.now());
-    }
-
-    _updateShurikens(dt, player) {
-        if (player.shurikenCount <= 0) return;
-        const orbitR = 28 + player.sizeScale * 6;
-        const hitR = 10;
-        const dmgMult = 0.32 + (player.shurikenLevel - 1) * 0.05;
-
-        this.shurikenTrails = [];
-        for (let i = 0; i < player.shurikenCount; i++) {
-            const a = this.orbitAngle + (i / player.shurikenCount) * Math.PI * 2;
-            const sx = player.x + Math.cos(a) * orbitR;
-            const sy = player.y + Math.sin(a) * orbitR;
-            this.shurikenTrails.push({ x: sx, y: sy, a });
-
-            for (const m of this.game.spawner.monsters) {
-                if (!m.alive || m.dying || m.spawning) continue;
-                if (!circlesCollide(sx, sy, hitR, m.x, m.y, m.hitboxRadius)) continue;
-                if (!this._canHitMonster(`s${m.id}`, 0.32)) continue;
-                this._markHitMonster(`s${m.id}`);
-                const { damage, isCrit } = this._abilityDamage(player, dmgMult);
-                this._hitMonster(m, damage, isCrit, '#9cf');
-                this._burstParticles(sx, sy, 4, ['#adf', '#fff', '#8cf'], 40, 90, 0.15, 3, true);
+        const ringColors = ['#1868a8', '#2890d0', '#48b8f0', '#88e0ff', '#d8ffff'];
+        for (let layer = 0; layer < 5; layer++) {
+            const r = (7 + layer * 4) * s * pulse;
+            const count = 10 + layer * 4;
+            for (let i = 0; i < count; i++) {
+                const a = (i / count) * Math.PI * 2 + layer * 0.65;
+                const bx = Math.cos(a) * r;
+                const by = Math.sin(a) * r * 1.28;
+                ctx.fillStyle = ringColors[layer];
+                ctx.fillRect(
+                    Math.floor(bx - block * 0.5),
+                    Math.floor(by - block * 0.5),
+                    block,
+                    block
+                );
             }
         }
-    }
 
-    _drawShurikenTrails(ctx) {
-        for (const t of this.shurikenTrails) {
-            ctx.save();
-            ctx.globalAlpha = 0.35;
-            ctx.translate(t.x, t.y);
-            ctx.rotate(t.a);
-            ctx.fillStyle = '#88c8f8';
-            ctx.fillRect(-8, -1, 16, 2);
-            ctx.fillRect(-1, -8, 2, 16);
-            ctx.globalAlpha = 0.18;
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(-12, -2, 24, 4);
-            ctx.fillRect(-2, -12, 4, 24);
-            ctx.restore();
+        for (let j = -5; j <= 5; j++) {
+            const w = j === 0 ? block * 2.2 : block * 1.6;
+            ctx.fillStyle = j % 2 === 0 ? '#e8ffff' : '#a0e8ff';
+            ctx.fillRect(Math.floor(-w * 0.5), Math.floor(j * block * 1.05), Math.ceil(w), block);
         }
-    }
 
-    _drawShurikens(ctx) {
-        const player = this.game.player;
-        if (!player || player.shurikenCount <= 0) return;
-        const orbitR = 28 + player.sizeScale * 6;
-
-        for (let i = 0; i < player.shurikenCount; i++) {
-            const a = this.orbitAngle + (i / player.shurikenCount) * Math.PI * 2;
-            const sx = Math.floor(player.x + Math.cos(a) * orbitR);
-            const sy = Math.floor(player.y + Math.sin(a) * orbitR);
-
-            ctx.save();
-            ctx.translate(sx, sy);
-            ctx.rotate(a + Math.PI / 4);
-
-            ctx.globalAlpha = 0.45;
-            ctx.fillStyle = '#5ac8ff';
-            ctx.fillRect(-7, -7, 14, 14);
-
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = '#1a2838';
-            ctx.fillRect(-5, -1, 10, 2);
-            ctx.fillRect(-1, -5, 2, 10);
-            ctx.fillStyle = '#e8f4ff';
-            ctx.fillRect(-3, -3, 6, 6);
-            ctx.fillStyle = '#88b8e0';
-            ctx.fillRect(-1, -4, 2, 8);
-            ctx.fillRect(-4, -1, 8, 2);
-            ctx.restore();
-        }
-    }
-
-    _spawnCrescent(player, target, index, total) {
-        let ang;
-        if (target) {
-            ang = Math.atan2(target.y - player.y, target.x - player.x);
-        } else if (player.state === PlayerState.ATTACKING && player.pathIndex < player.attackPath.length - 1) {
-            const to = player.attackPath[player.pathIndex + 1];
-            ang = Math.atan2(to.y - player.y, to.x - player.x);
-        } else {
-            ang = player.facingRight ? 0 : Math.PI;
-        }
-        if (total > 1) {
-            ang += (index - (total - 1) / 2) * 0.28;
-        }
-        const speed = 380 + player.crescentLevel * 24;
-        const lvl = player.crescentLevel;
-        const cx = player.x;
-        const cy = player.y;
-        this.crescents.push({
-            x: cx, y: cy,
-            vx: Math.cos(ang) * speed,
-            vy: Math.sin(ang) * speed,
-            radius: 18 + lvl * 3,
-            damageMult: 0.55 + (lvl - 1) * 0.08,
-            life: 2.0,
-            maxLife: 2.0,
-            hitIds: new Set(),
-            spin: ang,
-            travel: 0,
-        });
-        this._burstParticles(cx, cy, 18, ['#ffaa44', '#ff8830', '#ffcc66', '#ff6620'], 90, 220, 0.38, 5, true);
-        this.game.renderer.shake(5, 0.14);
-    }
-
-    /** 月牙路径：开口朝后，弧顶朝飞行方向（局部 +X） */
-    _crescentPath(ctx, r, outerMul, innerMul, innerOffsetX) {
-        const or = r * outerMul;
-        const ir = r * innerMul;
-        const ix = -r * innerOffsetX;
+        ctx.globalAlpha = clamp(0.35 + lifeT * 0.35, 0.25, 0.7);
+        ctx.strokeStyle = '#d8ffff';
+        ctx.lineWidth = Math.max(2, block * 0.35);
         ctx.beginPath();
-        ctx.arc(r * 0.22, 0, or, -Math.PI * 0.58, Math.PI * 0.58);
-        ctx.arc(ix, 0, ir, Math.PI * 0.5, -Math.PI * 0.5, true);
-        ctx.closePath();
-    }
-
-    _updateCrescents(dt) {
-        const player = this.game.player;
-        const w = this.game.renderer.w;
-        const h = this.game.renderer.h;
-
-        for (const c of this.crescents) {
-            c.life -= dt;
-            c.travel += dt;
-            c.x += c.vx * dt;
-            c.y += c.vy * dt;
-
-            if (Math.random() < 0.4) {
-                const tailX = c.x - c.vx * 0.04;
-                const tailY = c.y - c.vy * 0.04;
-                this.game.particles.emit(tailX, tailY,
-                    -c.vx * 0.06 + randRange(-16, 16), -c.vy * 0.06 + randRange(-16, 16),
-                    randRange(0.14, 0.28), randRange(3, 5),
-                    ['#ffaa44', '#ff8830', '#ffcc88'][Math.floor(Math.random() * 3)],
-                    0, true, true);
-            }
-
-            const boss = this.game.bossManager && this.game.bossManager.boss;
-            if (boss && boss.alive && !boss.dying && !c.hitIds.has('boss')) {
-                if (circlesCollide(c.x, c.y, c.radius * 1.15, boss.x, boss.y + 10, boss.hitboxRadius)) {
-                    c.hitIds.add('boss');
-                    const { damage, isCrit } = this._abilityDamage(player, c.damageMult);
-                    const actual = boss.takeDamage(damage);
-                    this.game.combat.spawnDamageNumber(boss.x, boss.y - 30, actual, isCrit, '#fa0');
-                    this.game.particles.hitSpark(boss.x, boss.y + 15, isCrit);
-                    if (boss.dying) this.game.combat.onBossKilled(boss);
-                }
-            }
-            for (const m of this.game.spawner.monsters) {
-                if (!m.alive || m.dying || m.spawning || c.hitIds.has(m.id)) continue;
-                if (!circlesCollide(c.x, c.y, c.radius * 1.15, m.x, m.y, m.hitboxRadius)) continue;
-                c.hitIds.add(m.id);
-                const { damage, isCrit } = this._abilityDamage(player, c.damageMult);
-                this._hitMonster(m, damage, isCrit, '#fa0');
-                this._burstParticles(c.x, c.y, 8, ['#ffcc66', '#ff8830', '#ffaa44'], 50, 120, 0.22, 4, true);
-            }
-        }
-        this.crescents = this.crescents.filter(c =>
-            c.life > 0 && c.x > -40 && c.x < w + 40 && c.y > -40 && c.y < h + 40);
-    }
-
-    _drawCrescent(ctx, c) {
-        const alpha = clamp(c.life / c.maxLife, 0, 1);
-        const r = c.radius;
-        const flightAngle = c.spin;
-
-        ctx.save();
-        ctx.translate(c.x, c.y);
-        ctx.rotate(flightAngle);
-
-        ctx.globalAlpha = 0.22 * alpha;
-        ctx.fillStyle = '#ff6620';
-        this._crescentPath(ctx, r, 1.45, 1.05, 0.42);
-        ctx.fill();
-
-        ctx.globalAlpha = 0.5 * alpha;
-        ctx.fillStyle = '#ff8830';
-        this._crescentPath(ctx, r, 1.22, 0.88, 0.38);
-        ctx.fill();
-
-        ctx.globalAlpha = 0.88 * alpha;
-        ctx.fillStyle = '#ffaa44';
-        this._crescentPath(ctx, r, 1.05, 0.78, 0.34);
-        ctx.fill();
-
-        ctx.globalAlpha = 0.95 * alpha;
-        ctx.fillStyle = '#ffd080';
-        this._crescentPath(ctx, r * 0.88, 0.92, 0.68, 0.3);
-        ctx.fill();
-
-        ctx.globalAlpha = 0.75 * alpha;
-        ctx.strokeStyle = '#fff4c8';
-        ctx.lineWidth = 2;
-        this._crescentPath(ctx, r, 1.05, 0.78, 0.34);
+        ctx.ellipse(0, 0, 14 * s * pulse, 20 * s * pulse, 0, 0, Math.PI * 2);
         ctx.stroke();
 
+        ctx.globalAlpha = clamp(0.2 + lifeT * 0.25, 0.15, 0.5);
+        const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 22 * s);
+        glow.addColorStop(0, 'rgba(200, 248, 255, 0.95)');
+        glow.addColorStop(0.5, 'rgba(72, 184, 240, 0.55)');
+        glow.addColorStop(1, 'rgba(24, 104, 168, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 24 * s * pulse, 30 * s * pulse, 0, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
     }
 
-    _spawnBlackHoleAt(x, y, level) {
-        const radius = 82 + level * 12;
+    _spawnBlackHole(x, y) {
+        const lv = this.game.player.getUpgradeLevel('black_hole');
+        const life = 1.75;
         this.blackHoles.push({
             x, y,
-            radius,
-            coreRadius: 14,
-            pull: 100 + level * 18,
-            life: 4.2,
-            maxLife: 4.2,
-            spin: Math.random() * Math.PI * 2,
-            spawnBurst: 0.35,
+            r: 82 + lv * 24,
+            life,
+            maxLife: life,
+            pull: 220 + lv * 65,
+            dmgTimer: 0,
         });
-        this._burstParticles(x, y, 22, ['#6a48a8', '#9a78d0', '#2a1840', '#c8b0ff'], 30, 120, 0.5, 5, true);
-        this.game.renderer.shake(4, 0.14);
     }
 
-    _updateBlackHoles(dt) {
-        const monsters = this.game.spawner.monsters;
+    _spawnWhirl(x, y) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('blade_whirl');
+        const baseR = (92 + lv * 12) * WHIRL_SIZE_SCALE;
+        this.whirls.push({
+            x, y,
+            r: baseR * 0.55,
+            maxR: baseR,
+            life: 0.9,
+            maxLife: 0.9,
+            spin: Math.random() * Math.PI * 2,
+            spinSpeed: 16 + lv * 2.5,
+            bladeCount: Math.round((14 + lv * 2) * WHIRL_SIZE_SCALE),
+            bladePx: Math.round(4 * WHIRL_SIZE_SCALE),
+            hit: new Set(),
+            dmgMul: 0.35 + lv * 0.12,
+            ringPhase: 0,
+        });
+        for (let i = 0; i < 48; i++) {
+            const a = (i / 48) * Math.PI * 2;
+            const spd = randRange(140, 320);
+            this.game.particles.emit(
+                x, y,
+                Math.cos(a) * spd, Math.sin(a) * spd,
+                randRange(0.25, 0.5), randRange(6, 12),
+                ['#ff9020', '#ffb830', '#ffe060', '#fff0a8'][Math.floor(Math.random() * 4)],
+                0, true, false
+            );
+        }
+        this.game.renderer.shake(16, 0.34);
+    }
 
-        for (const hole of this.blackHoles) {
-            hole.life -= dt;
-            hole.spin += dt * 3.2;
-            if (hole.spawnBurst > 0) hole.spawnBurst -= dt;
-
-            if (Math.random() < 0.35) {
-                const a = hole.spin + randRange(0, Math.PI * 2);
-                const distR = randRange(hole.coreRadius, hole.radius * 0.9);
-                this.game.particles.emit(
-                    hole.x + Math.cos(a) * distR,
-                    hole.y + Math.sin(a) * distR,
-                    Math.cos(a + Math.PI / 2) * randRange(-40, 40),
-                    Math.sin(a + Math.PI / 2) * randRange(-40, 40),
-                    randRange(0.2, 0.45), randRange(2, 4),
-                    ['#8a68c8', '#c8a8ff', '#4a3080'][Math.floor(Math.random() * 3)],
-                    0, true, true);
-            }
-
-            for (const m of monsters) {
-                if (!m.alive || m.dying || m.spawning) continue;
-                const d = dist(m.x, m.y, hole.x, hole.y);
-                if (d >= hole.radius || d <= hole.coreRadius) continue;
-
-                const n = normalize(hole.x - m.x, hole.y - m.y);
-                const pull = hole.pull * dt * (1 - d / hole.radius);
-                m.x += n.x * Math.min(pull, d - hole.coreRadius);
-                m.y += n.y * Math.min(pull, d - hole.coreRadius);
-
-                for (const other of monsters) {
-                    if (other === m || !other.alive || other.dying || other.spawning) continue;
-                    const sd = dist(m.x, m.y, other.x, other.y);
-                    const minD = (m.hitboxRadius + other.hitboxRadius) * 0.82;
-                    if (sd < minD && sd > 0.1) {
-                        const push = normalize(m.x - other.x, m.y - other.y);
-                        const amt = (minD - sd) * 0.55;
-                        m.x += push.x * amt;
-                        m.y += push.y * amt;
-                    }
-                }
+    _drawPixelBlade(ctx, px) {
+        const blade = [
+            [null, '#6a5048', '#8a7060'],
+            ['#a89078', '#d8c8b0', '#f0e8d8'],
+            ['#d8c8b0', '#fff8e8', '#fff8e8'],
+            ['#e8dcc8', '#fff8e8', '#fff8e8'],
+            ['#c8b8a0', '#f0e8d8', '#e8dcc8'],
+            ['#a89888', '#d8c8b8', null],
+            [null, '#8a7060', null],
+        ];
+        const rows = blade.length;
+        const cols = blade[0].length;
+        const ox = -Math.floor((cols * px) / 2);
+        const oy = -Math.floor((rows * px) / 2);
+        ctx.imageSmoothingEnabled = false;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const color = blade[r][c];
+                if (!color) continue;
+                ctx.fillStyle = color;
+                ctx.fillRect(ox + c * px, oy + r * px, px, px);
             }
         }
-        this.blackHoles = this.blackHoles.filter(h => h.life > 0);
     }
 
-    _drawBlackHole(ctx, h) {
-        const pulse = 0.82 + Math.sin(h.spin * 2.2) * 0.18;
-        const alpha = clamp(h.life / h.maxLife, 0, 1) * pulse;
-        const burst = h.spawnBurst > 0 ? h.spawnBurst / 0.35 : 0;
+    _drawPixelBladeWhirl(ctx, w) {
+        const lifeT = w.maxLife ? w.life / w.maxLife : 1;
+        const radius = w.r;
+        const cx = Math.floor(w.x);
+        const cy = Math.floor(w.y);
+        const bladePx = w.bladePx || Math.round(4 * WHIRL_SIZE_SCALE);
+        const alpha = clamp(0.55 + lifeT * 0.45, 0.5, 1);
+        const s = WHIRL_SIZE_SCALE;
 
         ctx.save();
-
-        ctx.globalAlpha = (0.32 + burst * 0.2) * alpha;
-        const grad = ctx.createRadialGradient(h.x, h.y, h.coreRadius, h.x, h.y, h.radius);
-        grad.addColorStop(0, '#0a0614');
-        grad.addColorStop(0.45, '#1a1030');
-        grad.addColorStop(0.85, 'rgba(90, 60, 140, 0.35)');
-        grad.addColorStop(1, 'rgba(90, 60, 140, 0)');
-        ctx.fillStyle = grad;
+        ctx.translate(cx, cy);
+        ctx.globalAlpha = alpha * 0.62;
+        const glow = ctx.createRadialGradient(0, 0, radius * 0.1, 0, 0, radius * 1.2);
+        glow.addColorStop(0, 'rgba(255, 220, 120, 0.95)');
+        glow.addColorStop(0.45, 'rgba(255, 150, 40, 0.65)');
+        glow.addColorStop(1, 'rgba(255, 100, 20, 0)');
+        ctx.fillStyle = glow;
         ctx.beginPath();
-        ctx.arc(h.x, h.y, h.radius * (1 + burst * 0.15), 0, Math.PI * 2);
+        ctx.arc(0, 0, radius * 1.15, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
 
-        for (let ring = 0; ring < 3; ring++) {
-            const rr = h.radius * (0.55 + ring * 0.18);
-            ctx.globalAlpha = (0.35 - ring * 0.08) * alpha;
-            ctx.strokeStyle = ring === 0 ? '#c8a8ff' : '#7a58b0';
-            ctx.lineWidth = ring === 0 ? 3 : 2;
-            ctx.setLineDash([8 - ring * 2, 6 + ring * 2]);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.globalAlpha = alpha;
+
+        for (let ring = 0; ring < 4; ring++) {
+            const ringR = radius * (0.68 + ring * 0.12);
+            const ringA = 0.42 - ring * 0.07;
+            ctx.globalAlpha = alpha * ringA;
+            if (ring === 0) ctx.strokeStyle = '#fff8c0';
+            else if (ring === 1) ctx.strokeStyle = '#ffc840';
+            else ctx.strokeStyle = '#ff9028';
+            ctx.lineWidth = (ring === 0 ? 8 : ring === 1 ? 6 : 4) * (s * 0.85);
+            ctx.lineCap = 'round';
+            ctx.setLineDash(ring === 2 ? [14, 10] : []);
+            ctx.lineDashOffset = -w.ringPhase * (36 + ring * 12);
             ctx.beginPath();
-            ctx.arc(h.x, h.y, rr, h.spin + ring * 0.5, h.spin + ring * 0.5 + Math.PI * 1.6);
+            ctx.arc(0, 0, ringR, 0, Math.PI * 2);
             ctx.stroke();
         }
         ctx.setLineDash([]);
 
-        ctx.globalAlpha = 0.95 * alpha;
-        ctx.fillStyle = '#120820';
-        ctx.beginPath();
-        ctx.arc(h.x, h.y, h.coreRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#9a78d0';
-        ctx.beginPath();
-        ctx.arc(h.x, h.y, h.coreRadius * 0.45, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.globalAlpha = 0.85 * alpha;
-        for (let i = 0; i < 10; i++) {
-            const a = h.spin * 1.4 + (i / 10) * Math.PI * 2;
-            const px = h.x + Math.cos(a) * (h.radius * 0.65);
-            const py = h.y + Math.sin(a) * (h.radius * 0.65);
-            ctx.fillStyle = i % 2 === 0 ? '#e8d8ff' : '#8868b8';
-            ctx.fillRect(Math.floor(px) - 2, Math.floor(py) - 1, 4, 2);
-            ctx.fillRect(Math.floor(px) - 1, Math.floor(py) - 2, 2, 4);
-        }
-        ctx.restore();
-    }
-
-    _spawnWhirlwind(x, y, level) {
-        this.whirlwinds.push({
-            x, y,
-            radius: 6,
-            maxRadius: 118 + level * 16,
-            expandSpeed: 280 + level * 25,
-            damageMult: 0.42 + (level - 1) * 0.12,
-            life: 0.75,
-            maxLife: 0.75,
-            spin: 0,
-            hitIds: new Set(),
-        });
-        this._burstParticles(x, y, 32, ['#fff', '#e8f0ff', '#c8d8e8', '#8898b0', '#adf'], 100, 320, 0.45, 5, true);
-        this.game.renderer.shake(9, 0.22);
-        this.game.audio.playSlash();
-    }
-
-    _updateWhirlwinds(dt) {
-        const player = this.game.player;
-
-        for (const w of this.whirlwinds) {
-            w.life -= dt;
-            w.spin += dt * 22;
-            const prevR = w.radius;
-            w.radius = Math.min(w.maxRadius, w.radius + w.expandSpeed * dt);
-
-            if (w.radius > prevR && Math.random() < 0.6) {
-                const a = randRange(0, Math.PI * 2);
-                const px = w.x + Math.cos(a) * w.radius;
-                const py = w.y + Math.sin(a) * w.radius;
-                this.game.particles.emit(px, py,
-                    Math.cos(a) * randRange(-30, 30), Math.sin(a) * randRange(-30, 30),
-                    randRange(0.1, 0.22), randRange(2, 5),
-                    ['#fff', '#d8e8f8', '#b0c0d0'][Math.floor(Math.random() * 3)],
-                    0, true, true);
-            }
-
-            for (const m of this.game.spawner.monsters) {
-                if (!m.alive || m.dying || m.spawning || w.hitIds.has(m.id)) continue;
-                const d = dist(w.x, w.y, m.x, m.y);
-                if (d > w.radius + m.hitboxRadius) continue;
-                w.hitIds.add(m.id);
-                const { damage, isCrit } = this._abilityDamage(player, w.damageMult);
-                this._hitMonster(m, damage, isCrit, '#eef');
-            }
-        }
-        this.whirlwinds = this.whirlwinds.filter(w => w.life > 0);
-    }
-
-    _drawWhirlwind(ctx, w) {
-        const alpha = clamp(w.life / w.maxLife, 0, 1);
-        const t = 1 - alpha;
-        const pulse = 0.9 + Math.sin(w.spin * 1.5) * 0.1;
-
-        ctx.save();
-        ctx.translate(w.x, w.y);
-
-        for (let ring = 0; ring < 4; ring++) {
-            const rr = w.radius * (0.35 + ring * 0.22);
-            if (rr < 8) continue;
+        const count = w.bladeCount || 14;
+        for (let i = 0; i < count; i++) {
+            const a = w.spin + (i / count) * Math.PI * 2;
+            const dist = radius * (0.8 + (i % 3) * 0.07);
             ctx.save();
-            ctx.rotate(w.spin * (1 + ring * 0.15) + ring);
-            ctx.globalAlpha = (0.12 + ring * 0.06) * alpha * pulse;
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2 + ring;
-            ctx.beginPath();
-            ctx.arc(0, 0, rr, 0, Math.PI * 2);
-            ctx.stroke();
+            ctx.rotate(a);
+            ctx.translate(dist, 0);
+            ctx.rotate(Math.PI * 0.5);
+            ctx.globalAlpha = alpha;
+            this._drawPixelBlade(ctx, bladePx);
             ctx.restore();
         }
 
-        ctx.rotate(w.spin);
-        const blades = 14;
-        for (let i = 0; i < blades; i++) {
-            const a = (i / blades) * Math.PI * 2;
-            const inner = w.radius * (0.15 + t * 0.1);
-            const outer = w.radius * (0.92 + (i % 3) * 0.04);
-            const ex = Math.cos(a) * outer;
-            const ey = Math.sin(a) * outer;
-            const ix = Math.cos(a) * inner;
-            const iy = Math.sin(a) * inner;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#fff8d0';
+        const core = Math.ceil(bladePx * 1.2);
+        ctx.fillRect(-core, -core, core * 2, core * 2);
+        ctx.fillStyle = '#ff9020';
+        ctx.fillRect(-bladePx, -bladePx, bladePx * 2, bladePx * 2);
+        ctx.restore();
+    }
 
-            ctx.globalAlpha = (0.5 + (i % 2) * 0.2) * alpha;
-            ctx.strokeStyle = i % 3 === 0 ? '#fff' : (i % 2 === 0 ? '#d8e8f8' : '#98a8b8');
-            ctx.lineWidth = i % 3 === 0 ? 5 : 3;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(ix, iy);
-            ctx.lineTo(ex, ey);
-            ctx.stroke();
+    onResolveEnded() {
+        this.resolveFxTimer = 0.28;
+    }
 
-            ctx.globalAlpha = 0.75 * alpha;
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(Math.floor(ex) - 2, Math.floor(ey) - 2, 4, 4);
+    _fireballBlockColor(distRatio, flicker) {
+        if (distRatio > 0.92) return flicker ? '#3a1408' : '#4a1808';
+        if (distRatio > 0.78) return flicker ? '#b83818' : '#c83818';
+        if (distRatio > 0.55) return flicker ? '#ff8830' : '#ff9c38';
+        if (distRatio > 0.32) return flicker ? '#ffb858' : '#ffc868';
+        return flicker ? '#fff0c0' : '#ffe8b0';
+    }
+
+    _drawPixelFireball(ctx, f) {
+        const px = FIREBALL_PIXEL;
+        const rb = FIREBALL_RADIUS_BLOCKS;
+        const ang = f.rot != null ? f.rot : Math.atan2(f.vy, f.vx);
+        const lifeT = f.maxLife ? f.life / f.maxLife : 1;
+        const flicker = Math.floor(Date.now() / 50) % 2 === 0;
+        const cx = Math.floor(f.x);
+        const cy = Math.floor(f.y);
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = clamp(0.88 + lifeT * 0.12, 0.75, 1);
+        ctx.translate(cx, cy);
+        ctx.rotate(ang);
+
+        for (let by = -rb; by <= rb; by++) {
+            for (let bx = -rb; bx <= rb; bx++) {
+                const d = Math.sqrt(bx * bx + by * by);
+                if (d > rb + 0.35) continue;
+                const ratio = d / rb;
+                ctx.fillStyle = this._fireballBlockColor(ratio, flicker && ratio > 0.45);
+                ctx.fillRect(bx * px - px / 2, by * px - px / 2, px, px);
+            }
         }
 
-        ctx.globalAlpha = 0.35 * alpha * pulse;
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(0, 0, w.radius * 0.55, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.globalAlpha = 0.65 * alpha;
-        ctx.fillStyle = '#f0f8ff';
-        ctx.beginPath();
-        ctx.arc(0, 0, 10 + t * 6, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillStyle = flicker ? '#fff8e8' : '#fffaf0';
+        ctx.fillRect(-px, -px, px, px);
+        ctx.fillRect(px - px, -px, px, px);
+        ctx.fillRect(-px, px - px, px, px);
+        ctx.fillRect(px - px, px - px, px, px);
 
         ctx.restore();
+    }
+
+    _drawPixelShuriken(ctx, x, y, rot, px) {
+        const rows = SHURIKEN_SPRITE.length;
+        const cols = SHURIKEN_SPRITE[0].length;
+        ctx.save();
+        ctx.translate(Math.floor(x), Math.floor(y));
+        ctx.rotate(rot);
+        const ox = -Math.floor((cols * px) / 2);
+        const oy = -Math.floor((rows * px) / 2);
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const color = SHURIKEN_SPRITE[r][c];
+                if (!color) continue;
+                ctx.fillStyle = color;
+                ctx.fillRect(ox + c * px, oy + r * px, px, px);
+            }
+        }
+        ctx.restore();
+    }
+
+    _updateShurikens(dt) {
+        const monsters = this.game.spawner.getActiveMonsters();
+        for (const s of this.shurikens) {
+            s.life -= dt;
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+            s.rot += s.spin * dt;
+            for (const m of monsters) {
+                if (s.hit.has(m.id)) continue;
+                if (!circlesCollide(s.x, s.y, 7 * (SHURIKEN_PIXEL / 2), m.x, m.y, m.hitboxRadius)) continue;
+                s.hit.add(m.id);
+                const dmg = this.game.player.getAbilityDamage(s.dmgMul);
+                const hit = m.takeDamage(dmg, angle(s.x, s.y, m.x, m.y));
+                if (hit.actualDamage > 0) {
+                    this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#a8c0e8');
+                    this.game.particles.hitSpark(m.x, m.y, false);
+                }
+                if (m.dying) this.game.combat._handleMonsterKilled(m);
+            }
+        }
+        this.shurikens = this.shurikens.filter(s => s.life > 0);
+    }
+
+    _fireballHitRadius(f) {
+        if (f.kind === 'great') return FIREBALL_RADIUS_BLOCKS * FIREBALL_PIXEL;
+        return 10;
+    }
+
+    _updateFireballs(dt) {
+        const monsters = this.game.spawner.getActiveMonsters();
+        for (const f of this.fireballs) {
+            f.life -= dt;
+            f.x += f.vx * dt;
+            f.y += f.vy * dt;
+            if (f.kind === 'great' && Math.random() < 0.35) {
+                const trailAng = Math.atan2(f.vy, f.vx) + Math.PI + randRange(-0.4, 0.4);
+                const spd = randRange(20, 60);
+                this.game.particles.emit(
+                    f.x, f.y,
+                    Math.cos(trailAng) * spd, Math.sin(trailAng) * spd,
+                    randRange(0.15, 0.3), randRange(4, 7),
+                    ['#ff6020', '#ff9038', '#ffc060'][Math.floor(Math.random() * 3)],
+                    0, true, false
+                );
+            }
+            const hitR = this._fireballHitRadius(f);
+            for (const m of monsters) {
+                if (f.hit.has(m.id)) continue;
+                if (!circlesCollide(f.x, f.y, hitR, m.x, m.y, m.hitboxRadius)) continue;
+                f.hit.add(m.id);
+                const dmg = this.game.player.getAbilityDamage(f.dmgMul);
+                const hit = m.takeDamage(dmg, angle(f.x, f.y, m.x, m.y));
+                if (hit.actualDamage > 0) {
+                    this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#ff8a3a');
+                    this.game.particles.hitSpark(m.x, m.y, true);
+                }
+                if (m.dying) this.game.combat._handleMonsterKilled(m);
+            }
+        }
+        this.fireballs = this.fireballs.filter(f => f.life > 0);
+    }
+
+    _updateWaterTornados(dt) {
+        const monsters = this.game.spawner.getActiveMonsters();
+        const hitR = 14 * WATER_TORNADO_SIZE_SCALE;
+        for (const t of this.waterTornados) {
+            t.life -= dt;
+            t.spin += t.spinSpeed * dt;
+            t.x += t.vx * dt;
+            t.y += t.vy * dt;
+            if (Math.random() < 0.55) {
+                const trailAng = Math.atan2(t.vy, t.vx) + Math.PI + randRange(-0.5, 0.5);
+                const spd = randRange(25, 70);
+                this.game.particles.emit(
+                    t.x, t.y,
+                    Math.cos(trailAng) * spd, Math.sin(trailAng) * spd,
+                    randRange(0.12, 0.24), randRange(4, 8),
+                    ['#88e0ff', '#48b8f0', '#d8ffff'][Math.floor(Math.random() * 3)],
+                    0, true, false
+                );
+            }
+            for (const m of monsters) {
+                if (t.hit.has(m.id)) continue;
+                if (!circlesCollide(t.x, t.y, hitR, m.x, m.y, m.hitboxRadius)) continue;
+                t.hit.add(m.id);
+                const dmg = this.game.player.getAbilityDamage(t.dmgMul);
+                const hit = m.takeDamage(dmg, angle(t.x, t.y, m.x, m.y));
+                if (hit.actualDamage > 0) {
+                    this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#7ad8ff');
+                    this.game.particles.hitSpark(m.x, m.y, false);
+                }
+                if (m.dying) this.game.combat._handleMonsterKilled(m);
+            }
+        }
+        this.waterTornados = this.waterTornados.filter(t => t.life > 0);
+    }
+
+    _updateBlackHoles(dt) {
+        const monsters = this.game.spawner.getActiveMonsters();
+        for (const b of this.blackHoles) {
+            b.life -= dt;
+            b.dmgTimer += dt;
+            const reach = b.r * 2.1;
+            for (const m of monsters) {
+                const d = dist(b.x, b.y, m.x, m.y);
+                if (d > reach || d < 1) continue;
+                const n = normalize(b.x - m.x, b.y - m.y);
+                const f = b.pull * dt * (1 - d / reach);
+                m.x += n.x * f;
+                m.y += n.y * f;
+                if (b.dmgTimer >= 0.18 && d < b.r * 1.05) {
+                    const dmg = this.game.player.getAbilityDamage(0.22);
+                    const hit = m.takeDamage(dmg, angle(b.x, b.y, m.x, m.y));
+                    if (hit.actualDamage > 0) this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#9c7cff');
+                    if (m.dying) this.game.combat._handleMonsterKilled(m);
+                }
+            }
+            if (b.dmgTimer >= 0.18) b.dmgTimer = 0;
+        }
+        this.blackHoles = this.blackHoles.filter(b => b.life > 0);
+    }
+
+    _updateWhirls(dt) {
+        const monsters = this.game.spawner.getActiveMonsters();
+        for (const w of this.whirls) {
+            w.life -= dt;
+            w.spin += w.spinSpeed * dt;
+            w.ringPhase += dt * 10;
+            const expand = w.maxLife ? 1 - w.life / w.maxLife : 0;
+            w.r = (w.maxR || w.r) * (0.55 + easeOutQuad(expand) * 0.45);
+            if (Math.random() < 0.65) {
+                const a = w.spin + randRange(0, Math.PI * 2);
+                const distR = w.r * randRange(0.55, 1.05);
+                this.game.particles.emit(
+                    w.x + Math.cos(a) * distR, w.y + Math.sin(a) * distR,
+                    Math.cos(a + Math.PI * 0.5) * randRange(30, 90),
+                    Math.sin(a + Math.PI * 0.5) * randRange(30, 90),
+                    randRange(0.08, 0.18), randRange(2, 5),
+                    ['#ffe8a0', '#ffd060', '#fff8d8'][Math.floor(Math.random() * 3)],
+                    0, true, false
+                );
+            }
+            for (const m of monsters) {
+                if (w.hit.has(m.id)) continue;
+                if (dist(w.x, w.y, m.x, m.y) > w.r + m.hitboxRadius) continue;
+                w.hit.add(m.id);
+                const dmg = this.game.player.getAbilityDamage(w.dmgMul);
+                const hit = m.takeDamage(dmg, angle(w.x, w.y, m.x, m.y));
+                if (hit.actualDamage > 0) this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#f0d090');
+                if (m.dying) this.game.combat._handleMonsterKilled(m);
+            }
+        }
+        this.whirls = this.whirls.filter(w => w.life > 0);
+    }
+
+    update(dt) {
+        if (this.resolveFxTimer > 0) this.resolveFxTimer -= dt;
+        if (!this._isResolvePhase()) return;
+
+        this._updateLightningChain(dt);
+        this._updateShurikens(dt);
+        this._updateFireballs(dt);
+        this._updateWaterTornados(dt);
+        this._updateBlackHoles(dt);
+        this._updateWhirls(dt);
+    }
+
+    drawBehind(ctx) {
+        if (!this._isResolvePhase()) return;
+        for (const b of this.blackHoles) {
+            const p = 0.8 + Math.sin(Date.now() * 0.008) * 0.2;
+            ctx.save();
+            const maxLife = b.maxLife || 1.75;
+            ctx.globalAlpha = clamp(b.life / maxLife, 0, 1);
+            const g = ctx.createRadialGradient(b.x, b.y, 4, b.x, b.y, b.r * 1.55);
+            g.addColorStop(0, 'rgba(70,30,120,0.9)');
+            g.addColorStop(1, 'rgba(10,6,18,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.r * p, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    drawFront(ctx) {
+        if (!this._isResolvePhase()) return;
+
+        for (const s of this.shurikens) {
+            this._drawPixelShuriken(ctx, s.x, s.y, s.rot, SHURIKEN_PIXEL);
+        }
+
+        for (const f of this.fireballs) {
+            if (f.kind === 'great') {
+                this._drawPixelFireball(ctx, f);
+            } else {
+                ctx.imageSmoothingEnabled = false;
+                ctx.fillStyle = '#ff8a38';
+                ctx.fillRect(Math.floor(f.x - 4), Math.floor(f.y - 4), 8, 8);
+                ctx.fillStyle = '#ffd0a0';
+                ctx.fillRect(Math.floor(f.x - 2), Math.floor(f.y - 2), 4, 4);
+            }
+        }
+        for (const t of this.waterTornados) {
+            this._drawPixelWaterTornado(ctx, t);
+        }
+        for (const w of this.whirls) {
+            this._drawPixelBladeWhirl(ctx, w);
+        }
     }
 }
 
@@ -3774,9 +3293,10 @@ class SakuraSystem {
         this.fadeOutDuration = 1.8;
     }
 
-    start(worldW, worldH) {
+    start(worldW, worldH, duration) {
         this.petals = [];
         this.active = true;
+        if (duration != null) this.duration = duration;
         this.timer = this.duration;
         const count = 42;
         for (let i = 0; i < count; i++) {
@@ -3865,6 +3385,228 @@ class SakuraSystem {
             this._drawPetal(ctx, p, masterAlpha);
         }
         ctx.restore();
+    }
+}
+
+
+// ---- failDeath.js ----
+class StageFailAnimator {
+    constructor(game) {
+        this.game = game;
+        this.active = false;
+        this.phase = 'idle';
+        this.timer = 0;
+        this.spears = [];
+        this.onComplete = null;
+        this.frozen = false;
+        this.death = { shake: 0, fall: 0, alpha: 1, impaleAngles: [] };
+    }
+
+    isFrozen() {
+        return this.frozen;
+    }
+
+    showFailPose() {
+        return this.active || this.frozen;
+    }
+
+    freeze() {
+        this.frozen = true;
+        this.active = false;
+        this.phase = 'done';
+        this.death.fall = 1;
+        this.death.shake = 0;
+        this.death.alpha = this.death.alpha != null ? this.death.alpha : 0.65;
+        const p = this.game.player;
+        if (p) {
+            p.deathAnim = { active: true, phase: 'done', frozen: true };
+        }
+    }
+
+    start(onComplete) {
+        this.frozen = false;
+        const game = this.game;
+        const p = game.player;
+        if (!p) {
+            if (onComplete) onComplete();
+            return;
+        }
+
+        const monsters = game.spawner.getActiveMonsters();
+        const px = p.homeX;
+        const py = p.homeY;
+        const sources = monsters.length > 0
+            ? monsters
+            : [{ x: px + randRange(90, 160), y: py - randRange(60, 120), facing: Math.PI + 0.4 }];
+
+        this.active = true;
+        this.phase = 'windup';
+        this.timer = 0;
+        this.onComplete = onComplete;
+        this.death = { shake: 0, fall: 0, alpha: 1, impaleAngles: [] };
+        this.spears = [];
+
+        for (const m of game.spawner.monsters) m.game = game;
+
+        sources.forEach((m, i) => {
+            const mx = m.x;
+            const my = m.y;
+            const tx = px + randRange(-10, 10);
+            const ty = py + randRange(-8, 8);
+            const ang = angle(mx, my, tx, ty);
+            const d = Math.max(40, dist(mx, my, tx, ty));
+            this.spears.push({
+                fromX: mx,
+                fromY: my,
+                x: mx,
+                y: my,
+                targetX: tx,
+                targetY: ty,
+                angle: ang,
+                delay: i * CONFIG.FAIL_DEATH.SPEAR_STAGGER,
+                progress: 0,
+                dist: d,
+                speed: CONFIG.FAIL_DEATH.SPEAR_SPEED,
+                landed: false,
+                monster: m,
+            });
+            m.failThrowTimer = CONFIG.FAIL_DEATH.WINDUP + 0.45;
+        });
+
+        p.x = px;
+        p.y = py;
+        p.state = PlayerState.IDLE;
+        p.deathAnim = { active: true, phase: 'windup' };
+    }
+
+    isActive() {
+        return this.active;
+    }
+
+    isThrowing() {
+        return this.active && (this.phase === 'windup' || this.phase === 'throw');
+    }
+
+    update(dt) {
+        if (!this.active) return;
+        const cfg = CONFIG.FAIL_DEATH;
+        const p = this.game.player;
+        this.timer += dt;
+
+        if (this.phase === 'windup') {
+            if (this.timer >= cfg.WINDUP) {
+                this.phase = 'throw';
+                this.timer = 0;
+                if (p) p.deathAnim.phase = 'throw';
+            }
+            return;
+        }
+
+        if (this.phase === 'throw') {
+            let pending = false;
+            for (const s of this.spears) {
+                if (s.landed) continue;
+                pending = true;
+                if (this.timer < s.delay) continue;
+                const elapsed = this.timer - s.delay;
+                s.progress = Math.min(1, (elapsed * s.speed) / s.dist);
+                s.x = lerp(s.fromX, s.targetX, easeInQuad(s.progress));
+                s.y = lerp(s.fromY, s.targetY, easeInQuad(s.progress));
+                if (s.progress >= 1) {
+                    s.landed = true;
+                    s.x = s.targetX;
+                    s.y = s.targetY;
+                    this.death.impaleAngles.push(s.angle + Math.PI + randRange(-0.2, 0.2));
+                }
+            }
+            if (!pending) {
+                this._beginImpact();
+            }
+            return;
+        }
+
+        if (this.phase === 'impact') {
+            this.death.shake = Math.sin(this.timer * 48) * (1 - this.timer / cfg.IMPACT_PAUSE) * 8;
+            if (this.timer >= cfg.IMPACT_PAUSE) {
+                this.phase = 'death';
+                this.timer = 0;
+                if (p) p.deathAnim.phase = 'falling';
+            }
+            return;
+        }
+
+        if (this.phase === 'death') {
+            const t = clamp(this.timer / cfg.DEATH_DURATION, 0, 1);
+            this.death.fall = easeInQuad(t);
+            this.death.alpha = 1 - t * 0.35;
+            this.death.shake *= 0.9;
+            if (this.timer >= cfg.DEATH_DURATION) {
+                this.freeze();
+                const cb = this.onComplete;
+                this.onComplete = null;
+                if (cb) cb();
+            }
+        }
+    }
+
+    _beginImpact() {
+        const cfg = CONFIG.FAIL_DEATH;
+        const p = this.game.player;
+        this.phase = 'impact';
+        this.timer = 0;
+        if (p) {
+            p.deathAnim.phase = 'impaled';
+            this.game.bloodStains.spawn(p.x, p.y + 8, 1.5, 0);
+            this.game.particles.deathEffect(p.x, p.y, '#6a1818');
+        }
+        this.game.renderer.shake(14, 0.35);
+    }
+
+    _drawSpear(ctx, x, y, ang, stuck = false) {
+        const len = stuck ? 22 : 18;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(ang);
+        ctx.fillStyle = '#5a4030';
+        ctx.fillRect(-len * 0.55, -1.5, len * 0.72, 3);
+        ctx.fillStyle = '#8a7060';
+        ctx.fillRect(len * 0.08, -1, len * 0.28, 2);
+        ctx.fillStyle = '#c8ccd4';
+        ctx.beginPath();
+        ctx.moveTo(len * 0.38, 0);
+        ctx.lineTo(len * 0.55, -3);
+        ctx.lineTo(len * 0.55, 3);
+        ctx.closePath();
+        ctx.fill();
+        if (stuck) {
+            ctx.fillStyle = '#8a1818';
+            ctx.fillRect(-len * 0.08, -2.5, 5, 5);
+        }
+        ctx.restore();
+    }
+
+    drawSpears(ctx) {
+        if (!this.active) return;
+        for (const s of this.spears) {
+            if (s.landed) continue;
+            if (this.phase === 'windup' || this.timer < s.delay) continue;
+            this._drawSpear(ctx, s.x, s.y, s.angle, false);
+        }
+    }
+
+    drawImpaledSpears(ctx, px, py) {
+        for (const ang of this.death.impaleAngles) {
+            this._drawSpear(ctx, px, py, ang, true);
+        }
+    }
+
+    drawMonsterThrowSpear(ctx, m) {
+        if (!m.failThrowTimer || m.failThrowTimer <= 0) return;
+        const ang = angle(m.x, m.y, this.game.player.x, this.game.player.y);
+        const reach = m.hitboxRadius + 10;
+        const sx = m.x + Math.cos(ang) * reach;
+        const sy = m.y + Math.sin(ang) * reach;
+        this._drawSpear(ctx, sx, sy, ang, false);
     }
 }
 
@@ -3965,309 +3707,649 @@ class GrassSystem {
 // ---- levelManager.js ----
 class LevelManager {
     constructor() {
-        this.chapter = 1;
         this.level = 0;
-        this.allLevelsComplete = false;
-        this.nextLevelOverride = null;
-
         this.bannerActive = false;
         this.bannerTimer = 0;
         this.bannerDuration = 0;
         this.bannerTitle = '';
         this.bannerSubtitle = '';
         this.bannerColor = '#fff';
-        this.pendingStartLevel = false;
+
+        this.stageIntro = null;
+        this.clearFlash = null;
+        this.failIntro = null;
     }
 
-    get totalLevels() {
-        return CONFIG.LEVELS.length;
+    startStageIntro(levelNum, onComplete) {
+        this.stageIntro = {
+            levelNum,
+            phase: 'slideIn',
+            slideInDur: CONFIG.STAGE_INTRO_SLIDE_IN,
+            holdDur: CONFIG.STAGE_INTRO_LABEL_HOLD,
+            slideOutDur: CONFIG.STAGE_INTRO_SLIDE_OUT,
+            phaseTimer: CONFIG.STAGE_INTRO_SLIDE_IN,
+            onComplete,
+        };
     }
 
-    get currentLevelConfig() {
-        return CONFIG.LEVELS[this.level] || null;
+    isStageIntroActive() {
+        return this.stageIntro !== null;
     }
 
-    showBanner(title, subtitle, duration, color) {
+    updateStageIntro(dt) {
+        if (!this.stageIntro) return;
+        const intro = this.stageIntro;
+        intro.phaseTimer -= dt;
+        if (intro.phaseTimer > 0) return;
+
+        if (intro.phase === 'slideIn') {
+            intro.phase = 'hold';
+            intro.phaseTimer = intro.holdDur;
+        } else if (intro.phase === 'hold') {
+            intro.phase = 'slideOut';
+            intro.phaseTimer = intro.slideOutDur;
+        } else {
+            const cb = intro.onComplete;
+            this.stageIntro = null;
+            if (cb) cb();
+        }
+    }
+
+    _getStageIntroBoardX(intro, vp) {
+        const centerX = vp.cx;
+        const offScreen = vp.w * 0.42;
+        if (intro.phase === 'slideIn') {
+            const t = 1 - clamp(intro.phaseTimer / intro.slideInDur, 0, 1);
+            return lerp(-offScreen, centerX, easeOutQuad(t));
+        }
+        if (intro.phase === 'hold') return centerX;
+        const t = 1 - clamp(intro.phaseTimer / intro.slideOutDur, 0, 1);
+        return lerp(centerX, vp.w + offScreen, easeInQuad(t));
+    }
+
+    _drawPixelNail(ctx, x, y, unit) {
+        const n = unit;
+        ctx.fillStyle = '#2a1810';
+        ctx.fillRect(x, y, n, n);
+        ctx.fillStyle = '#5a4030';
+        ctx.fillRect(x + 1, y + 1, n - 2, n - 2);
+        ctx.fillStyle = '#8a7060';
+        ctx.fillRect(x + 1, y + 1, 1, 1);
+    }
+
+    _drawWoodenSign(ctx, cx, cy, s, levelNum) {
+        const unit = Math.max(2, Math.round(2 * s));
+        const cols = 56;
+        const rows = 13;
+        const bw = cols * unit;
+        const bh = rows * unit;
+        const x = Math.floor(cx - bw / 2);
+        const y = Math.floor(cy - bh / 2);
+        const text = `第${levelNum}关`;
+        const fontSize = Math.round(14 * s);
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+
+        ctx.fillStyle = '#2e1a0c';
+        ctx.fillRect(x, y, bw, bh);
+
+        const inset = unit;
+        for (let row = 0; row < rows - 2; row++) {
+            const gy = y + inset + row * unit;
+            ctx.fillStyle = row === 0 ? '#a87840' : (row % 2 === 0 ? '#8a5c34' : '#7a502c');
+            ctx.fillRect(x + inset, gy, bw - inset * 2, unit);
+        }
+
+        ctx.fillStyle = '#6a4428';
+        ctx.fillRect(x + inset, y + inset, unit, bh - inset * 2);
+        ctx.fillRect(x + bw - inset * 2, y + inset, unit, bh - inset * 2);
+
+        const nailOff = unit;
+        const nailSz = unit + 1;
+        this._drawPixelNail(ctx, x + nailOff, y + nailOff, nailSz);
+        this._drawPixelNail(ctx, x + bw - nailOff - nailSz, y + nailOff, nailSz);
+        this._drawPixelNail(ctx, x + nailOff, y + bh - nailOff - nailSz, nailSz);
+        this._drawPixelNail(ctx, x + bw - nailOff - nailSz, y + bh - nailOff - nailSz, nailSz);
+
+        const tcx = Math.floor(cx);
+        const tcy = Math.floor(cy);
+        const off = 1;
+        ctx.font = `bold ${Math.max(10, fontSize)}px ${GAME_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#1a1008';
+        ctx.fillText(text, tcx + off, tcy + off);
+        ctx.fillStyle = '#fff4c0';
+        ctx.fillText(text, tcx, tcy);
+
+        ctx.restore();
+    }
+
+    drawStageIntro(ctx, vp, uiScale) {
+        if (!this.stageIntro) return;
+        const s = uiScale || 1;
+        const intro = this.stageIntro;
+        const labelY = Math.floor(vp.y + vp.h * 0.22);
+        const boardX = Math.floor(this._getStageIntroBoardX(intro, vp));
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        this._drawWoodenSign(ctx, boardX, labelY, s, intro.levelNum);
+        ctx.restore();
+    }
+
+    showClearFlash(onMid) {
+        this.clearFlash = {
+            timer: CONFIG.STAGE_CLEAR_FLASH,
+            duration: CONFIG.STAGE_CLEAR_FLASH,
+            onMid,
+            midDone: false,
+        };
+    }
+
+    updateClearFlash(dt) {
+        if (!this.clearFlash) return;
+        const f = this.clearFlash;
+        f.timer -= dt;
+        const elapsed = f.duration - f.timer;
+        if (!f.midDone && elapsed >= f.duration * 0.45) {
+            f.midDone = true;
+            if (f.onMid) f.onMid();
+        }
+        if (f.timer <= 0) this.clearFlash = null;
+    }
+
+    drawClearFlash(ctx, vp, uiScale) {
+        if (!this.clearFlash) return;
+        const s = uiScale || 1;
+        const alpha = clamp(this.clearFlash.timer / this.clearFlash.duration, 0, 1);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        drawPixelText(ctx, '关卡通过', vp.cx, vp.cy, Math.round(26 * s), '#ffd8a0');
+        ctx.restore();
+    }
+
+    showFailIntro(onComplete) {
+        this.failIntro = {
+            labelTimer: CONFIG.STAGE_FAIL_LABEL_DURATION,
+            labelDuration: CONFIG.STAGE_FAIL_LABEL_DURATION,
+            overlayAlpha: 0,
+            onComplete,
+            completeCalled: false,
+        };
+    }
+
+    isFailIntroActive() {
+        return this.failIntro !== null;
+    }
+
+    updateFailIntro(dt) {
+        if (!this.failIntro) return;
+        const f = this.failIntro;
+        if (f.labelTimer > 0) {
+            f.labelTimer -= dt;
+            if (f.labelTimer <= 0 && !f.completeCalled) {
+                f.completeCalled = true;
+                if (f.onComplete) f.onComplete();
+            }
+            return;
+        }
+        f.overlayAlpha = Math.min(1, f.overlayAlpha + dt / CONFIG.STAGE_FAIL_OVERLAY_FADE);
+        if (f.overlayAlpha >= 1) this.failIntro = null;
+    }
+
+    drawFail(ctx, vp, s) {
+        const intro = this.failIntro;
+        const overlayA = intro ? intro.overlayAlpha : 1;
+        const labelA = intro && intro.labelTimer > 0
+            ? clamp(intro.labelTimer / intro.labelDuration, 0, 1)
+            : 0;
+        const labelY = vp.y + vp.h * 0.22;
+
+        if (overlayA > 0) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${0.72 * overlayA})`;
+            ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+        }
+
+        if (labelA > 0) {
+            const text = '挑战失败';
+            const size = Math.round(24 * s);
+            ctx.save();
+            ctx.globalAlpha = labelA;
+            ctx.imageSmoothingEnabled = false;
+            ctx.font = `bold ${size}px ${GAME_FONT}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(255, 220, 210, 0.9)';
+            ctx.fillText(text, Math.floor(vp.cx) + 1, Math.floor(labelY) + 1);
+            ctx.fillStyle = '#8a2820';
+            ctx.fillText(text, Math.floor(vp.cx), Math.floor(labelY));
+            ctx.restore();
+        }
+
+        if (overlayA > 0.35) {
+            const msgA = easeOutQuad(clamp((overlayA - 0.35) / 0.65, 0, 1));
+            const pop = 0.88 + 0.12 * msgA;
+            const cy = vp.y + vp.h * 0.44;
+            ctx.save();
+            ctx.globalAlpha = msgA;
+            ctx.translate(vp.cx, cy);
+            ctx.scale(pop, pop);
+            ctx.translate(-vp.cx, -cy);
+            drawPixelText(ctx, '回合耗尽', vp.cx, cy, Math.round(20 * s), '#ff9c84');
+            drawPixelText(ctx, '点击屏幕重新挑战', vp.cx, cy + 28 * s, Math.round(13 * s), '#f4e8da');
+            ctx.restore();
+        }
+    }
+
+    showBanner(title, subtitle, duration, color = '#fff') {
         this.bannerActive = true;
         this.bannerTimer = duration;
         this.bannerDuration = duration;
         this.bannerTitle = title;
         this.bannerSubtitle = subtitle || '';
-        this.bannerColor = color || '#fff';
+        this.bannerColor = color;
     }
+
+    beginFirstLevel() {}
 
     showStageBanner() {
-        const cfg = this.currentLevelConfig;
-        if (isBossLevel(this.level)) {
-            const bossKey = getBossKeyForLevel(this.level);
-            const bossName = bossKey && CONFIG.BOSSES[bossKey]
-                ? CONFIG.BOSSES[bossKey].name
-                : '首领即将登场...';
-            this.showBanner('⚠ BOSS战', bossName, 2.8, '#f84');
-            return;
-        }
-        const sub = cfg ? `怪物 ${cfg.count} 只` : '';
-        this.showBanner(`第 ${this.chapter} 章 · 第 ${this.level + 1} 关`, sub, 2.2, '#fff');
+        // Replaced by stage intro countdown
     }
 
-    beginFirstLevel() {
-        this.showStageBanner();
-        this.pendingStartLevel = true;
-    }
-
-    onLevelCleared() {
-        this.showBanner('关卡通过!', '准备下一关...', 1.1, '#4a3828');
-    }
-
-    setNextLevelOverride(index) {
-        if (!Number.isInteger(index)) return;
-        const clamped = clamp(index, 0, this.totalLevels - 1);
-        this.nextLevelOverride = clamped;
-    }
+    onLevelCleared() {}
 
     update(dt) {
-        if (!this.bannerActive) return null;
-
+        this.updateStageIntro(dt);
+        this.updateClearFlash(dt);
+        this.updateFailIntro(dt);
+        if (!this.bannerActive) return false;
         this.bannerTimer -= dt;
-        if (this.bannerTimer > 0) return null;
-
+        if (this.bannerTimer > 0) return false;
         this.bannerActive = false;
-
-        if (this.pendingStartLevel) {
-            this.pendingStartLevel = false;
-            return 'START_LEVEL';
-        }
-
-        if (this.bannerTitle === '关卡通过!') {
-            if (this.nextLevelOverride !== null) {
-                this.level = this.nextLevelOverride;
-                this.nextLevelOverride = null;
-            } else {
-                this.level++;
-            }
-            if (this.level >= this.totalLevels) {
-                this.allLevelsComplete = true;
-                return 'ALL_COMPLETE';
-            }
-            this.showStageBanner();
-            return 'START_LEVEL';
-        }
-
-        return null;
+        return true;
     }
 
     drawBanner(ctx, vp, uiScale) {
         if (!this.bannerActive) return;
-
         const s = uiScale || 1;
-        const t = this.bannerTimer / this.bannerDuration;
-        const fadeIn = Math.min(1, (1 - t) / 0.15);
-        const fadeOut = Math.min(1, t / 0.25);
-        const alpha = Math.min(fadeIn, fadeOut);
-
-        const boxW = Math.min(vp.w - 24 * s, 340 * s);
-        const boxH = (this.bannerSubtitle ? 72 : 52) * s;
+        const alpha = clamp(this.bannerTimer / this.bannerDuration, 0, 1);
+        const boxW = Math.min(vp.w - 28 * s, 340 * s);
+        const boxH = (this.bannerSubtitle ? 72 : 54) * s;
         const x = vp.x + (vp.w - boxW) / 2;
-        const y = vp.y + 72 * s;
-
+        const y = vp.y + 86 * s;
+        ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = 'rgba(58, 48, 38, 0.82)';
-        ctx.strokeStyle = 'rgba(130, 100, 72, 0.65)';
-        ctx.lineWidth = 2;
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(x, y, boxW, boxH, 10);
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            ctx.fillRect(x, y, boxW, boxH);
-            ctx.strokeRect(x, y, boxW, boxH);
-        }
-
-        drawGameText(ctx, this.bannerTitle, vp.cx, y + boxH * 0.38,
-            Math.round(18 * s), this.bannerColor);
-
+        drawPixelPanel(ctx, x, y, boxW, boxH, 'rgba(44,34,26,0.92)', 'rgba(168,132,96,0.85)', 2);
+        drawPixelText(ctx, this.bannerTitle, vp.cx, y + boxH * 0.38, Math.round(18 * s), this.bannerColor);
         if (this.bannerSubtitle) {
-            drawGameText(ctx, this.bannerSubtitle, vp.cx, y + boxH * 0.72,
-                Math.round(13 * s), '#8a7a6a');
+            drawPixelText(ctx, this.bannerSubtitle, vp.cx, y + boxH * 0.72, Math.round(12 * s), '#c8b8a6');
         }
-
-        ctx.globalAlpha = 1;
+        ctx.restore();
     }
 
-    drawComplete(ctx, vp, uiScale) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    drawComplete(ctx, vp, s) {
+        ctx.fillStyle = 'rgba(0,0,0,0.72)';
         ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
-
-        const s = uiScale || 1;
-        drawGameText(ctx, '恭喜通关!', vp.cx, vp.y + vp.h * 0.44, Math.round(24 * s), '#8a6020');
-        drawGameText(ctx, '第一章 全部完成', vp.cx, vp.y + vp.h * 0.54, Math.round(16 * s), '#4a4038');
-        drawGameText(ctx, '点击屏幕重新开始', vp.cx, vp.y + vp.h * 0.64, Math.round(14 * s), '#7a6a5a');
+        drawPixelText(ctx, '你完成了全部关卡', vp.cx, vp.y + vp.h * 0.44, Math.round(22 * s), '#ffd8a0');
+        drawPixelText(ctx, '点击屏幕重新开始', vp.cx, vp.y + vp.h * 0.58, Math.round(14 * s), '#f4e8da');
     }
 }
 
 
+// ---- experience.js ----
+class ExperienceManager {
+    constructor(game) {
+        this.game = game;
+        this.level = 1;
+        this.exp = 0;
+        this.expToNext = this._calcExpToNext(1);
+        this.pendingLevelUps = 0;
+    }
+
+    reset() {
+        this.level = 1;
+        this.exp = 0;
+        this.expToNext = this._calcExpToNext(1);
+        this.pendingLevelUps = 0;
+    }
+
+    _calcExpToNext(level) {
+        const cfg = CONFIG.EXP;
+        return Math.round(cfg.BASE_TO_LEVEL * Math.pow(cfg.GROWTH, level - 1));
+    }
+
+    getKillReward(monster) {
+        const rewards = CONFIG.EXP.KILL_REWARD;
+        let base = rewards[monster.kind] || rewards.NORMAL || 8;
+        if (monster.kind === MonsterKind.SPLITTER && monster.splitTier > 0) {
+            base = Math.max(1, Math.round(base * Math.pow(0.55, monster.splitTier)));
+        }
+        return base;
+    }
+
+    addExp(amount) {
+        if (amount <= 0) return;
+        const game = this.game;
+        if (game.state !== 'PLAYING' && game.state !== 'LEVEL_UP') return;
+
+        this.exp += amount;
+        while (this.exp >= this.expToNext) {
+            this.exp -= this.expToNext;
+            this.level++;
+            this.expToNext = this._calcExpToNext(this.level);
+            this.pendingLevelUps++;
+        }
+    }
+
+    onMonsterKilled(monster) {
+        this.addExp(this.getKillReward(monster));
+    }
+
+    tryTriggerPendingUpgrade() {
+        if (this.pendingLevelUps <= 0) return;
+        if (this.game.state !== 'PLAYING') return;
+        if (this.game.isUpgradeBlocked()) return;
+
+        this.pendingLevelUps--;
+        const game = this.game;
+        if (game.input) game.input.cancelActivePointer();
+        game.state = 'LEVEL_UP';
+        game.upgrades.generateChoices();
+        game._lockOverlayInput();
+        game.audio.playLevelUp();
+    }
+}
+
+
+// ---- pixelUi.js ----
+function getBuffOrbIconSprite(type) {
+    const W = '#f8f8f8';
+    const D = '#2a1e16';
+    const B = '#9be8ff';
+    const G = '#d8ff98';
+    const P = '#ffd0ff';
+    const O = '#ffb070';
+    const map = {
+        attack: [
+            [null, W, null, null, W, null],
+            [null, W, O, O, W, null],
+            [null, W, O, O, W, null],
+            [null, W, null, null, W, null],
+            [null, D, null, null, D, null],
+            [null, D, null, null, D, null],
+        ],
+        ki: [
+            [null, B, null, B, null],
+            [B, W, B, W, B],
+            [null, B, W, B, null],
+            [null, B, W, B, null],
+            [B, W, B, W, B],
+        ],
+        combo: [
+            [null, P, W, P, null],
+            [P, null, W, null, P],
+            [W, W, W, W, W],
+            [P, null, W, null, P],
+            [null, P, W, P, null],
+        ],
+        ice: [
+            [null, null, B, null, null],
+            [null, B, W, B, null],
+            [B, W, W, W, B],
+            [null, B, W, B, null],
+            [null, null, B, null, null],
+        ],
+    };
+    return map[type] || map.attack;
+}
+
+function drawPixelIcon(ctx, sprite, cx, cy, px) {
+    if (!sprite || sprite.length === 0) return;
+    const rows = sprite.length;
+    const cols = sprite[0].length;
+    const ox = Math.floor(cx - (cols * px) / 2);
+    const oy = Math.floor(cy - (rows * px) / 2);
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const color = sprite[r][c];
+            if (!color) continue;
+            ctx.fillStyle = color;
+            ctx.fillRect(ox + c * px, oy + r * px, px, px);
+        }
+    }
+}
+
+function drawPixelPanel(ctx, x, y, w, h, fill, border, borderPx = 2) {
+    const bx = Math.floor(x);
+    const by = Math.floor(y);
+    const bw = Math.floor(w);
+    const bh = Math.floor(h);
+    const bp = Math.max(1, Math.floor(borderPx));
+    ctx.fillStyle = border;
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = fill;
+    ctx.fillRect(bx + bp, by + bp, bw - bp * 2, bh - bp * 2);
+}
+
+function drawPixelText(ctx, text, x, y, sizePx, color, align = 'center', baseline = 'middle') {
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    const px = Math.max(8, Math.round(sizePx));
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    ctx.font = `bold ${px}px ${GAME_FONT}`;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    const off = Math.max(1, Math.floor(px / 7));
+    ctx.fillStyle = '#1a1008';
+    ctx.fillText(text, ix + off, iy + off);
+    ctx.fillStyle = color;
+    ctx.fillText(text, ix, iy);
+    ctx.restore();
+}
+
+function getBuffOrbShortLabel(type) {
+    if (type === 'attack') return '攻击';
+    if (type === 'ki') return '气力';
+    if (type === 'combo') return '连击';
+    if (type === 'ice') return '冰冻';
+    return '强化';
+}
+
+
 // ---- ui.js ----
+function _parseHexColor(hex) {
+    const h = hex.replace('#', '');
+    return [
+        parseInt(h.slice(0, 2), 16),
+        parseInt(h.slice(2, 4), 16),
+        parseInt(h.slice(4, 6), 16),
+    ];
+}
+
+function lerpHexColor(c1, c2, t) {
+    const a = _parseHexColor(c1);
+    const b = _parseHexColor(c2);
+    const ch = (i) => Math.round(a[i] + (b[i] - a[i]) * t);
+    return `#${[0, 1, 2].map((i) => ch(i).toString(16).padStart(2, '0')).join('')}`;
+}
+
 class UI {
-    constructor() {
-        this.pauseRects = {};
-    }
-
-    draw(ctx, player, vp, uiScale, opts = {}) {
-        const s = uiScale || 1;
-        this.drawBottomPanel(ctx, vp, s);
-        this.drawHearts(ctx, player, vp, s);
-        this.drawKiBar(ctx, player, vp, s);
-        this.drawXpBar(ctx, player, vp, s);
-        this.drawComboBanner(ctx, player, vp, s, !!opts.hasBoss);
-    }
-
-    getBottomHudLayout(vp, s) {
-        const innerPad = Math.round(12 * s);
-        const xpBarH = Math.round(12 * s);
-        const kiBarH = Math.round(10 * s);
-        const heartScale = Math.round(4 * s);
-        const heartSpacing = 26 * s;
-        const heartBlockH = heartScale * 5;
-        const bottomPad = Math.round(14 * s);
-        const rowGap = Math.round(12 * s);
-        const panelTopPad = Math.round(22 * s);
-
-        const panelX = vp.x;
-        const panelW = vp.w;
-        const barW = panelW - innerPad * 2;
-        const barX = panelX + innerPad;
-
-        const xpY = vp.y + vp.h - bottomPad - xpBarH;
-        const kiY = xpY - rowGap - kiBarH;
-        const heartsY = kiY - rowGap - heartBlockH / 2;
-        const panelY = heartsY - heartBlockH / 2 - panelTopPad;
-
-        return {
-            panel: { x: panelX, y: panelY, w: panelW, h: vp.y + vp.h - panelY },
-            playAreaBottom: panelY,
-            xp: { x: barX, y: xpY, w: barW, h: xpBarH },
-            ki: { x: barX, y: kiY, w: barW, h: kiBarH },
-            hearts: { y: heartsY, scale: heartScale, spacing: heartSpacing },
-        };
-    }
-
-    getPlayAreaBottom(canvasH, uiScale) {
-        const s = uiScale || 1;
-        const vp = { x: 0, y: 0, w: CONFIG.DISPLAY.LOGICAL_WIDTH, h: canvasH };
-        return this.getBottomHudLayout(vp, s).playAreaBottom;
-    }
-
-    drawBottomPanel(ctx, vp, s) {
-        const { panel } = this.getBottomHudLayout(vp, s);
-        const r = Math.round(10 * s);
-        ctx.save();
-        ctx.fillStyle = 'rgba(36, 30, 24, 0.82)';
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(panel.x, panel.y, panel.w, panel.h, [r, r, 0, 0]);
-            ctx.fill();
+    _getComboColors(combo) {
+        const t = clamp((combo - 2) / 18, 0, 1);
+        let main;
+        let sub;
+        if (t < 0.45) {
+            const u = t / 0.45;
+            main = lerpHexColor('#fff8c0', '#ffc830', u);
+            sub = lerpHexColor('#ffe060', '#ff9838', u);
+        } else if (t < 0.8) {
+            const u = (t - 0.45) / 0.35;
+            main = lerpHexColor('#ffc830', '#ff6020', u);
+            sub = lerpHexColor('#ff9838', '#ff4028', u);
         } else {
-            ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+            const u = (t - 0.8) / 0.2;
+            main = lerpHexColor('#ff6020', '#fff8e8', u);
+            sub = lerpHexColor('#ff4028', '#ff3020', u);
         }
-        ctx.strokeStyle = 'rgba(130, 108, 82, 0.65)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(panel.x, panel.y + 1);
-        ctx.lineTo(panel.x + panel.w, panel.y + 1);
-        ctx.stroke();
-        ctx.restore();
+        const glow = lerpHexColor('#ffb830', '#ff3820', t);
+        return { main, sub, glow };
     }
 
-    getTopHudBottom(vp, s, hasBoss = false) {
-        const pauseBtn = this.getPauseButtonRect(vp, s);
-        let bottom = pauseBtn.y + pauseBtn.h + Math.round(8 * s);
-        if (hasBoss) {
-            const gap = Math.round(6 * s);
-            const barH = Math.round(8 * s);
-            const nameSize = Math.round(11 * s);
-            bottom += gap + barH + nameSize + Math.round(6 * s);
-        }
-        return bottom;
-    }
-
-    _drawComboLabel(ctx, text, x, y, size, fillColor) {
-        const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2.5) : 1;
-        const px = Math.round(size * dpr) / dpr;
+    _drawComboPixelText(ctx, text, x, y, sizePx, colors) {
+        ctx.save();
+        const px = Math.max(8, Math.round(sizePx));
         ctx.font = `bold ${px}px ${GAME_FONT}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.lineWidth = Math.max(2.5, px * 0.14);
-        ctx.strokeStyle = 'rgba(255, 248, 235, 0.92)';
         ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.miterLimit = 2;
+        const strokeW = Math.max(3, px * 0.13);
+        ctx.lineWidth = strokeW;
+        ctx.strokeStyle = '#000000';
         ctx.strokeText(text, x, y);
-        ctx.fillStyle = fillColor;
+        ctx.fillStyle = colors.main;
         ctx.fillText(text, x, y);
-    }
-
-    drawComboBanner(ctx, player, vp, s, hasBoss = false) {
-        const combo = player.comboDisplayPeak;
-        if (combo < 2 || player.comboDisplayTimer <= 0) return;
-
-        const fading = player.comboCount < 2;
-        const fadeDur = fading
-            ? CONFIG.PLAYER.COMBO_END_FADE
-            : CONFIG.PLAYER.COMBO_DISPLAY_HOLD;
-        const alpha = fading
-            ? clamp(player.comboDisplayTimer / fadeDur, 0, 1)
-            : 1;
-
-        const tier = combo >= 10 ? 2 : combo >= 5 ? 1 : 0;
-        const mainColors = ['#4a4038', '#8a5030', '#c04828'];
-        const mainColor = mainColors[tier];
-        const bonusColor = '#1a4888';
-
-        const mainSize = Math.round((28 + Math.min(combo - 2, 16) * 1.5) * s);
-        const bonusSize = Math.round(mainSize * 0.72);
-        const y = this.getTopHudBottom(vp, s, hasBoss) + Math.round(32 * s);
-
-        const mainLabel = `连击×${combo}`;
-        const bonusLabel = `+${player.getComboBonusPercent(combo)}%`;
-        const gap = 10 * s;
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
-
-        ctx.font = `bold ${mainSize}px ${GAME_FONT}`;
-        const mainW = ctx.measureText(mainLabel).width;
-        ctx.font = `bold ${bonusSize}px ${GAME_FONT}`;
-        const bonusW = ctx.measureText(bonusLabel).width;
-        const totalW = mainW + gap + bonusW;
-
-        const mainX = vp.cx - totalW / 2 + mainW / 2;
-        const bonusX = vp.cx - totalW / 2 + mainW + gap + bonusW / 2;
-
-        this._drawComboLabel(ctx, mainLabel, mainX, y, mainSize, mainColor);
-        this._drawComboLabel(ctx, bonusLabel, bonusX, y + 1 * s, bonusSize, bonusColor);
-
         ctx.restore();
     }
 
-    drawHearts(ctx, player, vp, s) {
-        const { panel, hearts } = this.getBottomHudLayout(vp, s);
-        const heartScale = hearts.scale;
-        const spacing = hearts.spacing;
-        const y = hearts.y;
-        const totalHearts = Math.ceil(player.maxHearts);
-        const totalW = totalHearts > 0 ? (totalHearts - 1) * spacing + heartScale * 5 : 0;
-        const startX = panel.x + (panel.w - totalW) / 2;
-        for (let i = 0; i < totalHearts; i++) {
-            const heartVal = player.hearts - i;
-            let sprite;
-            if (heartVal >= 1) {
-                sprite = SPRITES.heart.full;
-            } else if (heartVal >= 0.5) {
-                sprite = SPRITES.heart.half;
+    getPlayAreaBottom(canvasH, uiScale = 1) {
+        const reserve = (CONFIG.EXP.BAR_HEIGHT + 14) * uiScale;
+        return canvasH - reserve;
+    }
+
+    _getHudLayout(vp, s, player) {
+        const pad = 12 * s;
+        const kiY = vp.y + 28 * s;
+        const kiH = 40 * s;
+        const buffRowY = kiY + kiH + 8 * s;
+        const hasBuffs = player && player.collectedOrbBuffs && player.collectedOrbBuffs.length > 0;
+        const secondRowY = hasBuffs ? buffRowY + 30 * s : buffRowY;
+        return {
+            pad,
+            kiX: vp.x + pad,
+            kiY,
+            kiW: vp.w - pad * 2,
+            kiH,
+            buffRowY,
+            secondRowY,
+            comboY: secondRowY + 8 * s,
+        };
+    }
+
+    draw(ctx, game, vp, s) {
+        const layout = this._getHudLayout(vp, s, game.player);
+        this._lastHudLayout = layout;
+        this.drawTopKiBar(ctx, game.player, layout, s);
+        this.drawTurnBuffIcons(ctx, game.player, layout, s);
+        this.drawTurns(ctx, game, layout, s);
+        this.drawComboBanner(ctx, game.player, vp, layout, s);
+        this.drawMessage(ctx, game.player, vp, s);
+        this.drawBuffNotice(ctx, game.buffOrbs, vp, s);
+        if (game.experience) this.drawExpBar(ctx, game.experience, vp, s);
+    }
+
+    drawExpBar(ctx, exp, vp, s) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+
+        const h = Math.floor(CONFIG.EXP.BAR_HEIGHT * s);
+        const pad = Math.floor(12 * s);
+        const y = Math.floor(vp.y + vp.h - h - 8 * s);
+        const w = Math.floor(vp.w - pad * 2);
+        const x = Math.floor(vp.x + pad);
+        const border = Math.max(2, Math.floor(3 * s));
+        const block = Math.max(3, Math.floor(4 * s));
+        const innerX = x + border;
+        const innerY = y + border;
+        const innerW = w - border * 2;
+        const innerH = h - border * 2;
+        const ratio = clamp(exp.exp / Math.max(1, exp.expToNext), 0, 1);
+        const fillBlocks = Math.floor((innerW / block) * ratio);
+
+        drawPixelPanel(ctx, x, y, w, h, '#1a2030', '#c8a040', border);
+
+        for (let col = 0; col * block < innerW; col++) {
+            const bx = innerX + col * block;
+            const bw = Math.min(block - 1, innerW - col * block);
+            if (bw <= 0) continue;
+            if (col < fillBlocks) {
+                ctx.fillStyle = '#348848';
+                ctx.fillRect(bx, innerY, bw, innerH);
+                ctx.fillStyle = '#68c878';
+                ctx.fillRect(bx, innerY, bw, Math.max(2, Math.floor(innerH * 0.42)));
+                ctx.fillStyle = '#98e8a8';
+                ctx.fillRect(bx, innerY, bw, Math.max(1, Math.floor(innerH * 0.18)));
             } else {
-                sprite = SPRITES.heart.empty;
+                ctx.fillStyle = (col % 2 === 0) ? '#242c3a' : '#1e2430';
+                ctx.fillRect(bx, innerY, bw, innerH);
             }
-            drawSprite(ctx, sprite, startX + i * spacing, y, heartScale);
         }
+
+        ctx.fillStyle = '#5a4828';
+        const rivet = Math.max(2, Math.floor(2 * s));
+        ctx.fillRect(x + border, y + border, rivet, rivet);
+        ctx.fillRect(x + w - border - rivet, y + border, rivet, rivet);
+        ctx.fillRect(x + border, y + h - border - rivet, rivet, rivet);
+        ctx.fillRect(x + w - border - rivet, y + h - border - rivet, rivet, rivet);
+
+        drawPixelText(ctx, `Lv${exp.level}`, x + 10 * s, y + h / 2, Math.round(10 * s), '#ffe8a8', 'left', 'middle');
+        drawPixelText(
+            ctx,
+            `${Math.floor(exp.exp)}/${exp.expToNext}`,
+            x + w - 10 * s,
+            y + h / 2,
+            Math.round(9 * s),
+            '#e8f4ff',
+            'right',
+            'middle'
+        );
+        ctx.restore();
+    }
+
+    drawTopKiBar(ctx, player, layout, s) {
+        const ratio = clamp(player.ki / Math.max(1, player.kiMax), 0, 1);
+        this._drawPixelSwordKiBar(ctx, layout.kiX, layout.kiY, layout.kiW, layout.kiH, ratio);
+    }
+
+    drawTurnBuffIcons(ctx, player, layout, s) {
+        const buffs = player.collectedOrbBuffs;
+        if (!buffs || buffs.length === 0) return;
+
+        const counts = {};
+        for (const t of buffs) counts[t] = (counts[t] || 0) + 1;
+        const types = ['attack', 'ki', 'combo', 'ice'].filter(t => counts[t]);
+
+        const iconPx = Math.max(3, Math.floor(3 * s));
+        const slotW = iconPx * 8 + 10 * s;
+        const totalW = types.length * slotW - 4 * s;
+        let x = layout.kiX + layout.kiW / 2 - totalW / 2;
+        const cy = layout.buffRowY + 12 * s;
+
+        for (const type of types) {
+            const count = counts[type];
+            const sx = Math.floor(x);
+            const sy = Math.floor(cy - 12 * s);
+            drawPixelPanel(ctx, sx, sy, slotW - 4 * s, 24 * s, '#2a2838', '#c8b888', 2);
+            const pal = this._buffFrameColor(type);
+            ctx.fillStyle = pal;
+            ctx.fillRect(sx + 3, sy + 3, slotW - 10 * s, 4);
+            drawPixelIcon(ctx, getBuffOrbIconSprite(type), x + (slotW - 4 * s) / 2, cy, iconPx);
+            const label = count > 1 ? `${getBuffOrbShortLabel(type)}×${count}` : getBuffOrbShortLabel(type);
+            drawPixelText(ctx, label, x + (slotW - 4 * s) / 2, cy + 14 * s, Math.round(8 * s), '#fff0d0');
+            x += slotW;
+        }
+    }
+
+    _buffFrameColor(type) {
+        if (type === 'attack') return '#ff9050';
+        if (type === 'ki') return '#58c8ff';
+        if (type === 'combo') return '#f0a0f0';
+        if (type === 'ice') return '#88d8ff';
+        return '#e8d070';
     }
 
     _uiPx(ctx, ox, oy, col, row, color, px) {
@@ -4276,645 +4358,237 @@ class UI {
         ctx.fillRect(ox + col * px, oy + row * px, px, px);
     }
 
-    _drawKatanaKiBar(ctx, x, y, totalW, h, ratio, s, deepBreath = false) {
-        const px = Math.max(2, Math.floor(h / 5));
-        const rows = 5;
-        const barH = rows * px;
-        const barY = Math.floor(y + (h - barH) / 2);
-        const ox = Math.floor(x);
-
-        const pal = deepBreath ? {
-            outline: '#1a3848',
-            hilt0: '#2a4858', hilt1: '#4a6878', hilt2: '#6a98a8', hiltWrap: '#88c0d0',
-            tsuba: '#68b8d8', tsubaHi: '#a8e8ff',
-            track: '#2a4858', trackHi: '#3a5868',
-            kiLo: '#48c8e8', kiHi: '#b8ffff', kiEdge: '#d8ffff',
-            tip: '#4a7888', warn: '#e85848',
-        } : {
-            outline: '#2a1810',
-            hilt0: '#3a2818', hilt1: '#5a4030', hilt2: '#7a5840', hiltWrap: '#9a7860',
-            tsuba: '#6a6468', tsubaHi: '#9a9898',
-            track: '#3a4048', trackHi: '#4a5058',
-            kiLo: '#3a78a0', kiHi: '#8ad4f0', kiEdge: '#c8ecff',
-            tip: '#5a6068', warn: '#c45848',
-        };
-
-        const hiltCols = 4;
-        const tsubaCols = 2;
-        const tipCols = 3;
-        const bladeCols = Math.max(
-            6,
-            Math.floor((totalW - (hiltCols + tsubaCols + tipCols) * px) / px)
-        );
-        const totalPx = hiltCols + tsubaCols + bladeCols + tipCols;
-        const drawW = totalPx * px;
-        const dx = ox + Math.floor((totalW - drawW) / 2);
-
-        if (deepBreath) {
-            const pulse = 0.45 + Math.sin(Date.now() * 0.005) * 0.2;
-            ctx.save();
-            ctx.globalAlpha = pulse;
-            for (let c = 0; c < totalPx; c++) {
-                this._uiPx(ctx, dx - px, barY - px, c, 0, '#68e8ff', px);
-                this._uiPx(ctx, dx - px, barY + rows, c, 0, '#68e8ff', px);
-            }
-            ctx.restore();
-        }
-
-        const hiltRows = [
-            [pal.outline, pal.hilt0, pal.hilt0, pal.outline],
-            [pal.hilt1, pal.hilt2, pal.hiltWrap, pal.hilt1],
-            [pal.hilt1, pal.hiltWrap, pal.hiltWrap, pal.hilt1],
-            [pal.hilt1, pal.hilt2, pal.hiltWrap, pal.hilt1],
-            [pal.outline, pal.hilt0, pal.hilt0, pal.outline],
-        ];
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < hiltCols; c++) {
-                this._uiPx(ctx, dx, barY, c, r, hiltRows[r][c], px);
-            }
-        }
-
-        const tsubaCol = hiltCols;
-        const tsubaRows = [
-            [pal.outline, pal.outline],
-            [pal.tsubaHi, pal.tsuba],
-            [pal.tsuba, pal.tsuba],
-            [pal.tsuba, pal.tsuba],
-            [pal.outline, pal.outline],
-        ];
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < tsubaCols; c++) {
-                this._uiPx(ctx, dx, barY, tsubaCol + c, r, tsubaRows[r][c], px);
-            }
-        }
-
-        const bladeStart = hiltCols + tsubaCols;
-        const fillCols = Math.floor(bladeCols * ratio);
-        for (let c = 0; c < bladeCols; c++) {
-            const filled = c < fillCols;
-            const edge = c === 0 || c === bladeCols - 1;
-            const topHi = c < fillCols && c % 2 === 0;
-            for (let r = 0; r < rows; r++) {
-                const isEdgeRow = r === 0 || r === rows - 1;
-                let color;
-                if (filled) {
-                    if (isEdgeRow && !edge) color = pal.kiLo;
-                    else if (r <= 1 && topHi) color = pal.kiEdge;
-                    else if (r <= 2) color = pal.kiHi;
-                    else color = pal.kiLo;
-                } else {
-                    if (isEdgeRow || edge) color = pal.outline;
-                    else if (r === 1) color = pal.trackHi;
-                    else color = pal.track;
-                }
-                this._uiPx(ctx, dx, barY, bladeStart + c, r, color, px);
-            }
-        }
-
+    _swordRowSpan(col, rows, pommelCols, gripCols, guardCols, bladeCols, tipCols) {
+        const bladeStart = pommelCols + gripCols + guardCols;
         const tipStart = bladeStart + bladeCols;
-        const tipPattern = [
-            [null, null, pal.outline],
-            [null, pal.tip, pal.tip],
-            [pal.tip, pal.kiHi, pal.kiLo],
-            [null, pal.tip, pal.tip],
-            [null, null, pal.outline],
-        ];
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < tipCols; c++) {
-                this._uiPx(ctx, dx, barY, tipStart + c, r, tipPattern[r][c], px);
-            }
+        if (col < pommelCols) {
+            const mid = Math.floor(rows / 2);
+            return { rowMin: mid - 1, rowMax: mid + 1 };
         }
-
-        if (ratio < 0.25 && Math.floor(Date.now() / 280) % 2 === 0) {
-            this._uiPx(ctx, dx, barY, tipStart + 1, 2, pal.warn, px);
-            this._uiPx(ctx, dx, barY, tipStart + 2, 2, pal.warn, px);
+        if (col < pommelCols + gripCols) {
+            const gripMid = Math.floor(rows / 2);
+            return { rowMin: gripMid - 3, rowMax: gripMid + 2 };
         }
+        if (col < bladeStart) {
+            return { rowMin: 0, rowMax: rows - 1 };
+        }
+        if (col < tipStart) {
+            return { rowMin: 2, rowMax: rows - 3 };
+        }
+        const tipIdx = col - tipStart;
+        const inset = tipIdx + 1;
+        const rowMin = inset + 2;
+        const rowMax = rows - 3 - inset;
+        if (rowMin > rowMax) return null;
+        return { rowMin, rowMax };
     }
 
-    getKiBarLayout(vp, s) {
-        const { ki } = this.getBottomHudLayout(vp, s);
-        return { x: Math.floor(ki.x), y: Math.floor(ki.y), w: ki.w, h: ki.h, pad: 14 * s };
-    }
-
-    drawKiBar(ctx, player, vp, s) {
-        const { x, y, w, h } = this.getKiBarLayout(vp, s);
-        const ratio = clamp(player.ki / player.kiMax, 0, 1);
-        this._drawKatanaKiBar(ctx, x, y, w, h, ratio, s, player.bossRewardDeepBreath);
-    }
-
-    drawBossBar(ctx, boss, vp, s) {
-        if (!boss || (!boss.alive && !boss.dying)) return;
-
-        const pauseBtn = this.getPauseButtonRect(vp, s);
-        const gap = Math.round(6 * s);
-        const barH = Math.round(8 * s);
-        const pad = Math.round(12 * s);
-        const x = vp.x + pad;
-        const y = pauseBtn.y + pauseBtn.h + gap;
-        const barW = vp.w - pad * 2;
-        const ratio = clamp(boss.hp / boss.maxHp, 0, 1);
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(x - 1, y - 1, barW + 2, barH + 2);
-        ctx.fillStyle = '#2a1810';
-        ctx.fillRect(x, y, barW, barH);
-        ctx.fillStyle = ratio > 0.35 ? '#e84818' : '#c02010';
-        ctx.fillRect(x, y, barW * ratio, barH);
-        ctx.strokeStyle = '#ffaa66';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x, y, barW, barH);
-
-        const nameSize = Math.round(11 * s);
-        drawGameText(ctx, boss.cfg.name, vp.cx, y - 2 * s, nameSize, '#ffe8c0', 'center', 'bottom');
-    }
-
-    _drawPixelXpBar(ctx, x, y, totalW, h, ratio) {
-        const px = Math.max(2, Math.floor(h / 4));
-        const rows = 4;
+    _drawPixelSwordKiBar(ctx, x, y, totalW, h, ratio) {
+        const rows = 16;
+        const px = Math.max(2, Math.floor(h / rows));
         const barH = rows * px;
         const barY = Math.floor(y + (h - barH) / 2);
         const ox = Math.floor(x);
-
-        const cols = Math.max(12, Math.floor(totalW / px));
-        const drawW = cols * px;
-        const dx = ox + Math.floor((totalW - drawW) / 2);
 
         const pal = {
-            outline: '#2a2218',
-            track: '#3a4048',
-            trackHi: '#4a525c',
-            trackLo: '#2e343c',
-            fillLo: '#2850a0',
-            fillHi: '#4890d8',
-            fillEdge: '#68b8f0',
+            outline: '#1a1418',
+            pommel: '#4a4048', pommelHi: '#7a7078',
+            grip0: '#3a2818', grip1: '#5a4030', grip2: '#8a6848', gripWrap: '#a88868',
+            guard: '#5a5a62', guardHi: '#9a9aa8', guardEdge: '#2a2830',
+            track: '#2a3038', trackHi: '#3a424c',
+            kiLo: '#2a6890', kiMid: '#58b0d8', kiHi: '#9ae8ff', kiEdge: '#d8f8ff',
+            steel: '#6a7078', steelHi: '#aab0b8',
+            warn: '#e04838',
         };
 
-        const innerCols = Math.max(1, cols - 2);
-        const fillInner = Math.floor(innerCols * ratio);
-        const nearLevel = ratio >= 0.92;
-        const pulse = nearLevel && Math.floor(Date.now() / 200) % 2 === 0;
+        const pommelCols = 1;
+        const gripCols = 18;
+        const guardCols = 4;
+        const tipCols = 5;
+        const fixedCols = pommelCols + gripCols + guardCols + tipCols;
+        const bladeCols = Math.max(10, Math.floor((totalW - fixedCols * px) / px));
+        const totalCols = fixedCols + bladeCols;
+        const drawW = totalCols * px;
+        const dx = ox + Math.floor((totalW - drawW) / 2);
+        const bladeStart = pommelCols + gripCols + guardCols;
+        const tipStart = bladeStart + bladeCols;
+        const kiCols = bladeCols + tipCols;
+        const fillCols = Math.floor(kiCols * ratio);
+        const lowKi = ratio < 0.25 && Math.floor(Date.now() / 280) % 2 === 0;
 
-        for (let c = 0; c < cols; c++) {
-            for (let r = 0; r < rows; r++) {
-                const edgeRow = r === 0 || r === rows - 1;
-                const edgeCol = c === 0 || c === cols - 1;
-                const filled = c > 0 && c <= fillInner;
-                let color;
+        const inSpan = (col, row) => {
+            const span = this._swordRowSpan(col, rows, pommelCols, gripCols, guardCols, bladeCols, tipCols);
+            if (!span) return false;
+            return row >= span.rowMin && row <= span.rowMax;
+        };
 
-                if (edgeRow || edgeCol) {
-                    color = pal.outline;
-                } else if (filled) {
-                    if (pulse && c === fillInner) color = pal.fillEdge;
-                    else if (r === 1) color = pal.fillEdge;
-                    else if (r === 2) color = pal.fillHi;
-                    else color = pal.fillLo;
-                } else {
-                    color = (r + c) % 2 === 0 ? pal.track : pal.trackHi;
+        const colorAt = (col, row) => {
+            const isBlade = col >= bladeStart && col < tipStart;
+            const isTip = col >= tipStart;
+            const isGuard = col >= pommelCols + gripCols && col < bladeStart;
+            const isGrip = col >= pommelCols && col < pommelCols + gripCols;
+            const isPommel = col < pommelCols;
+            const bladeCol = col - bladeStart;
+            const tipCol = col - tipStart;
+            const kiCol = isBlade ? bladeCol : isTip ? bladeCols + tipCol : -1;
+            const filled = kiCol >= 0 && kiCol < fillCols;
+            const edgeRow = row === 0 || row === rows - 1;
+            const midRow = row === Math.floor(rows / 2);
+
+            if (isPommel) {
+                return midRow ? pal.pommelHi : pal.pommel;
+            }
+            if (isGrip) {
+                if (edgeRow) return pal.outline;
+                const g = (col + row) % 3;
+                if (g === 0) return pal.grip0;
+                if (g === 1) return pal.gripWrap;
+                return pal.grip1;
+            }
+            if (isGuard) {
+                if (edgeRow) return pal.guardEdge;
+                const guardEdgeBand = row <= 2 || row >= rows - 3;
+                return guardEdgeBand ? pal.guardHi : pal.guard;
+            }
+            if (isBlade) {
+                if (!filled) {
+                    if (edgeRow) return pal.outline;
+                    return row <= 2 ? pal.trackHi : pal.track;
                 }
-                this._uiPx(ctx, dx, barY, c, r, color, px);
+                if (edgeRow) return pal.kiLo;
+                if (row <= 2) return pal.kiEdge;
+                if (row <= 4) return pal.kiHi;
+                return pal.kiMid;
+            }
+            if (isTip) {
+                if (!filled) {
+                    if (edgeRow) return pal.outline;
+                    return pal.steel;
+                }
+                if (lowKi && midRow) return pal.warn;
+                if (edgeRow) return pal.kiLo;
+                if (row <= 3) return pal.kiHi;
+                return pal.kiMid;
+            }
+            return pal.outline;
+        };
+
+        ctx.imageSmoothingEnabled = false;
+        for (let col = 0; col < totalCols; col++) {
+            for (let row = 0; row < rows; row++) {
+                if (!inSpan(col, row)) continue;
+                this._uiPx(ctx, dx, barY, col, row, colorAt(col, row), px);
             }
         }
+
+        return dx + (pommelCols + gripCols) * px;
     }
 
-    drawXpBar(ctx, player, vp, s) {
-        const { xp } = this.getBottomHudLayout(vp, s);
-        const { x, y, w: barW, h: barH } = xp;
-        const ratio = clamp(player.xp / player.xpToNext, 0, 1);
-        const fontSize = Math.round(10 * s);
-        const textY = y + barH / 2;
+    drawTurns(ctx, game, layout, s) {
+        const turns = game.turnsLeft;
+        const urgent = turns <= 1;
+        const boxW = 80 * s;
+        const boxH = 52 * s;
+        const x = layout.kiX + layout.kiW - boxW;
+        const y = layout.secondRowY;
+        const cx = x + boxW / 2;
 
-        this._drawPixelXpBar(ctx, x, y, barW, barH, ratio);
+        const pulse = urgent && Math.floor(Date.now() / 320) % 2 === 0;
+        const fill = urgent ? (pulse ? '#5a1810' : '#3a1008') : '#242838';
+        const border = urgent ? '#ff6848' : '#e8c050';
+        drawPixelPanel(ctx, x, y, boxW, boxH, fill, border, 2);
 
-        drawGameText(ctx, `Lv.${player.level}`, x + 8 * s, textY,
-            fontSize, '#eef2f8', 'left', 'middle');
-        drawGameText(ctx, `${player.xp}/${player.xpToNext}`, x + barW - 8 * s, textY,
-            fontSize, '#d0dcf0', 'right', 'middle');
+        const numColor = urgent ? '#ffe0d0' : '#fff8e0';
+        drawPixelText(ctx, String(turns), cx, y + boxH * 0.38, Math.round(22 * s), numColor);
+        drawPixelText(ctx, '回合', cx, y + boxH * 0.76, Math.round(10 * s), urgent ? '#ffb0a0' : '#ffd890');
     }
 
-    getPauseButtonRect(vp, s) {
-        const size = Math.round(28 * s);
-        const x = Math.round(vp.x + vp.w - size - 10 * s);
-        const y = Math.round(vp.y + 10 * s);
-        return { x, y, w: size, h: size };
-    }
+    drawComboBanner(ctx, player, vp, layout, s) {
+        const combo = player.comboDisplayPeak;
+        if (combo < 2 || player.comboDisplayTimer <= 0) return;
+        const fading = player.comboCount < 2;
+        const fadeDur = fading ? CONFIG.PLAYER.COMBO_END_FADE : CONFIG.PLAYER.COMBO_DISPLAY_HOLD;
+        const alpha = fading ? clamp(player.comboDisplayTimer / fadeDur, 0, 1) : 1;
+        const y = layout.comboY + 28 * s;
 
-    isPauseButtonHit(x, y, vp, s) {
-        const r = this.getPauseButtonRect(vp, s);
-        return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-    }
+        const cfg = CONFIG.PLAYER;
+        const mainSize = Math.round(
+            (cfg.COMBO_TEXT_BASE + Math.min(cfg.COMBO_TEXT_MAX_GROW, (combo - 2) * cfg.COMBO_TEXT_GROW)) * s
+        );
+        const subSize = Math.round(mainSize * 0.5);
 
-    drawPauseButton(ctx, vp, s, active) {
-        const r = this.getPauseButtonRect(vp, s);
-        ctx.save();
-        ctx.globalAlpha = active ? 0.95 : 0.8;
-        ctx.fillStyle = 'rgba(28, 24, 20, 0.72)';
-        ctx.strokeStyle = 'rgba(210, 190, 160, 0.9)';
-        ctx.lineWidth = 2;
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(r.x, r.y, r.w, r.h, Math.round(6 * s));
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            ctx.fillRect(r.x, r.y, r.w, r.h);
-            ctx.strokeRect(r.x, r.y, r.w, r.h);
-        }
-        const barW = Math.max(3, Math.round(4 * s));
-        const barH = Math.max(12, Math.round(13 * s));
-        const gap = Math.max(4, Math.round(5 * s));
-        const cx = r.x + r.w / 2;
-        const cy = r.y + r.h / 2;
-        ctx.fillStyle = '#f2e7d2';
-        ctx.fillRect(Math.round(cx - gap / 2 - barW), Math.round(cy - barH / 2), barW, barH);
-        ctx.fillRect(Math.round(cx + gap / 2), Math.round(cy - barH / 2), barW, barH);
-        ctx.restore();
-    }
-
-    _drawPauseButton(ctx, rect, text, s, color) {
-        ctx.fillStyle = color || 'rgba(54, 46, 36, 0.9)';
-        ctx.strokeStyle = 'rgba(170, 145, 110, 0.95)';
-        ctx.lineWidth = 2;
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(rect.x, rect.y, rect.w, rect.h, Math.round(8 * s));
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-            ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-        }
-        drawGameText(ctx, text, rect.x + rect.w / 2, rect.y + rect.h / 2,
-            Math.round(14 * s), '#f2e7d2', 'center', 'middle');
-    }
-
-    _layoutDebugControls(px, panelW, rowY, s, withApply) {
-        const smallW = Math.round(30 * s);
-        const applyW = Math.round(56 * s);
-        const btnH = Math.round(30 * s);
-        const gap = Math.round(6 * s);
-        const right = px + panelW - 16 * s;
-        const plus = {
-            x: right - smallW,
-            y: rowY - btnH / 2,
-            w: smallW,
-            h: btnH,
-        };
-        const minus = {
-            x: plus.x - gap - smallW,
-            y: rowY - btnH / 2,
-            w: smallW,
-            h: btnH,
-        };
-        let apply = null;
-        if (withApply) {
-            apply = {
-                x: minus.x - gap - applyW,
-                y: rowY - btnH / 2,
-                w: applyW,
-                h: btnH,
-            };
-        }
-        return { minus, plus, apply, labelX: px + 16 * s };
-    }
-
-    _drawAdjustRow(ctx, label, value, labelX, rectMinus, rectPlus, rectApply, rowY, s) {
-        drawGameText(ctx, `${label}: ${value}`, labelX, rowY,
-            Math.round(13 * s), '#d7c7ae', 'left', 'middle');
-        this._drawPauseButton(ctx, rectMinus, '-', s, 'rgba(48, 40, 32, 0.9)');
-        this._drawPauseButton(ctx, rectPlus, '+', s, 'rgba(48, 40, 32, 0.9)');
-        if (rectApply) {
-            this._drawPauseButton(ctx, rectApply, '应用', s, 'rgba(68, 48, 32, 0.95)');
-        }
-    }
-
-    drawPauseOverlay(ctx, vp, s, data) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
-        const panelW = Math.min(vp.w - 26 * s, 330 * s);
-        const panelH = Math.min(vp.h - 40 * s, 420 * s);
-        const px = vp.x + (vp.w - panelW) / 2;
-        const py = vp.y + (vp.h - panelH) / 2;
-
-        ctx.fillStyle = 'rgba(36, 30, 24, 0.96)';
-        ctx.strokeStyle = 'rgba(166, 138, 104, 0.95)';
-        ctx.lineWidth = 2;
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(px, py, panelW, panelH, Math.round(10 * s));
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            ctx.fillRect(px, py, panelW, panelH);
-            ctx.strokeRect(px, py, panelW, panelH);
+        const shakeDur = cfg.COMBO_SHAKE_DURATION;
+        let shakeX = 0;
+        let shakeY = 0;
+        let popScale = 1;
+        if (player.comboShakeTimer > 0) {
+            const t = clamp(player.comboShakeTimer / shakeDur, 0, 1);
+            const mag = 7 * s * t;
+            shakeX = Math.sin(player.comboShakeTimer * 48) * mag;
+            shakeY = Math.sin(player.comboShakeTimer * 61) * mag * 0.7;
+            popScale = 1 + 0.14 * t;
         }
 
-        drawGameText(ctx, '已暂停', vp.cx, py + 26 * s, Math.round(20 * s), '#f2e7d2');
-
-        const btnW = panelW * 0.72;
-        const btnH = 36 * s;
-        const btnX = px + (panelW - btnW) / 2;
-        const resumeRect = { x: btnX, y: py + 52 * s, w: btnW, h: btnH };
-        const passRect = { x: btnX, y: py + 96 * s, w: btnW, h: btnH };
-        this.pauseRects.resume = resumeRect;
-        this.pauseRects.password = passRect;
-        this._drawPauseButton(ctx, resumeRect, '继续', s, 'rgba(56, 74, 52, 0.92)');
-        this._drawPauseButton(ctx, passRect, '密码输入', s, 'rgba(76, 56, 38, 0.92)');
-
-        let y = py + 146 * s;
-        if (data.passwordMode && !data.debugUnlocked) {
-            drawGameText(ctx, `密码: ${data.passwordInput}`, vp.cx, y, Math.round(14 * s), '#e6d8c2');
-            y += 10 * s;
-            const keyW = Math.round(44 * s);
-            const keyH = Math.round(32 * s);
-            const keyGap = Math.round(8 * s);
-            const startX = vp.cx - (keyW * 3 + keyGap * 2) / 2;
-            const rows = [['1', '2', '3'], ['4', 'C', 'OK']];
-            this.pauseRects.keys = [];
-            for (let r = 0; r < rows.length; r++) {
-                for (let c = 0; c < rows[r].length; c++) {
-                    const rect = {
-                        x: startX + c * (keyW + keyGap),
-                        y: y + r * (keyH + keyGap),
-                        w: keyW,
-                        h: keyH,
-                        key: rows[r][c],
-                    };
-                    this.pauseRects.keys.push(rect);
-                    this._drawPauseButton(ctx, rect, rect.key, s, 'rgba(48, 40, 32, 0.92)');
-                }
-            }
-        } else {
-            this.pauseRects.keys = [];
-        }
-
-        if (data.debugUnlocked) {
-            drawGameText(ctx, '调试模式', vp.cx, py + 148 * s, Math.round(16 * s), '#ffd18a');
-            const rowY1 = py + 182 * s;
-            const rowY2 = py + 228 * s;
-            const rowY3 = py + 274 * s;
-
-            const row1 = this._layoutDebugControls(px, panelW, rowY1, s, true);
-            this.pauseRects.levelMinus = row1.minus;
-            this.pauseRects.levelPlus = row1.plus;
-            this.pauseRects.levelApply = row1.apply;
-            this._drawAdjustRow(ctx, '主角等级', data.debugLevelInput, row1.labelX,
-                row1.minus, row1.plus, row1.apply, rowY1, s);
-
-            const row2 = this._layoutDebugControls(px, panelW, rowY2, s, false);
-            this.pauseRects.chapterMinus = row2.minus;
-            this.pauseRects.chapterPlus = row2.plus;
-            this._drawAdjustRow(ctx, '当前章节', data.debugChapterInput, row2.labelX,
-                row2.minus, row2.plus, null, rowY2, s);
-
-            const row3 = this._layoutDebugControls(px, panelW, rowY3, s, true);
-            this.pauseRects.stageMinus = row3.minus;
-            this.pauseRects.stagePlus = row3.plus;
-            this.pauseRects.stageApply = row3.apply;
-            this._drawAdjustRow(ctx, '当前关卡', data.debugStageInput, row3.labelX,
-                row3.minus, row3.plus, row3.apply, rowY3, s);
-        }
-    }
-}
-
-
-// ---- boss.js ----
-class BossFireball {
-    constructor(x, y, vx, vy, radius) {
-        this.x = x;
-        this.y = y;
-        this.vx = vx;
-        this.vy = vy;
-        this.radius = radius;
-        this.alive = true;
-        this.spin = Math.random() * Math.PI * 2;
-    }
-
-    update(dt, canvasW, canvasH) {
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
-        this.spin += dt * 10;
-        if (this.x < -30 || this.x > canvasW + 30 ||
-            this.y < -30 || this.y > canvasH + 30) {
-            this.alive = false;
-        }
-    }
-
-    draw(ctx) {
-        if (!this.alive) return;
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.spin);
-
-        ctx.globalAlpha = 0.35;
-        const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 2.2);
-        glow.addColorStop(0, 'rgba(255, 200, 80, 0.9)');
-        glow.addColorStop(0.5, 'rgba(255, 80, 20, 0.4)');
-        glow.addColorStop(1, 'rgba(255, 40, 0, 0)');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius * 2.2, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = '#ff6620';
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#ffcc66';
-        ctx.beginPath();
-        ctx.arc(-this.radius * 0.2, -this.radius * 0.15, this.radius * 0.45, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
-}
-
-class FireDragonBoss {
-    constructor(game, canvasW, canvasH, cfg) {
-        this.game = game;
-        this.cfg = cfg;
-        this.alive = true;
-        this.dying = false;
-        this.deathHandled = false;
-        this.chestDropped = false;
-        this.deathTimer = 0;
-
-        this.spriteScale = cfg.spriteScale || 5;
-        this.animFrame = 0;
-        this.animTimer = 0;
-
-        const spr = SPRITES.fireDragon.idle[0];
-        const sz = getSpriteSize(spr, this.spriteScale);
-        this.x = canvasW / 2;
-        this.y = sz.h * 0.88;
-        this.canvasW = canvasW;
-
-        const mouthRow = 17;
-        this.mouthX = this.x;
-        this.mouthY = this.y - sz.h / 2 + mouthRow * this.spriteScale + this.spriteScale * 0.5;
-
-        this.hitboxRadius = cfg.hitboxRadius;
-        this.hp = cfg.hp;
-        this.maxHp = cfg.hp;
-        this.def = cfg.def;
-        this.xpValue = cfg.xp;
-        this.color = cfg.color;
-        this.size = cfg.hitboxRadius;
-
-        this.attackTimer = cfg.introDelay;
-    }
-
-    takeDamage(rawDamage) {
-        if (!this.alive || this.dying) return 0;
-        const actual = Math.max(1, rawDamage - this.def);
-        this.hp -= actual;
-        if (this.hp <= 0) {
-            this.hp = 0;
-            this.dying = true;
-            this.deathTimer = 0.8;
-        }
-        return actual;
-    }
-
-    update(dt) {
-        if (this.dying) {
-            this.deathTimer -= dt;
-            if (this.deathTimer <= 0) this.alive = false;
-            return;
-        }
-
-        this.animTimer += dt;
-        if (this.animTimer >= 0.35) {
-            this.animTimer = 0;
-            this.animFrame = (this.animFrame + 1) % SPRITES.fireDragon.idle.length;
-        }
-
-        this.attackTimer -= dt;
-        if (this.attackTimer > 0) return;
-
-        this.attackTimer = this.cfg.attackInterval;
-        const player = this.game.player;
-        if (!player) return;
-        this._attackFireballs(player);
-    }
-
-    _attackFireballs(player) {
-        const mgr = this.game.bossManager;
-        const mx = this.mouthX;
-        const my = this.mouthY;
-        const baseAng = Math.atan2(player.y - my, player.x - mx);
-        const count = this.cfg.fireballCount;
-        const spread = this.cfg.fireballSpread;
-
-        for (let i = 0; i < count; i++) {
-            const t = count > 1 ? (i / (count - 1)) - 0.5 : 0;
-            const ang = baseAng + t * spread + randRange(-0.06, 0.06);
-            const spd = this.cfg.fireballSpeed * randRange(0.88, 1.08);
-            mgr.projectiles.push(new BossFireball(
-                mx + Math.cos(ang) * 12,
-                my + Math.sin(ang) * 12,
-                Math.cos(ang) * spd,
-                Math.sin(ang) * spd,
-                this.cfg.fireballRadius
-            ));
-        }
-
-        this.animFrame = 1;
-        this.animTimer = 0;
-        this.game.particles.spawnEffect(mx, my, '#f84');
-        this.game.renderer.shake(5, 0.12);
-    }
-
-    draw(ctx) {
-        const sprite = SPRITES.fireDragon.idle[this.animFrame];
-        const alpha = this.dying ? clamp(this.deathTimer / 0.8, 0, 1) : 1;
+        const colors = this._getComboColors(combo);
 
         ctx.save();
         ctx.globalAlpha = alpha;
-
-        const sz = getSpriteSize(sprite, this.spriteScale);
-        const glowY = this.y + sz.h * 0.05;
-        ctx.globalAlpha = 0.18 * alpha;
-        const aura = ctx.createRadialGradient(this.x, glowY, 8, this.x, glowY, sz.w * 0.75);
-        aura.addColorStop(0, 'rgba(255, 120, 40, 0.55)');
-        aura.addColorStop(1, 'rgba(255, 40, 0, 0)');
-        ctx.fillStyle = aura;
-        ctx.beginPath();
-        ctx.arc(this.x, glowY, sz.w * 0.75, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.globalAlpha = alpha;
-        drawSprite(ctx, sprite, Math.floor(this.x), Math.floor(this.y), this.spriteScale);
+        ctx.translate(vp.cx + shakeX, y + shakeY);
+        ctx.scale(popScale, popScale);
+        this._drawComboPixelText(ctx, `连击×${combo}`, 0, 0, mainSize, colors);
+        this._drawComboPixelText(
+            ctx,
+            `+${player.getComboBonusPercent(combo)}%`,
+            0,
+            Math.round(mainSize * 0.72),
+            subSize,
+            { main: colors.sub, glow: colors.glow }
+        );
         ctx.restore();
     }
-}
 
-class BossManager {
-    constructor(game) {
-        this.game = game;
-        this.boss = null;
-        this.projectiles = [];
-        this.introTimer = 0;
+    drawMessage(ctx, player, vp, s) {
+        if (player.messageTimer <= 0 || !player.activeMessage) return;
+        const alpha = clamp(player.messageTimer / 1.25, 0, 1);
+        const text = player.activeMessage;
+        const fontSize = Math.round(12 * s);
+        const expReserve = (CONFIG.EXP.BAR_HEIGHT + 22) * s;
+        const y = vp.y + vp.h - expReserve;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.font = `bold ${fontSize}px ${GAME_FONT}`;
+        const tw = ctx.measureText(text).width;
+        const padX = 12 * s;
+        const padY = 8 * s;
+        const bx = Math.floor(vp.cx - tw / 2 - padX);
+        const by = Math.floor(y - fontSize / 2 - padY);
+        drawPixelPanel(ctx, bx, by, tw + padX * 2, fontSize + padY * 2, 'rgba(42,36,32,0.94)', '#c8b080', 2);
+        drawPixelText(ctx, text, vp.cx, y, fontSize, '#ffe7c8');
+        ctx.restore();
     }
 
-    reset() {
-        this.boss = null;
-        this.projectiles = [];
-        this.introTimer = 0;
-    }
+    drawBuffNotice(ctx, buffOrbs, vp, s) {
+        if (!buffOrbs || buffOrbs.noticeTimer <= 0 || !buffOrbs.notice) return;
+        const alpha = clamp(buffOrbs.noticeTimer / 1.6, 0, 1);
+        const text = buffOrbs.notice.replace(/^获得强化:\s*/, '');
+        const fontSize = Math.round(14 * s);
+        const y = vp.y + vp.h * 0.2;
 
-    prepareForLevel(levelIndex, canvasW, canvasH) {
-        this.reset();
-        const key = getBossKeyForLevel(levelIndex);
-        if (key === 'FIRE_DRAGON') {
-            const cfg = CONFIG.BOSSES.FIRE_DRAGON;
-            this.boss = new FireDragonBoss(this.game, canvasW, canvasH, cfg);
-            this.introTimer = cfg.introDelay;
-        }
-    }
-
-    isActive() {
-        return this.boss && this.boss.alive;
-    }
-
-    allClear() {
-        if (this.boss) return !this.boss.alive;
-        return true;
-    }
-
-    update(dt) {
-        const w = this.game.renderer.w;
-        const h = this.game.renderer.h;
-
-        if (this.introTimer > 0) {
-            this.introTimer -= dt;
-        }
-
-        if (this.boss && this.boss.alive && this.introTimer <= 0) {
-            this.boss.update(dt);
-        } else if (this.boss && this.boss.dying) {
-            this.boss.update(dt);
-            if (!this.boss.alive && !this.boss.deathHandled) {
-                const combat = this.game.combat;
-                if (combat) combat.onBossKilled(this.boss);
-            }
-        }
-
-        for (const p of this.projectiles) {
-            p.update(dt, w, h);
-        }
-        this.projectiles = this.projectiles.filter(p => p.alive);
-    }
-
-    draw(ctx) {
-        if (this.boss && (this.boss.alive || this.boss.dying)) {
-            this.boss.draw(ctx);
-        }
-    }
-
-    drawProjectiles(ctx) {
-        for (const p of this.projectiles) {
-            p.draw(ctx);
-        }
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.imageSmoothingEnabled = false;
+        ctx.font = `bold ${fontSize}px ${GAME_FONT}`;
+        const tw = ctx.measureText(text).width;
+        const padX = 14 * s;
+        const padY = 10 * s;
+        const bw = tw + padX * 2;
+        const bh = fontSize + padY * 2;
+        const bx = Math.floor(vp.cx - bw / 2);
+        const by = Math.floor(y - bh / 2);
+        drawPixelPanel(ctx, bx, by, bw, bh, 'rgba(42,32,16,0.94)', '#ffd878', 2);
+        drawPixelText(ctx, text, vp.cx, y, fontSize, '#fff6d0');
+        ctx.restore();
     }
 }
 
@@ -4924,368 +4598,246 @@ class CombatManager {
     constructor(game) {
         this.game = game;
         this.damageNumbers = [];
-        this.pendingLightning = [];
+        this.roundAttackResolved = true;
+        this.pendingHits = [];
+        this.resolving = false;
+        this.resolveTimer = 0;
+        this.afterimages = [];
+        this._deathStaggerIndex = 0;
     }
 
-    onMonsterKilled(monster) {
-        if (monster.deathHandled) return;
-        monster.deathHandled = true;
-
-        const { particles, experience, audio, bloodStains } = this.game;
-        const intensity = monster.size > 13 ? 1.35 : 1;
-        const player = this.game.player;
-        const hitAngle = player
-            ? angle(player.x, player.y, monster.x, monster.y)
-            : Math.random() * Math.PI * 2;
-        bloodStains.spawn(monster.x, monster.y + monster.hitboxRadius * 0.35, intensity, hitAngle);
-        particles.deathEffect(monster.x, monster.y, monster.color);
-        experience.spawnOrb(monster.x, monster.y, monster.xpValue);
-        audio.playMonsterDeath();
+    beginRoundAttack() {
+        this.roundAttackResolved = false;
+        this.pendingHits = [];
+        this.resolving = false;
+        this.resolveTimer = 0;
+        this.afterimages = [];
+        this._deathStaggerIndex = 0;
     }
 
-    onBossKilled(boss) {
-        if (boss.deathHandled) return;
-        boss.deathHandled = true;
-
-        const { particles, experience, audio, renderer } = this.game;
-        particles.deathEffect(boss.x, boss.y + 20, boss.color);
-        for (let i = 0; i < 6; i++) {
-            const a = (i / 6) * Math.PI * 2;
-            const distR = 40 + i * 8;
-            experience.spawnOrb(
-                boss.x + Math.cos(a) * distR,
-                boss.y + 20 + Math.sin(a) * distR * 0.4,
-                boss.xpValue / 4
-            );
-        }
-        renderer.shake(12, 0.35);
-        audio.playMonsterDeath();
-        if (this.game.bossChests) {
-            this.game.bossChests.spawnForBoss(boss);
-        }
+    scheduleDeathFade() {
+        const interval = CONFIG.COMBAT_RESOLVE.DEATH_STAGGER || 0.07;
+        const delay = this._deathStaggerIndex * interval;
+        this._deathStaggerIndex++;
+        return delay;
     }
 
-    update(dt) {
-        this._updatePendingLightning(dt);
-
-        const { player, spawner, projectiles, particles, renderer, experience } = this.game;
-
-        if (player.state === PlayerState.ATTACKING) {
-            this.checkAttackCollisions();
-            this.checkBossAttackCollisions();
-            this.checkShadowCloneCollisions();
-            this.checkBossShadowCloneCollisions();
-        }
-
-        this.updateMonsterActions(dt);
-        this.checkProjectileHits();
-        this.checkBossProjectileHits();
-        this.updateDamageNumbers(dt);
+    consumeRoundAttack() {
+        if (this.roundAttackResolved) return false;
+        this.roundAttackResolved = true;
+        return true;
     }
 
-    checkAttackCollisions() {
-        const { player, spawner, particles, renderer } = this.game;
-
-        for (const m of spawner.monsters) {
-            if (!m.alive || m.dying || m.spawning) continue;
-
-            const colliding = circlesCollide(
-                player.x, player.y, player.effectiveRadius,
-                m.x, m.y, m.hitboxRadius
-            );
-
-            if (colliding && !player.hitMonstersInSegment.has(m.id)) {
-                player.hitMonstersInSegment.add(m.id);
-                const combo = player.registerComboHit();
-                if (this.game.abilities) {
-                    this.game.abilities.onComboHit(combo);
-                }
-                const { damage, isCrit, isIaiCrit } = player.getDamage();
-                const actualDmg = m.takeDamage(damage);
-
-                this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 5, actualDmg, isCrit, null, combo, isIaiCrit);
-                if (isIaiCrit) {
-                    particles.iaiCritEffect(m.x, m.y);
-                    renderer.shake(10, 0.2);
-                } else {
-                    particles.hitSpark(m.x, m.y, isCrit);
-                }
-
-                const a = angle(player.x, player.y, m.x, m.y);
-                particles.slashTrail(m.x, m.y, a);
-
-                renderer.shakeAttackHit(isCrit, combo);
-                this.game.audio.playHit(isCrit);
-
-                if (player.freezeChance > 0 && Math.random() < player.freezeChance) {
-                    m.freeze(player.freezeDuration);
-                    particles.freezeEffect(m.x, m.y);
-                }
-
-                if (player.lightningChains > 0) {
-                    this.triggerLightningChain(m, actualDmg * 0.4);
-                }
-
-                if (m.dying) {
-                    this.onMonsterKilled(m);
-                }
-            } else if (!colliding && player.hitMonstersInSegment.has(m.id)) {
-                player.hitMonstersInSegment.delete(m.id);
-            }
-        }
+    isResolving() {
+        return this.resolving;
     }
 
-    _damageBoss(boss, damage, isCrit, combo, color, isIaiCrit = false) {
-        const { particles, renderer } = this.game;
-        const actualDmg = boss.takeDamage(damage);
-        const yOff = boss.hitboxRadius ? -boss.hitboxRadius - 5 : -40;
-        this.spawnDamageNumber(boss.x, boss.y + yOff, actualDmg, isCrit, color || '#fa4', combo, isIaiCrit);
-        if (isIaiCrit) {
-            particles.iaiCritEffect(boss.x, boss.y + 15);
-            renderer.shake(10, 0.2);
-        } else {
-            particles.hitSpark(boss.x, boss.y + 15, isCrit);
-        }
-        renderer.shakeAttackHit(isCrit, combo);
-        this.game.audio.playHit(isCrit);
-        if (boss.dying) this.onBossKilled(boss);
-        return actualDmg;
-    }
-
-    checkBossAttackCollisions() {
-        const { player, bossManager } = this.game;
-        const boss = bossManager && bossManager.boss;
-        if (!boss || !boss.alive || boss.dying) return;
-
-        const colliding = circlesCollide(
-            player.x, player.y, player.effectiveRadius,
-            boss.x, boss.y + 10, boss.hitboxRadius
-        );
-
-        if (colliding && !player.hitMonstersInSegment.has('boss')) {
-            player.hitMonstersInSegment.add('boss');
-            const combo = player.registerComboHit();
-            if (this.game.abilities) this.game.abilities.onComboHit(combo);
-            const { damage, isCrit, isIaiCrit } = player.getDamage();
-            this._damageBoss(boss, damage, isCrit, combo, null, isIaiCrit);
-        } else if (!colliding && player.hitMonstersInSegment.has('boss')) {
-            player.hitMonstersInSegment.delete('boss');
-        }
-    }
-
-    checkBossShadowCloneCollisions() {
-        const { player, bossManager } = this.game;
-        const boss = bossManager && bossManager.boss;
-        if (!boss || !boss.alive || boss.dying) return;
-        if (!player.shadowClonesActive || !player.shadowCloneSlots.length) return;
-
-        const cloneRadius = player.effectiveRadius * 0.85;
-        for (const clone of player.shadowCloneSlots) {
-            if (!circlesCollide(clone.x, clone.y, cloneRadius,
-                boss.x, boss.y + 10, boss.hitboxRadius)) continue;
-            if (clone.hitMonstersInSegment.has('boss')) continue;
-            clone.hitMonstersInSegment.add('boss');
-            const { damage, isCrit } = player.getCloneDamage();
-            this._damageBoss(boss, damage, isCrit, 0, '#a8a');
-        }
-    }
-
-    checkBossProjectileHits() {
-        const { player, bossManager, particles } = this.game;
-        if (!bossManager) return;
-
-        for (const p of bossManager.projectiles) {
-            if (!p.alive) continue;
-
-            if (player.isInAttackMode()) {
-                if (circlesCollide(player.x, player.y, player.effectiveRadius + 8, p.x, p.y, p.radius)) {
-                    p.alive = false;
-                    particles.bulletShatter(p.x, p.y);
-                    particles.hitSpark(p.x, p.y, false);
-                    continue;
-                }
-            }
-
-            if (player.isVulnerable()) {
-                if (circlesCollide(player.x, player.y, player.effectiveRadius, p.x, p.y, p.radius)) {
-                    p.alive = false;
-                    if (player.takeDamage(CONFIG.PLAYER.DAMAGE_PER_HIT)) {
-                        this.game.audio.playPlayerHurt();
-                    }
-                    particles.bulletShatter(p.x, p.y);
-                }
-            }
-        }
-    }
-
-    checkShadowCloneCollisions() {
-        const { player, spawner, particles, renderer } = this.game;
-        if (!player.shadowClonesActive || !player.shadowCloneSlots.length) return;
-
-        const cloneRadius = player.effectiveRadius * 0.85;
-
-        for (const clone of player.shadowCloneSlots) {
-            for (const m of spawner.monsters) {
-                if (!m.alive || m.dying || m.spawning) continue;
-
-                const colliding = circlesCollide(
-                    clone.x, clone.y, cloneRadius,
-                    m.x, m.y, m.hitboxRadius
-                );
-
-                if (colliding && !clone.hitMonstersInSegment.has(m.id)) {
-                    clone.hitMonstersInSegment.add(m.id);
-                    const { damage, isCrit } = player.getCloneDamage();
-                    const actualDmg = m.takeDamage(damage);
-
-                    this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 5, actualDmg, isCrit, '#a8a');
-                    particles.hitSpark(m.x, m.y, isCrit);
-
-                    if (isCrit) {
-                        renderer.shake(CONFIG.SHAKE.NORMAL.magnitude, CONFIG.SHAKE.NORMAL.duration);
-                    }
-                    this.game.audio.playHit(isCrit);
-
-                    if (m.dying) {
-                        this.onMonsterKilled(m);
-                    }
-                } else if (!colliding && clone.hitMonstersInSegment.has(m.id)) {
-                    clone.hitMonstersInSegment.delete(m.id);
-                }
-            }
-        }
-    }
-
-    triggerLightningChain(sourceMonster, damage) {
-        const { spawner } = this.game;
-        const active = spawner.getActiveMonsters().filter(m => m.id !== sourceMonster.id && !m.spawning);
-
-        active.sort((a, b) =>
-            dist(sourceMonster.x, sourceMonster.y, a.x, a.y) -
-            dist(sourceMonster.x, sourceMonster.y, b.x, b.y)
-        );
-
-        let prevX = sourceMonster.x;
-        let prevY = sourceMonster.y;
-        const maxChains = this.game.player.lightningChains;
-        const dmg = Math.round(damage);
-        const stepDelay = 0.16;
-
-        for (let i = 0; i < Math.min(maxChains, active.length); i++) {
-            const t = active[i];
-            if (dist(prevX, prevY, t.x, t.y) > 200) break;
-
-            this.pendingLightning.push({
-                timer: i * stepDelay,
-                fromX: prevX,
-                fromY: prevY,
-                toX: t.x,
-                toY: t.y,
-                target: t,
-                damage: dmg,
-                fired: false,
-            });
-
-            prevX = t.x;
-            prevY = t.y;
-        }
-    }
-
-    _updatePendingLightning(dt) {
-        const { particles } = this.game;
-        const keep = [];
-
-        for (const step of this.pendingLightning) {
-            step.timer -= dt;
-            if (!step.fired && step.timer <= 0) {
-                step.fired = true;
-                const t = step.target;
-                if (t.alive && !t.dying && !t.spawning) {
-                    const actualDmg = t.takeDamage(step.damage);
-                    this.spawnDamageNumber(
-                        t.x, t.y - t.hitboxRadius - 5, actualDmg, false, '#ff0');
-                    particles.lightningEffect(step.fromX, step.fromY, step.toX, step.toY);
-                    if (t.dying) this.onMonsterKilled(t);
-                }
-            }
-            if (!step.fired || step.timer > -0.35) keep.push(step);
-        }
-
-        this.pendingLightning = keep;
-    }
-
-    getMonsterTarget(player) {
-        if (player.state === PlayerState.RETURNING) {
-            return { x: player.x, y: player.y };
-        }
-        return { x: player.homeX, y: player.homeY };
-    }
-
-    updateMonsterActions(dt) {
-        const { player, spawner, projectiles } = this.game;
-        const target = this.getMonsterTarget(player);
-
-        for (const m of spawner.monsters) {
-            if (!m.alive) continue;
-            const action = m.update(dt, target.x, target.y);
-            if (!action) continue;
-
-            if (action.type === 'shoot') {
-                projectiles.spawn(action.x, action.y, action.angle);
-            } else if (action.type === 'melee') {
-                if (player.isVulnerable()) {
-                    const d = dist(m.x, m.y, player.x, player.y);
-                    if (d < m.range + player.effectiveRadius) {
-                        if (player.takeDamage(CONFIG.PLAYER.DAMAGE_PER_HIT)) {
-                            this.game.audio.playPlayerHurt();
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    checkProjectileHits() {
-        const { player, projectiles, particles } = this.game;
-
-        for (const p of projectiles.projectiles) {
-            if (!p.alive) continue;
-
-            if (player.isInAttackMode()) {
-                if (circlesCollide(player.x, player.y, player.effectiveRadius + 5, p.x, p.y, p.radius)) {
-                    p.alive = false;
-                    particles.bulletShatter(p.x, p.y);
-                    continue;
-                }
-            }
-
-            if (player.isVulnerable()) {
-                if (circlesCollide(player.x, player.y, player.effectiveRadius, p.x, p.y, p.radius)) {
-                    p.alive = false;
-                    if (player.takeDamage(CONFIG.PLAYER.DAMAGE_PER_HIT)) {
-                        this.game.audio.playPlayerHurt();
-                    }
-                    particles.bulletShatter(p.x, p.y);
-                }
-            }
-        }
-    }
-
-    spawnDamageNumber(x, y, damage, isCrit, color = null, combo = 0, isIaiCrit = false) {
+    spawnDamageNumber(x, y, damage, isCrit = false, color = null) {
         this.damageNumbers.push({
-            x, y,
-            damage,
-            isCrit,
-            isIaiCrit,
-            combo,
-            color: isIaiCrit ? '#1a88e8' : (color || (isCrit ? '#e85800' : '#b82018')),
-            life: isIaiCrit ? 1.1 : 0.8,
-            maxLife: isIaiCrit ? 1.1 : 0.8,
-            vy: isIaiCrit ? -80 : -60,
+            x, y, damage, isCrit, life: 0.85, maxLife: 0.85,
+            vy: -68, color: color || (isCrit ? '#f08230' : '#c22a20'),
         });
     }
 
-    updateDamageNumbers(dt) {
+    _handleMonsterKilled(m) {
+        if (m._deathHandled) return;
+        m._deathHandled = true;
+        const player = this.game.player;
+        const hitAngle = player
+            ? angle(player.homeX, player.homeY, m.x, m.y)
+            : Math.random() * Math.PI * 2;
+        const intensity = m.size > 13 ? 1.35 : 1;
+        this.game.bloodStains.spawn(m.x, m.y + m.hitboxRadius * 0.35, intensity, hitAngle);
+        this.game.particles.deathEffect(m.x, m.y, m.color);
+        if (m.canSplit() && !m.spawnedChildren && this._shouldSpawnSplitChildren(m)) {
+            m.spawnedChildren = true;
+            const kids = this.game.spawner.spawnSplitChildren(m);
+            for (const k of kids) {
+                this.game.particles.spawnEffect(k.x, k.y, k.color);
+            }
+        }
+        if (this.game.experience) this.game.experience.onMonsterKilled(m);
+    }
+
+    _shouldSpawnSplitChildren(deadMonster) {
+        const others = this.game.spawner.getActiveMonsters().filter(m => m !== deadMonster);
+        if (others.length > 0) return true;
+        return this.game.turnsLeft > 1;
+    }
+
+    recordFinalPathSegment() {
+        const p = this.game.player;
+        if (!p || p.attackPath.length < 2) return;
+        const from = p.attackPath[p.attackPath.length - 2];
+        const to = p.attackPath[p.attackPath.length - 1];
+        this._recordPathHits(from, to, p.pathIndex);
+    }
+
+    beginResolve(attackPath) {
+        const p = this.game.player;
+        if (!p) return;
+        this.resolvePath = attackPath ? attackPath.map(pt => ({ x: pt.x, y: pt.y })) : [];
+        if (this.pendingHits.length === 0) {
+            this._finishResolve();
+            return;
+        }
+        this.resolving = true;
+        this.resolveTimer = CONFIG.COMBAT_RESOLVE.FIRST_HIT_DELAY;
+        this.game.abilities.onResolveStarted(this.resolvePath);
+    }
+
+    _finishResolve() {
+        const p = this.game.player;
+        this.resolving = false;
+        this.pendingHits = [];
+        this.resolvePath = [];
+        this._applyCloneHits();
+        this.game.abilities.onResolveEnded();
+        if (p) p.endCombo();
+        if (this.game.experience) this.game.experience.tryTriggerPendingUpgrade();
+    }
+
+    _spawnAfterimage(x, y, angle) {
+        this.afterimages.push({
+            x, y, angle,
+            life: CONFIG.COMBAT_RESOLVE.AFTERIMAGE_LIFE,
+            maxLife: CONFIG.COMBAT_RESOLVE.AFTERIMAGE_LIFE,
+        });
+    }
+
+    _recordPathHits(pathFrom, pathTo, segmentIndex) {
+        const p = this.game.player;
+        const monsters = this.game.spawner.getActiveMonsters();
+        const segLen = dist(pathFrom.x, pathFrom.y, pathTo.x, pathTo.y);
+        for (const m of monsters) {
+            const key = `${m.id}:${segmentIndex}`;
+            if (p.hitMonstersInSegment.has(key)) continue;
+
+            const vx = pathTo.x - pathFrom.x;
+            const vy = pathTo.y - pathFrom.y;
+            const ux = m.x - pathFrom.x;
+            const uy = m.y - pathFrom.y;
+            const t = clamp((ux * vx + uy * vy) / Math.max(1e-6, segLen * segLen), 0, 1);
+            const px = pathFrom.x + vx * t;
+            const py = pathFrom.y + vy * t;
+            if (dist(px, py, m.x, m.y) > m.hitboxRadius + p.effectiveRadius * 0.42) continue;
+
+            p.hitMonstersInSegment.add(key);
+            this.pendingHits.push({
+                monsterId: m.id,
+                pathFrom: { x: pathFrom.x, y: pathFrom.y },
+                pathTo: { x: pathTo.x, y: pathTo.y },
+            });
+        }
+    }
+
+    _getMonsterById(id) {
+        return this.game.spawner.monsters.find(m => m.id === id && m.alive && !m.dying);
+    }
+
+    _applyQueuedHit(hit) {
+        const p = this.game.player;
+        const m = this._getMonsterById(hit.monsterId);
+        if (!p || !m) return;
+
+        const hitAngle = angle(hit.pathFrom.x, hit.pathFrom.y, hit.pathTo.x, hit.pathTo.y);
+        const dashAngle = angle(p.homeX, p.homeY, m.x, m.y);
+        this._spawnAfterimage(m.x, m.y, dashAngle);
+        this.game.particles.slashTrail(m.x, m.y, hitAngle);
+        this.game.particles.slashTrail(p.homeX, p.homeY, dashAngle);
+
+        const combo = p.registerComboHit();
+        this.game.abilities.onResolveHit(hit, combo);
+
+        const { damage, isCrit } = p.getDamage();
+        const strike = m.takeDamage(damage, hitAngle);
+
+        if (strike.blockedByShield) {
+            this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, 0, false, '#9fb8d8');
+            return;
+        }
+
+        if (strike.actualDamage > 0) {
+            this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, strike.actualDamage, isCrit);
+            this.game.particles.hitSpark(m.x, m.y, isCrit);
+            this.game.renderer.shakeAttackHit(isCrit, combo);
+        }
+
+        if (m.kind === MonsterKind.BERSERKER && strike.actualDamage > 0) {
+            const drain = m.base.kiDrainOnHit || 0;
+            p.ki = Math.max(0, p.ki - drain);
+        }
+
+        if (m.dying) {
+            this._applyIceBurst(m.x, m.y);
+            this._handleMonsterKilled(m);
+        }
+    }
+
+    _applyCloneHits() {
+        const p = this.game.player;
+        if (!p || !p.shadowClones.length) return;
+        const monsters = this.game.spawner.getActiveMonsters();
+        const cloneDmg = p.getAbilityDamage(0.2);
+        for (const c of p.shadowClones) {
+            for (const m of monsters) {
+                if (!circlesCollide(c.x, c.y, p.effectiveRadius * 0.7, m.x, m.y, m.hitboxRadius)) continue;
+                const hit = m.takeDamage(cloneDmg, angle(c.x, c.y, m.x, m.y));
+                if (hit.actualDamage > 0) {
+                    this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#a58ad0');
+                    this.game.particles.hitSpark(m.x, m.y, false);
+                }
+                if (m.dying) this._handleMonsterKilled(m);
+            }
+        }
+    }
+
+    _applyIceBurst(centerX, centerY) {
+        const p = this.game.player;
+        if (!p.turnBuffs.iceReady) return;
+        p.turnBuffs.iceReady = false;
+        const monsters = this.game.spawner.getActiveMonsters();
+        const dmg = p.getAbilityDamage(0.30);
+        const radius = 90;
+        for (const m of monsters) {
+            if (dist(centerX, centerY, m.x, m.y) > radius + m.hitboxRadius) continue;
+            m.freeze(1.8);
+            m.vulnerableMark = true;
+            const hit = m.takeDamage(dmg, angle(centerX, centerY, m.x, m.y));
+            if (hit.actualDamage > 0) this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#78d8ff');
+            this.game.particles.freezeEffect(m.x, m.y);
+            if (m.dying) this._handleMonsterKilled(m);
+        }
+        this.game.player.queueMessage('冰冻触发!');
+    }
+
+    update(dt) {
+        const p = this.game.player;
+
+        if (this.resolving) {
+            this.resolveTimer -= dt;
+            if (this.resolveTimer <= 0) {
+                if (this.pendingHits.length > 0) {
+                    this._applyQueuedHit(this.pendingHits.shift());
+                    this.resolveTimer = CONFIG.COMBAT_RESOLVE.HIT_INTERVAL;
+                } else {
+                    this._finishResolve();
+                }
+            }
+        } else if (p && p.state === PlayerState.ATTACKING && p.pathIndex < p.attackPath.length - 1) {
+            const from = p.attackPath[p.pathIndex];
+            const to = p.attackPath[p.pathIndex + 1];
+            this._recordPathHits(from, to, p.pathIndex);
+        }
+
+        for (let i = this.afterimages.length - 1; i >= 0; i--) {
+            this.afterimages[i].life -= dt;
+            if (this.afterimages[i].life <= 0) this.afterimages.splice(i, 1);
+        }
+
+        if (this.game.abilities.hasActiveFx()) {
+            this.game.abilities.update(dt);
+        }
         for (const d of this.damageNumbers) {
             d.life -= dt;
             d.y += d.vy * dt;
@@ -5294,132 +4846,128 @@ class CombatManager {
         this.damageNumbers = this.damageNumbers.filter(d => d.life > 0);
     }
 
-    _drawDamageText(ctx, text, x, y, size, fillColor, alpha) {
-        ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.font = `${size}px ${GAME_FONT}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.lineWidth = Math.max(2, size * 0.14);
-        ctx.strokeStyle = 'rgba(255, 252, 245, 0.92)';
-        ctx.lineJoin = 'round';
-        ctx.strokeText(text, x, y);
-        ctx.fillStyle = fillColor;
-        ctx.fillText(text, x, y);
-        ctx.restore();
+    drawAfterimages(ctx) {
+        const p = this.game.player;
+        if (!p || this.afterimages.length === 0) return;
+        const sprite = SPRITES.ninja.attack[0];
+        for (const img of this.afterimages) {
+            const t = img.life / img.maxLife;
+            ctx.save();
+            ctx.globalAlpha = t * 0.55;
+            ctx.translate(img.x, img.y);
+            ctx.rotate(img.angle * 0.15);
+            drawSprite(ctx, sprite, 0, 0, p.spriteScale * 0.92);
+            ctx.restore();
+        }
     }
 
     drawDamageNumbers(ctx) {
-        const uiScale = this.game.renderer.uiScale || 1;
+        const s = this.game.renderer.uiScale || 1;
         for (const d of this.damageNumbers) {
             const alpha = d.life / d.maxLife;
-            const scale = d.isIaiCrit ? 1.8 : (d.isCrit ? 1.4 : 1.0);
-            const size = Math.floor((14 + d.damage * 0.3) * scale * uiScale);
-
-            this._drawDamageText(ctx, String(d.damage), d.x, d.y, size, d.color, alpha);
-
-            if (d.isIaiCrit) {
-                this._drawDamageText(ctx, '居合!', d.x, d.y - size * 0.9,
-                    Math.floor(size * 0.5), '#0a68c8', alpha);
-            } else if (d.isCrit) {
-                this._drawDamageText(ctx, '暴击', d.x, d.y - size * 0.85,
-                    Math.floor(size * 0.55), '#a83808', alpha);
-            }
+            const size = Math.floor((15 + d.damage * 0.24) * s * (d.isCrit ? 1.28 : 1));
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.font = `${size}px ${GAME_FONT}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = Math.max(2, size * 0.14);
+            ctx.strokeStyle = 'rgba(255,248,236,0.92)';
+            ctx.strokeText(String(d.damage), d.x, d.y);
+            ctx.fillStyle = d.color;
+            ctx.fillText(String(d.damage), d.x, d.y);
+            ctx.restore();
         }
     }
 }
 
 
 // ---- monsterSpawner.js ----
-let nextMonsterId = 0;
-
 class MonsterSpawner {
-    constructor() {
+    constructor(game) {
+        this.game = game;
         this.monsters = [];
-        this.spawnQueue = [];
-        this.spawnTimer = 0;
-        this.spawnInterval = 1.5;
     }
 
-    prepareLevelSpawns(levelIndex, canvasW, canvasH, playAreaBottom = canvasH) {
+    reset() {
         this.monsters = [];
-        this.spawnQueue = [];
-        this.spawnTimer = 0;
-
-        const levelConfig = CONFIG.LEVELS[levelIndex];
-        if (!levelConfig) return;
-
-        if (getBossKeyForLevel(levelIndex)) {
-            return;
-        }
-
-        const totalCount = levelConfig.count;
-        const waves = levelConfig.waves;
-        const perWave = Math.ceil(totalCount / waves);
-
-        for (let w = 0; w < waves; w++) {
-            const count = w === waves - 1 ? totalCount - perWave * w : perWave;
-            for (let i = 0; i < count; i++) {
-                const typeKey = pickRandom(levelConfig.types);
-                const config = CONFIG.MONSTERS[typeKey];
-                const edge = Math.floor(Math.random() * 4);
-                let x, y;
-                const edgePad = 72;
-                const alongPad = 80;
-                const playBottom = Math.min(playAreaBottom, canvasH);
-                const maxY = Math.max(alongPad + 20, playBottom - edgePad);
-                const minY = edgePad;
-
-                switch (edge) {
-                    case 0:
-                        x = randRange(alongPad, canvasW - alongPad);
-                        y = minY;
-                        break;
-                    case 1:
-                        x = randRange(alongPad, canvasW - alongPad);
-                        y = maxY;
-                        break;
-                    case 2:
-                        x = edgePad;
-                        y = randRange(minY, maxY);
-                        break;
-                    case 3:
-                        x = canvasW - edgePad;
-                        y = randRange(minY, maxY);
-                        break;
-                }
-
-                const spawnGap = totalCount > 40 ? 0.35 : totalCount > 25 ? 0.45 : 0.55;
-                const waveGap = totalCount > 40 ? 2.5 : 3.5;
-                this.spawnQueue.push({
-                    delay: w * waveGap + i * spawnGap,
-                    x, y, config, typeKey,
-                });
-            }
-        }
-
-        this.spawnQueue.sort((a, b) => a.delay - b.delay);
     }
 
-    update(dt) {
-        this.spawnTimer += dt;
+    _pickSpawnPos(w, h, playBottom, safeZone) {
+        const edgePad = 26;
+        const top = 88;
+        const bottom = Math.max(top + 80, playBottom - 26);
+        for (let i = 0; i < 100; i++) {
+            const x = randRange(edgePad, w - edgePad);
+            const y = randRange(top, bottom);
+            if (!safeZone) return { x, y };
+            if (dist(x, y, safeZone.x, safeZone.y) > safeZone.r + 24) return { x, y };
+        }
+        return { x: w * 0.5, y: (top + bottom) * 0.5 };
+    }
 
-        while (this.spawnQueue.length > 0 && this.spawnQueue[0].delay <= this.spawnTimer) {
-            const entry = this.spawnQueue.shift();
-            const m = new Monster(entry.x, entry.y, entry.config, nextMonsterId++);
-            m.configKey = entry.typeKey;
+    _spawnBatch(kind, count, w, h, playBottom, safeZone, splitTier = 0, withSpawnAnim = false) {
+        for (let i = 0; i < count; i++) {
+            const pos = this._pickSpawnPos(w, h, playBottom, safeZone);
+            const m = new Monster(pos.x, pos.y, kind, splitTier);
+            m.game = this.game;
+            if (withSpawnAnim) m.beginSpawn(CONFIG.MONSTER_SPAWN_ANIM + randRange(0, 0.12));
             this.monsters.push(m);
         }
+    }
 
+    _scaledCount(n) {
+        const scale = CONFIG.STAGE_MONSTER_SCALE || 1;
+        return Math.max(0, Math.round((n || 0) * scale));
+    }
+
+    spawnStage(stageIndex, w, h, playBottom, safeZone, withSpawnAnim = false) {
+        this.monsters = [];
+        const cfg = CONFIG.STAGES[clamp(stageIndex, 0, CONFIG.STAGES.length - 1)];
+        if (!cfg) return;
+        this._spawnBatch(MonsterKind.NORMAL, this._scaledCount(cfg.normal), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        this._spawnBatch(MonsterKind.ELITE, this._scaledCount(cfg.elite), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        this._spawnBatch(MonsterKind.SHIELD, this._scaledCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        this._spawnBatch(MonsterKind.BERSERKER, this._scaledCount(cfg.berserker), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        this._spawnBatch(MonsterKind.SPLITTER, this._scaledCount(cfg.splitter), w, h, playBottom, safeZone, 0, withSpawnAnim);
+    }
+
+    spawnSplitChildren(parent) {
+        if (!parent || !parent.canSplit()) return [];
+        const children = [];
+        const cnt = parent.base.splitCount || 2;
+        for (let i = 0; i < cnt; i++) {
+            const a = (i / cnt) * Math.PI * 2 + randRange(-0.25, 0.25);
+            const d = randRange(12, 20);
+            const child = new Monster(
+                parent.x + Math.cos(a) * d,
+                parent.y + Math.sin(a) * d,
+                MonsterKind.SPLITTER,
+                parent.splitTier + 1
+            );
+            child.game = this.game;
+            child.beginSpawn(CONFIG.MONSTER_SPAWN_ANIM * 0.85);
+            children.push(child);
+        }
+        this.monsters.push(...children);
+        return children;
+    }
+
+    update(dt, w, h, playBottom, playerZone) {
+        const resolving = this.game && this.game.combat && this.game.combat.isResolving();
+        for (const m of this.monsters) {
+            if (resolving && !m.dying) continue;
+            m.update(dt, w, h, playBottom, playerZone);
+        }
         this.monsters = this.monsters.filter(m => m.alive);
     }
 
-    allClear() {
-        return this.spawnQueue.length === 0 && this.monsters.length === 0;
+    getActiveMonsters() {
+        return this.monsters.filter(m => m.alive && !m.dying && !m.spawning);
     }
 
-    getActiveMonsters() {
-        return this.monsters.filter(m => m.alive && !m.dying);
+    allClear() {
+        return !this.monsters.some(m => m.alive && !m.dying);
     }
 }
 
@@ -5430,7 +4978,6 @@ class InputManager {
         this.canvas = canvas;
         this.game = game;
         this.isDrawing = false;
-        this.lastPoint = null;
 
         canvas.addEventListener('touchstart', (e) => this.onStart(e), { passive: false });
         canvas.addEventListener('touchmove', (e) => this.onMove(e), { passive: false });
@@ -5443,12 +4990,8 @@ class InputManager {
     }
 
     _getClientPos(e) {
-        if (e.touches && e.touches.length > 0) {
-            return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
-        }
-        if (e.changedTouches && e.changedTouches.length > 0) {
-            return { clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY };
-        }
+        if (e.touches && e.touches.length > 0) return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+        if (e.changedTouches && e.changedTouches.length > 0) return { clientX: e.changedTouches[0].clientX, clientY: e.changedTouches[0].clientY };
         return { clientX: e.clientX, clientY: e.clientY };
     }
 
@@ -5457,66 +5000,66 @@ class InputManager {
         return this.game.renderer.screenToGame(clientX, clientY);
     }
 
-    getCanvasPos(e) {
-        const { clientX, clientY } = this._getClientPos(e);
-        return this.game.renderer.screenToCanvas(clientX, clientY);
-    }
-
     onStart(e) {
-        if (this.game.state === 'PLAYING' && this.game.ui && this.game.player) {
-            const pos = this.getCanvasPos(e);
-            const vp = this.game.renderer.getViewport();
-            const s = this.game.renderer.uiScale || 1;
-            if (this.game.ui.isPauseButtonHit(pos.x, pos.y, vp, s)) {
-                e.preventDefault();
-                this.game.pauseGame();
-                return;
-            }
-        }
-
         if (this.game.state !== 'PLAYING') return;
-
         e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.IDLE) return;
 
         const pos = this.getPos(e);
         if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
+        if (dist(pos.x, pos.y, player.homeX, player.homeY) > player.triggerRadius) return;
+        if (player.ki <= 0) return;
 
-        const d = dist(pos.x, pos.y, player.homeX, player.homeY);
-        if (d <= player.triggerRadius && player.ki > 10) {
-            this.isDrawing = true;
-            this.game.enterBulletTime();
-            player.addPathPoint(player.homeX, player.homeY);
-            player.addPathPoint(pos.x, pos.y);
-            this.lastPoint = pos;
-        }
+        this.isDrawing = true;
+        this.game.enterBulletTime();
+        player.startBulletTime();
+        player.addPathPoint(player.homeX, player.homeY);
+        player.addPathPoint(pos.x, pos.y);
+        this._checkPathOrbs(player);
+    }
+
+    _checkPathOrbs(player) {
+        const path = player.attackPath;
+        if (path.length < 2) return;
+        const from = path[path.length - 2];
+        const to = path[path.length - 1];
+        this.game.buffOrbs.checkPathSegment(from, to);
     }
 
     onMove(e) {
-        e.preventDefault();
         if (!this.isDrawing) return;
+        e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
-        if (player.ki <= 0) {
-            this.onEnd(e);
-            return;
-        }
-
         const pos = this.getPos(e);
         if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
+        const last = player.attackPath[player.attackPath.length - 1];
+        if (!last) return;
+        const step = dist(last.x, last.y, pos.x, pos.y);
+        if (step < 2) return;
 
+        if (!player.consumeKiByDistance(step)) {
+            this.isDrawing = false;
+            this.game.exitBulletTime(false);
+            return;
+        }
         player.addPathPoint(pos.x, pos.y);
-        this.lastPoint = pos;
+        this._checkPathOrbs(player);
     }
 
     onEnd(e) {
-        if (e) e.preventDefault();
         if (!this.isDrawing) return;
+        if (e) e.preventDefault();
         this.isDrawing = false;
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
-        this.game.exitBulletTime();
+        if (player.attackPath.length < 2) {
+            this.game.exitBulletTime(true);
+            player.invalidatePath();
+            return;
+        }
+        this.game.exitBulletTime(false);
     }
 
     cancelActivePointer() {
@@ -5524,8 +5067,8 @@ class InputManager {
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
         this.game.timeScale = CONFIG.NORMAL_TIME_SCALE;
-        player.state = PlayerState.IDLE;
-        player.attackPath = [];
+        this.game.endBulletTimeDim();
+        player.invalidatePath();
     }
 }
 
@@ -5539,64 +5082,55 @@ class Game {
 
         this.state = 'MENU';
         this.timeScale = CONFIG.NORMAL_TIME_SCALE;
-        this.lastTime = 0;
+        this.bulletTimeDimActive = false;
+        this.lastTime = performance.now();
 
         this.player = null;
-        this.spawner = new MonsterSpawner();
+        this.spawner = new MonsterSpawner(this);
         this.projectiles = new ProjectileManager();
-        this.particles = new ParticleSystem(600);
+        this.particles = new ParticleSystem(650);
         this.combat = new CombatManager(this);
-        this.experience = new ExperienceManager();
         this.upgrades = new UpgradeManager();
-        this.bossRewards = new BossRewardManager();
-        this.bossChests = new BossChestManager(this);
+        this.experience = new ExperienceManager(this);
         this.levelManager = new LevelManager();
         this.ui = new UI();
         this.audio = new AudioHooks();
         this.bloodStains = new BloodStainSystem();
         this.abilities = new AbilityManager(this);
         this.sakura = new SakuraSystem();
+        this.failDeath = new StageFailAnimator(this);
         this.grass = new GrassSystem();
-        this.bossManager = new BossManager(this);
+        this.buffOrbs = new BuffOrbManager(this);
         this.input = null;
 
-        this.levelCleared = false;
-        this.pendingLevelUpCount = 0;
-        this._lastTouchUiTime = 0;
+        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
+        this.awaitingUpgrade = false;
+        this.pendingStageClear = false;
+
+        this._pointerDown = false;
         this._overlayDismissPending = false;
         this._overlayGestureActive = false;
-        this._pointerDown = false;
-        this.pauseOverlay = {
-            passwordMode: false,
-            passwordInput: '',
-            debugUnlocked: false,
-            debugLevelInput: '1',
-            debugChapterInput: '1',
-            debugStageInput: '1',
+
+        this._bindEvents();
+        this.upgrades.onSelect = () => {
+            this.state = 'PLAYING';
+            if (this.experience) this.experience.tryTriggerPendingUpgrade();
+            this._tryFinishStageClear();
         };
 
-        const trackPointerDown = () => { this._pointerDown = true; };
-        const trackPointerUp = () => { this._pointerDown = false; };
-        this.canvas.addEventListener('touchstart', trackPointerDown, { passive: true });
-        this.canvas.addEventListener('mousedown', trackPointerDown);
-        this.canvas.addEventListener('touchend', trackPointerUp, { passive: true });
-        this.canvas.addEventListener('touchcancel', trackPointerUp);
-        this.canvas.addEventListener('mouseup', trackPointerUp);
+        requestAnimationFrame((t) => this.loop(t));
+    }
 
-        this.upgrades.onSelect = () => this._finishRewardOverlay();
-        this.bossRewards.onSelect = () => this._finishRewardOverlay();
+    _bindEvents() {
+        const trackDown = () => { this._pointerDown = true; };
+        const trackUp = () => { this._pointerDown = false; };
+        this.canvas.addEventListener('touchstart', trackDown, { passive: true });
+        this.canvas.addEventListener('mousedown', trackDown);
+        this.canvas.addEventListener('touchend', trackUp, { passive: true });
+        this.canvas.addEventListener('mouseup', trackUp);
+        this.canvas.addEventListener('touchcancel', trackUp, { passive: true });
 
         const overlayDown = (e) => {
-            if (this.state === 'PLAYING' && this.ui && this.player) {
-                const pos = this.getClickPos(e);
-                const vp = this.renderer.getViewport();
-                const s = this.renderer.uiScale || 1;
-                if (this.ui.isPauseButtonHit(pos.x, pos.y, vp, s)) {
-                    if (e.cancelable) e.preventDefault();
-                    this.pauseGame();
-                    return;
-                }
-            }
             if (this._isOverlayState()) this._onOverlayPointerDown(e);
         };
         const overlayUp = (e) => {
@@ -5605,54 +5139,31 @@ class Game {
         this.canvas.addEventListener('touchstart', overlayDown, { passive: false });
         this.canvas.addEventListener('mousedown', overlayDown);
         this.canvas.addEventListener('touchend', overlayUp, { passive: false });
-        this.canvas.addEventListener('touchcancel', overlayUp, { passive: false });
         this.canvas.addEventListener('mouseup', overlayUp);
+        this.canvas.addEventListener('touchcancel', overlayUp, { passive: false });
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-        document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
-        document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
-        document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
 
-        const onViewportChange = () => {
+        const onViewport = () => {
             this.renderer.resize();
-            if (this.grass && this.ui) {
-                const playBottom = this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale);
-                this.grass.init(
-                    this.renderer.w, this.renderer.h, playBottom, this._getGrassSafeZone());
-            }
-            if (this.player) {
+            const playBottom = this.ui.getPlayAreaBottom
+                ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
+                : this.renderer.h;
+            this.grass.init(this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
+            if (this.player && this.player.state === PlayerState.IDLE) {
                 this.player.homeX = this.renderer.w / 2;
                 this.player.homeY = this.renderer.h / 2;
-                if (this.player.state === PlayerState.IDLE) {
-                    this.player.x = this.player.homeX;
-                    this.player.y = this.player.homeY;
-                }
+                this.player.x = this.player.homeX;
+                this.player.y = this.player.homeY;
             }
         };
-        window.addEventListener('resize', onViewportChange);
-        window.addEventListener('orientationchange', onViewportChange);
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', onViewportChange);
-            window.visualViewport.addEventListener('scroll', onViewportChange);
-        }
-
-        this.lastTime = performance.now();
-        requestAnimationFrame((t) => this.loop(t));
-    }
-
-    _getGrassSafeZone() {
-        const x = this.player ? this.player.homeX : this.renderer.w / 2;
-        const y = this.player ? this.player.homeY : this.renderer.h / 2;
-        const refW = (typeof CONFIG !== 'undefined' && CONFIG.DISPLAY)
-            ? CONFIG.DISPLAY.LOGICAL_WIDTH
-            : 390;
-        const triggerRadius = Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
-        return { x, y, r: triggerRadius };
+        window.addEventListener('resize', onViewport);
+        window.addEventListener('orientationchange', onViewport);
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', onViewport);
     }
 
     _isOverlayState() {
-        return this.state === 'MENU' || this.state === 'GAME_OVER' ||
-            this.state === 'COMPLETE' || this.state === 'LEVEL_UP' ||
-            this.state === 'BOSS_REWARD' || this.state === 'PAUSED';
+        return this.state === 'MENU' || this.state === 'FAIL' || this.state === 'COMPLETE'
+            || this.state === 'LEVEL_UP' || this.state === 'STAGE_INTRO';
     }
 
     _lockOverlayInput() {
@@ -5669,8 +5180,6 @@ class Game {
 
     _onOverlayPointerUp(e) {
         if (e.cancelable) e.preventDefault();
-        this._lastTouchUiTime = performance.now();
-
         if (this._overlayDismissPending) {
             this._overlayDismissPending = false;
             return;
@@ -5679,29 +5188,12 @@ class Game {
         this._overlayGestureActive = false;
 
         const pos = this.getClickPos(e);
-
         if (this.state === 'LEVEL_UP') {
             const idx = this.upgrades.handleClick(pos.x, pos.y);
-            if (idx >= 0) {
-                this.upgrades.selectUpgrade(idx, this.player);
-            }
+            if (idx >= 0) this.upgrades.selectUpgrade(idx, this.player);
             return;
         }
-
-        if (this.state === 'BOSS_REWARD') {
-            const idx = this.bossRewards.handleClick(pos.x, pos.y);
-            if (idx >= 0) {
-                this.bossRewards.selectReward(idx, this.player);
-            }
-            return;
-        }
-
-        if (this.state === 'PAUSED') {
-            this.handlePauseOverlayClick(pos.x, pos.y);
-            return;
-        }
-
-        if (this.state === 'MENU' || this.state === 'GAME_OVER' || this.state === 'COMPLETE') {
+        if (this.state === 'MENU' || this.state === 'FAIL' || this.state === 'COMPLETE') {
             this.startGame();
         }
     }
@@ -5722,348 +5214,302 @@ class Game {
         return this.renderer.screenToCanvas(clientX, clientY);
     }
 
-    startGame() {
-        const cx = this.renderer.w / 2;
-        const cy = this.renderer.h / 2;
-        this.player = new Player(cx, cy);
-        this.spawner = new MonsterSpawner();
-        this.projectiles = new ProjectileManager();
-        this.particles = new ParticleSystem(600);
-        this.combat = new CombatManager(this);
-        this.experience = new ExperienceManager();
-        this.upgrades = new UpgradeManager();
-        this.bossRewards = new BossRewardManager();
-        this.bossChests = new BossChestManager(this);
-        this.levelManager = new LevelManager();
-        this.audio = new AudioHooks();
-        this.bloodStains = new BloodStainSystem();
-        this.abilities.reset();
-        this.bossManager = new BossManager(this);
-        this.sakura.petals = [];
-        this.sakura.active = false;
-        this.grass.init(
-            this.renderer.w, this.renderer.h,
-            this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale),
-            this._getGrassSafeZone());
-        this.levelCleared = false;
-        this.pendingLevelUpCount = 0;
-
-        this.upgrades.onSelect = () => this._finishRewardOverlay();
-        this.bossRewards.onSelect = () => this._finishRewardOverlay();
-
-        if (!this.input) {
-            this.input = new InputManager(this.canvas, this);
-        } else {
-            this.input.game = this;
-        }
-
-        this.state = 'PLAYING';
-        this.levelManager.beginFirstLevel();
+    _isFailBattlefield() {
+        return this.state === 'FAIL_DEATH' || this.state === 'STAGE_FAIL' || this.state === 'FAIL';
     }
 
-    pauseGame() {
-        if (this.state !== 'PLAYING') return;
-        this.state = 'PAUSED';
-        this._lockOverlayInput();
+    isUpgradeBlocked() {
+        if (!this.combat || !this.abilities) return false;
+        if (this.combat.isResolving()) return true;
+        if (this.abilities.lightningChain) return true;
+        return false;
     }
 
-    resumeGame() {
-        if (this.state !== 'PAUSED') return;
-        this.state = 'PLAYING';
-        this._tryStartLevelUp();
+    _isBattleScene() {
+        return this.state === 'PLAYING' || this.state === 'LEVEL_UP';
     }
 
-    _queueLevelUps(count) {
-        if (!this.player || !this.upgrades || count <= 0) return;
-        this.pendingLevelUpCount += count;
-        this._tryStartLevelUp();
+    isCombatPresentationActive() {
+        if (this.isUpgradeBlocked()) return true;
+        if (this.abilities.hasActiveFx()) return true;
+        if (this.combat.afterimages.length > 0) return true;
+        if (this.combat.damageNumbers.length > 0) return true;
+        return false;
     }
 
-    _finishRewardOverlay() {
-        this.state = 'PLAYING';
-        this._tryStartLevelUp();
+    _tryFinishStageClear() {
+        if (!this.pendingStageClear || this.state !== 'PLAYING') return;
+        if (this.isUpgradeBlocked() || this.combat.isResolving()) return;
+        if (this.isCombatPresentationActive()) return;
+        this.pendingStageClear = false;
+        this._stageCleared();
     }
 
-    _tryStartLevelUp() {
-        if (this.pendingLevelUpCount <= 0) return;
-        if (this.state === 'PAUSED' || this.state === 'MENU' ||
-            this.state === 'GAME_OVER' || this.state === 'COMPLETE') return;
-        if (!this.player || this.player.state !== PlayerState.IDLE) return;
-
-        this.pendingLevelUpCount--;
-        this.state = 'LEVEL_UP';
-        this.upgrades.generateChoices();
-        this._lockOverlayInput();
-        this.audio.playLevelUp();
+    _updateLiveBattle(dt, realDt) {
+        this.player.update(dt);
+        const playBottom = this.ui.getPlayAreaBottom
+            ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
+            : this.renderer.h;
+        const freezeWorld = this.player && this.player.state === PlayerState.BULLET_TIME;
+        const worldDt = freezeWorld ? 0 : dt;
+        this.spawner.update(worldDt, this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
+        this.projectiles.update(worldDt, this.renderer.w, this.renderer.h);
+        this.combat.update(dt);
+        this.buffOrbs.update(realDt);
+        this.sakura.update(realDt, this.renderer.w, this.renderer.h);
+        this.grass.update(realDt);
+        this.bloodStains.update(realDt);
+        this.particles.update(realDt);
     }
 
-    applyDebugLevel(targetLevel) {
-        if (!this.player) return;
-        const lv = clamp(Math.floor(targetLevel), 1, 99);
-        const current = this.player.level;
-        if (lv <= current) {
-            this.player.level = lv;
-            this.player.xp = 0;
-            this.player.xpToNext = Math.floor(CONFIG.XP.BASE_REQUIRED * Math.pow(CONFIG.XP.SCALE_FACTOR, lv - 1));
-            return;
-        }
-        this.player.level = lv;
-        this.player.xp = 0;
-        this.player.xpToNext = Math.floor(CONFIG.XP.BASE_REQUIRED * Math.pow(CONFIG.XP.SCALE_FACTOR, lv - 1));
-        this._queueLevelUps(lv - current);
+    _getSafeZone() {
+        const x = this.player ? this.player.homeX : this.renderer.w / 2;
+        const y = this.player ? this.player.homeY : this.renderer.h / 2;
+        return { x, y, r: Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * CONFIG.DISPLAY.LOGICAL_WIDTH) };
     }
 
-    _syncDebugStageInputs() {
-        if (!this.levelManager) return;
-        this.pauseOverlay.debugChapterInput = String(this.levelManager.chapter);
-        this.pauseOverlay.debugStageInput = String(this.levelManager.level + 1);
-    }
-
-    jumpToStage(chapter, stage) {
-        const ch = Math.max(1, Math.floor(chapter));
-        const st = clamp(Math.floor(stage), 1, 8);
-        const levelIndex = clamp((ch - 1) * 8 + (st - 1), 0, CONFIG.LEVELS.length - 1);
-
-        this.levelManager.chapter = ch;
-        this.levelManager.level = levelIndex;
-        this.levelManager.nextLevelOverride = null;
-        this.levelManager.bannerActive = false;
-        this.levelManager.pendingStartLevel = false;
-        this.levelCleared = false;
-        this.pendingLevelUpCount = 0;
-
+    _clearCombatResiduals() {
+        this.pendingStageClear = false;
         if (this.input) this.input.cancelActivePointer();
-        this.timeScale = CONFIG.NORMAL_TIME_SCALE;
-
         if (this.player) {
+            this.player.deathAnim = null;
             this.player.state = PlayerState.IDLE;
-            this.player.x = this.player.homeX;
-            this.player.y = this.player.homeY;
             this.player.attackPath = [];
             this.player.pathIndex = 0;
             this.player.pathProgress = 0;
             this.player.hitMonstersInSegment.clear();
+            this.player.invalidPathTimer = 0;
+            this.player.comboCount = 0;
+            this.player.comboDisplayPeak = 0;
+            this.player.comboDisplayTimer = 0;
+            this.player.comboShakeTimer = 0;
         }
-
-        this.spawner.monsters = [];
-        this.spawner.spawnQueue = [];
-        this.spawner.spawnTimer = 0;
-        this.projectiles.projectiles = [];
-        this.bossManager.reset();
-        this.bossChests.reset();
-        this.experience.orbs = [];
-
-        this.sakura.start(this.renderer.w, this.renderer.h);
-        const playBottom = this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale);
-        this.spawner.prepareLevelSpawns(
-            this.levelManager.level, this.renderer.w, this.renderer.h, playBottom);
-        this.bossManager.prepareForLevel(
-            this.levelManager.level, this.renderer.w, this.renderer.h);
-
-        this._syncDebugStageInputs();
-        this.resumeGame();
+        if (this.combat) {
+            this.combat.damageNumbers = [];
+            this.combat.finalSegmentHit = false;
+        }
+        this.bloodStains.clear();
+        this.particles.clear();
+        this.abilities.reset();
+        this.projectiles.reset();
+        if (this.buffOrbs) {
+            this.buffOrbs.cancelDrawSession();
+            this.buffOrbs.reset();
+        }
+        this.endBulletTimeDim();
+        this.timeScale = CONFIG.NORMAL_TIME_SCALE;
     }
 
-    handlePauseOverlayClick(x, y) {
-        const ui = this.ui;
-        if (!ui || !ui.pauseRects) return;
-        const rects = ui.pauseRects;
-        const hit = (r) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    _prepareStage(levelIndex, withSpawnAnim = false) {
+        this.levelManager.level = levelIndex;
+        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
+        this.player.beginTurn();
+        const playBottom = this.ui.getPlayAreaBottom ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale) : this.renderer.h;
+        const safe = this._getSafeZone();
+        this.spawner.spawnStage(levelIndex, this.renderer.w, this.renderer.h, playBottom, safe, withSpawnAnim);
+        this.buffOrbs.spawnForStage(levelIndex, safe, false);
+        this.combat.roundAttackResolved = true;
+    }
 
-        if (hit(rects.resume)) {
-            this.resumeGame();
+    _setupStageBeforeIntro(levelIndex) {
+        this._clearCombatResiduals();
+        this.levelManager.level = levelIndex;
+        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
+        this.player.beginTurn();
+        this.spawner.monsters = [];
+        this.combat.roundAttackResolved = true;
+    }
+
+    _beginStageIntro(levelIndex) {
+        if (this.input) this.input.cancelActivePointer();
+        this.state = 'STAGE_INTRO';
+        this._setupStageBeforeIntro(levelIndex);
+        const introDur = CONFIG.STAGE_INTRO_SLIDE_IN + CONFIG.STAGE_INTRO_LABEL_HOLD
+            + CONFIG.STAGE_INTRO_SLIDE_OUT;
+        const sakuraDur = introDur + (CONFIG.STAGE_INTRO_SAKURA_EXTRA || 0.8);
+        this.sakura.start(this.renderer.w, this.renderer.h, sakuraDur);
+        this.levelManager.startStageIntro(levelIndex + 1, () => {
+            this._prepareStage(levelIndex, true);
+            this.state = 'PLAYING';
+        });
+    }
+
+    _beginNextLevelTransition() {
+        const next = this.levelManager.level + 1;
+        if (next >= CONFIG.STAGES.length) {
+            this.state = 'COMPLETE';
+            this._lockOverlayInput();
             return;
         }
-        if (hit(rects.password)) {
-            this.pauseOverlay.passwordMode = true;
-            return;
-        }
-        if (this.pauseOverlay.passwordMode && !this.pauseOverlay.debugUnlocked) {
-            for (const k of rects.keys || []) {
-                if (!hit(k)) continue;
-                if (k.key === 'C') {
-                    this.pauseOverlay.passwordInput = '';
-                } else if (k.key === 'OK') {
-                    if (this.pauseOverlay.passwordInput === '1234') {
-                        this.pauseOverlay.debugUnlocked = true;
-                        this._syncDebugStageInputs();
-                        this.pauseOverlay.debugLevelInput = String(this.player.level);
-                    }
-                    this.pauseOverlay.passwordInput = '';
-                } else if (this.pauseOverlay.passwordInput.length < 8) {
-                    this.pauseOverlay.passwordInput += k.key;
-                }
+        this._beginStageIntro(next);
+    }
+
+    _stageCleared() {
+        this.pendingStageClear = false;
+        this.state = 'STAGE_CLEAR';
+        if (this.input) this.input.cancelActivePointer();
+        this.levelManager.showClearFlash(() => {
+            this._clearCombatResiduals();
+            const next = this.levelManager.level + 1;
+            if (next >= CONFIG.STAGES.length) {
+                this.state = 'COMPLETE';
+                this._lockOverlayInput();
                 return;
             }
-        }
-        if (this.pauseOverlay.debugUnlocked) {
-            if (hit(rects.levelMinus)) {
-                const v = Math.max(1, parseInt(this.pauseOverlay.debugLevelInput || '1', 10) - 1);
-                this.pauseOverlay.debugLevelInput = String(v);
-                return;
-            }
-            if (hit(rects.levelPlus)) {
-                const v = Math.min(99, parseInt(this.pauseOverlay.debugLevelInput || '1', 10) + 1);
-                this.pauseOverlay.debugLevelInput = String(v);
-                return;
-            }
-            if (hit(rects.levelApply)) {
-                this.applyDebugLevel(parseInt(this.pauseOverlay.debugLevelInput || '1', 10));
-                return;
-            }
-            if (hit(rects.chapterMinus)) {
-                const v = Math.max(1, parseInt(this.pauseOverlay.debugChapterInput || '1', 10) - 1);
-                this.pauseOverlay.debugChapterInput = String(v);
-                return;
-            }
-            if (hit(rects.chapterPlus)) {
-                const v = Math.min(9, parseInt(this.pauseOverlay.debugChapterInput || '1', 10) + 1);
-                this.pauseOverlay.debugChapterInput = String(v);
-                return;
-            }
-            if (hit(rects.stageMinus)) {
-                const v = Math.max(1, parseInt(this.pauseOverlay.debugStageInput || '1', 10) - 1);
-                this.pauseOverlay.debugStageInput = String(v);
-                return;
-            }
-            if (hit(rects.stagePlus)) {
-                const v = Math.min(8, parseInt(this.pauseOverlay.debugStageInput || '1', 10) + 1);
-                this.pauseOverlay.debugStageInput = String(v);
-                return;
-            }
-            if (hit(rects.stageApply)) {
-                this.jumpToStage(
-                    parseInt(this.pauseOverlay.debugChapterInput || '1', 10),
-                    parseInt(this.pauseOverlay.debugStageInput || '1', 10)
-                );
-                return;
-            }
-        }
+            this._beginStageIntro(next);
+        });
+    }
+
+    _stageFailed() {
+        if (this.input) this.input.cancelActivePointer();
+        if (this.failDeath.isActive()) return;
+        this.state = 'FAIL_DEATH';
+        this.abilities.reset();
+        this.failDeath.start(() => {
+            this.state = 'STAGE_FAIL';
+            this.levelManager.showFailIntro(() => {
+                this.state = 'FAIL';
+                this._lockOverlayInput();
+            });
+        });
+    }
+
+    startGame() {
+        const cx = this.renderer.w / 2;
+        const cy = this.renderer.h / 2;
+        this.player = new Player(cx, cy);
+        this.player.game = this;
+        this.failDeath = new StageFailAnimator(this);
+        this.spawner = new MonsterSpawner(this);
+        this.projectiles = new ProjectileManager();
+        this.particles = new ParticleSystem(650);
+        this.combat = new CombatManager(this);
+        this.upgrades = new UpgradeManager();
+        this.experience = new ExperienceManager(this);
+        this.levelManager = new LevelManager();
+        this.abilities = new AbilityManager(this);
+        this.buffOrbs = new BuffOrbManager(this);
+        this.bloodStains = new BloodStainSystem();
+        this.sakura.petals = [];
+        this.sakura.active = false;
+        const playBottom = this.ui.getPlayAreaBottom ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale) : this.renderer.h;
+        this.grass.init(this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
+
+        this.experience.reset();
+        this.upgrades.onSelect = () => {
+            this.state = 'PLAYING';
+            if (this.experience) this.experience.tryTriggerPendingUpgrade();
+            this._tryFinishStageClear();
+        };
+        if (!this.input) this.input = new InputManager(this.canvas, this);
+        else this.input.game = this;
+
+        this.pendingStageClear = false;
+        this._beginStageIntro(0);
     }
 
     enterBulletTime() {
+        this.bulletTimeDimActive = true;
         this.timeScale = CONFIG.BULLET_TIME_SCALE;
-        this.player.startBulletTime();
     }
 
-    exitBulletTime() {
+    endBulletTimeDim() {
+        this.bulletTimeDimActive = false;
+    }
+
+    exitBulletTime(invalid = false) {
         this.timeScale = CONFIG.NORMAL_TIME_SCALE;
-        this.player.startAttack();
-        this.audio.playSlash();
+        if (invalid) {
+            this.endBulletTimeDim();
+            return;
+        }
+        if (!this.player.startAttack()) {
+            this.endBulletTimeDim();
+            this.buffOrbs.cancelDrawSession();
+            return;
+        }
+        this.combat.beginRoundAttack();
+        this.abilities.reset();
+    }
+
+    _onAttackFinished() {
+        if (this.combat.consumeRoundAttack()) {
+            this.turnsLeft = Math.max(0, this.turnsLeft - 1);
+            const cleared = this.spawner.allClear();
+            if (this.turnsLeft <= 0 && !cleared) {
+                this._stageFailed();
+                return;
+            }
+            if (cleared) {
+                this.pendingStageClear = true;
+                return;
+            }
+            this.player.beginTurn();
+        }
     }
 
     loop(now) {
         const realDt = Math.min((now - this.lastTime) / 1000, 0.05);
         this.lastTime = now;
         const dt = realDt * this.timeScale;
-
         this.update(dt, realDt);
         this.draw();
-
         requestAnimationFrame((t) => this.loop(t));
     }
 
     update(dt, realDt) {
-        if (this.state === 'MENU' || this.state === 'GAME_OVER' ||
-            this.state === 'COMPLETE') return;
-
+        if (this.state === 'MENU' || this.state === 'COMPLETE') return;
+        if (this.state === 'FAIL' && !this.levelManager.isFailIntroActive()) return;
         this.renderer.updateShake(realDt);
+        this.levelManager.update(realDt);
 
-        if (this.state === 'LEVEL_UP' || this.state === 'BOSS_REWARD') {
-            this.particles.update(realDt);
-            if ((this.state === 'LEVEL_UP' && !this.upgrades.active) ||
-                (this.state === 'BOSS_REWARD' && !this.bossRewards.active)) {
-                this._finishRewardOverlay();
-            }
-            return;
-        }
-        if (this.state === 'PAUSED') {
-            this.particles.update(realDt * 0.25);
-            return;
-        }
-
-        if (this.state === 'PLAYING' || this.state === 'BULLET_TIME') {
-            const levelEvent = this.levelManager.update(realDt);
-            if (levelEvent === 'START_LEVEL') {
-                this.levelCleared = false;
-                this.sakura.start(this.renderer.w, this.renderer.h);
-                const playBottom = this.ui.getPlayAreaBottom(
-                    this.renderer.h, this.renderer.uiScale);
-                this.spawner.prepareLevelSpawns(
-                    this.levelManager.level, this.renderer.w, this.renderer.h, playBottom);
-                this.bossManager.prepareForLevel(
-                    this.levelManager.level, this.renderer.w, this.renderer.h);
-            } else if (levelEvent === 'ALL_COMPLETE') {
-                this.state = 'COMPLETE';
-                this._lockOverlayInput();
-                return;
-            }
-
-            const isBulletTime = this.player.state === PlayerState.BULLET_TIME;
-
-            this.player.update(dt, realDt);
-
-            const prevMonsterCount = this.spawner.monsters.length;
-            this.spawner.update(dt);
-            for (let i = prevMonsterCount; i < this.spawner.monsters.length; i++) {
-                const m = this.spawner.monsters[i];
-                this.particles.spawnEffect(m.x, m.y, m.color);
-            }
-
-            this.projectiles.update(dt, this.renderer.w, this.renderer.h);
-            this.bossManager.update(dt);
-            this.abilities.update(dt);
-            this.combat.update(dt);
-            this.bossChests.update(dt);
+        if (this.state === 'STAGE_INTRO' || this.state === 'STAGE_CLEAR') {
             this.sakura.update(realDt, this.renderer.w, this.renderer.h);
-            this.bloodStains.update(realDt);
             this.grass.update(realDt);
             this.particles.update(realDt);
+        }
+        if (this.state === 'FAIL_DEATH') {
+            this.failDeath.update(realDt);
+            this.bloodStains.update(realDt);
+            this.particles.update(realDt);
+            return;
+        }
+        if (this.state === 'STAGE_FAIL' || this.state === 'FAIL') {
+            return;
+        }
+        if (this.state === 'STAGE_INTRO') return;
+        if (this.state === 'STAGE_CLEAR') return;
+        if (this.state === 'LEVEL_UP') {
+            this.upgrades.update(realDt);
+        }
 
-            if (this.player.state === PlayerState.ATTACKING) {
-                const nextIdx = Math.min(this.player.pathIndex + 1, this.player.attackPath.length - 1);
-                const a = this.player.attackPath.length > 1
-                    ? angle(this.player.x, this.player.y,
-                        this.player.attackPath[nextIdx].x, this.player.attackPath[nextIdx].y)
-                    : 0;
-                this.particles.slashTrail(this.player.x, this.player.y, a);
-            }
+        if (this._isBattleScene()) {
+            this._updateLiveBattle(dt, realDt);
 
-            const xpGained = this.experience.update(
-                dt, this.player.x, this.player.y, CONFIG.PLAYER.MAGNET_RADIUS);
-            if (xpGained > 0) {
-                this.particles.xpPickup(this.player.x, this.player.y);
-                const leveledUp = this.player.addXP(xpGained);
-                if (leveledUp) {
-                    this.pendingLevelUpCount++;
+            if (this.state === 'PLAYING') {
+                if (this.experience) this.experience.tryTriggerPendingUpgrade();
+
+                if (this.player.state === PlayerState.IDLE
+                    && !this.combat.roundAttackResolved
+                    && !this.combat.isResolving()
+                    && !this.isUpgradeBlocked()) {
+                    this._onAttackFinished();
                 }
-            }
-
-            if (this.pendingLevelUpCount > 0 && this.player.state === PlayerState.IDLE) {
-                this._tryStartLevelUp();
-                if (this.state === 'LEVEL_UP') return;
-            }
-
-            if (this.player.isDead()) {
-                this.state = 'GAME_OVER';
-                this._lockOverlayInput();
-                return;
-            }
-
-            if (!this.levelCleared && !this.levelManager.bannerActive &&
-                this.spawner.allClear() && this.bossManager.allClear() &&
-                !this.bossChests.hasActiveChest()) {
-                this.levelCleared = true;
-                this.levelManager.onLevelCleared();
+                this._tryFinishStageClear();
             }
         }
     }
 
+    _drawBulletTimeDim(ctx) {
+        if (!this.bulletTimeDimActive) return;
+        ctx.save();
+        ctx.fillStyle = `rgba(0, 0, 0, ${CONFIG.BULLET_TIME_DIM_ALPHA})`;
+        ctx.fillRect(0, 0, this.renderer.w, this.renderer.h);
+        ctx.restore();
+    }
+
     draw() {
         const ctx = this.ctx;
-        const w = this.renderer.w;
-        const h = this.renderer.h;
-
         this.renderer.clear();
         this.renderer.resetScreenDraw();
         this.renderer.beginClippedGameDraw();
@@ -6073,133 +5519,77 @@ class Game {
             this.drawMenu();
             return;
         }
-
-        if (this.state === 'GAME_OVER') {
-            this.renderer.endClippedGameDraw();
-            this.drawGameOver();
-            return;
-        }
-
         if (this.state === 'COMPLETE') {
             this.renderer.endClippedGameDraw();
             this.renderer.resetScreenDraw();
-            const vp = this.renderer.getViewport();
-            this.levelManager.drawComplete(ctx, vp, this.renderer.uiScale);
+            this.levelManager.drawComplete(ctx, this.renderer.getViewport(), this.renderer.uiScale);
             return;
         }
-
-        const isBulletTime = this.player && this.player.state === PlayerState.BULLET_TIME;
 
         this.grass.draw(ctx);
         this.sakura.draw(ctx);
         this.bloodStains.draw(ctx);
-        this.experience.draw(ctx);
-
-        for (const m of this.spawner.monsters) {
-            m.draw(ctx);
+        this._drawBulletTimeDim(ctx);
+        const battleScene = this._isBattleScene();
+        const showBattlefield = battleScene || this._isFailBattlefield();
+        if (showBattlefield) {
+            if (battleScene) this.buffOrbs.draw(ctx);
+            for (const m of this.spawner.monsters) m.draw(ctx);
         }
 
-        this.bossManager.draw(ctx);
-
-        this.abilities.drawBehind(ctx);
-
-        this.projectiles.draw(ctx);
-        this.bossManager.drawProjectiles(ctx);
-
-        if (isBulletTime) {
-            this.renderer.applyBulletTimeEffect(true);
+        if (battleScene) {
+            this.abilities.drawBehind(ctx);
         }
-
         if (this.player) {
-            this.player.drawTriggerZone(ctx);
-            if (isBulletTime || this.player.state === PlayerState.ATTACKING) {
+            if (!this._isFailBattlefield()) this.player.drawTriggerZone(ctx);
+            if (battleScene || this.player.state === PlayerState.BULLET_TIME) {
                 this.player.drawPath(ctx);
             }
             this.player.draw(ctx);
         }
-
-        this.abilities.drawFront(ctx);
-        this.particles.draw(ctx);
-        this.bossChests.draw(ctx);
-        this.combat.drawDamageNumbers(ctx);
+        if (battleScene) {
+            this.combat.drawAfterimages(ctx);
+        }
+        if (battleScene && this.abilities.hasActiveFx()) {
+            this.abilities.drawFront(ctx);
+        }
+        if (this.state === 'FAIL_DEATH' && this.failDeath.isActive()) {
+            this.failDeath.drawSpears(ctx);
+        }
+        if (battleScene) {
+            this.buffOrbs.drawPickupEffects(ctx);
+        }
+        if (battleScene || this.state === 'FAIL_DEATH') {
+            this.particles.draw(ctx);
+        }
+        if (battleScene && this.combat.damageNumbers.length > 0) {
+            this.combat.drawDamageNumbers(ctx);
+        }
 
         this.renderer.endClippedGameDraw();
         this.renderer.resetScreenDraw();
-        const vp = this.renderer.getViewport();
-        const uiScale = this.renderer.uiScale;
 
+        const vp = this.renderer.getViewport();
+        const s = this.renderer.uiScale;
         ctx.save();
         this.renderer.clipViewport(ctx);
-
-        if (this.player) {
-            const boss = this.bossManager.boss;
-            const hasBoss = !!(boss && (boss.alive || boss.dying));
-            this.ui.draw(ctx, this.player, vp, uiScale, { hasBoss });
-            if (hasBoss) {
-                this.ui.drawBossBar(ctx, boss, vp, uiScale);
-            }
+        if (this.player && !this._isFailBattlefield()) this.ui.draw(ctx, this, vp, s);
+        this.levelManager.drawBanner(ctx, vp, s);
+        if (this.state === 'LEVEL_UP') this.upgrades.drawUI(ctx, vp, s, this.player);
+        this.levelManager.drawStageIntro(ctx, vp, s);
+        this.levelManager.drawClearFlash(ctx, vp, s);
+        if (this.state === 'FAIL' || this.state === 'STAGE_FAIL') {
+            this.levelManager.drawFail(ctx, vp, s);
         }
-
-        this.levelManager.drawBanner(ctx, vp, uiScale);
-
-        if (this.state === 'LEVEL_UP') {
-            this.upgrades.drawUI(ctx, vp, uiScale);
-        }
-        if (this.state === 'BOSS_REWARD') {
-            this.bossRewards.drawUI(ctx, vp, uiScale);
-        }
-        if (this.state === 'PAUSED') {
-            this.ui.drawPauseButton(ctx, vp, uiScale, true);
-            this.ui.drawPauseOverlay(ctx, vp, uiScale, this.pauseOverlay);
-        } else if (this.state === 'PLAYING') {
-            this.ui.drawPauseButton(ctx, vp, uiScale, false);
-        }
-
         ctx.restore();
-    }
-
-    drawScreenText(ctx, vp, lines) {
-        for (const line of lines) {
-            const size = Math.round(line.size * (this.renderer.uiScale || 1));
-            const y = typeof line.y === 'number' && line.y <= 1
-                ? vp.y + vp.h * line.y
-                : line.y;
-            drawGameText(ctx, line.text, vp.cx, y, size, line.color);
-        }
     }
 
     drawMenu() {
         const ctx = this.ctx;
         const vp = this.renderer.getViewport();
-
-        this.renderer.resetScreenDraw();
-
-        this.drawScreenText(ctx, vp, [
-            { text: '忍者斩', y: 0.38, size: 40, bold: true, color: '#3a3028' },
-            { text: 'NINJA SLASH', y: 0.45, size: 16, bold: false, color: '#6a5a48' },
-            { text: '点击屏幕开始', y: 0.56, size: 18, bold: false, color: '#5a5048' },
-            { text: '点击忍者身边的圆圈', y: 0.64, size: 15, bold: false, color: '#7a6a58' },
-            { text: '画出攻击路径来消灭怪物', y: 0.70, size: 15, bold: false, color: '#7a6a58' },
-        ]);
-    }
-
-    drawGameOver() {
-        const ctx = this.ctx;
-        const vp = this.renderer.getViewport();
-
-        this.renderer.resetScreenDraw();
-
-        ctx.save();
-        this.renderer.clipViewport(ctx);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
-        ctx.restore();
-
-        this.drawScreenText(ctx, vp, [
-            { text: '游戏结束', y: 0.42, size: 36, bold: true, color: '#f66' },
-            { text: `到达: 第${this.levelManager.level + 1}关 | 等级: ${this.player.level}`, y: 0.52, size: 16, bold: false, color: '#fff' },
-            { text: '点击屏幕重新开始', y: 0.62, size: 18, bold: false, color: '#aaa' },
-        ]);
+        drawGameText(ctx, '忍者斩', vp.cx, vp.y + vp.h * 0.38, Math.round(40 * this.renderer.uiScale), '#3a3028');
+        drawGameText(ctx, '新版本', vp.cx, vp.y + vp.h * 0.45, Math.round(18 * this.renderer.uiScale), '#6a5a48');
+        drawGameText(ctx, '点击屏幕开始', vp.cx, vp.y + vp.h * 0.58, Math.round(18 * this.renderer.uiScale), '#5a5048');
     }
 }
 

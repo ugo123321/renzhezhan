@@ -1,8 +1,8 @@
 class BloodStainSystem {
     constructor() {
         this.stains = [];
-        this.maxStains = 1200;
-        this.fadeDuration = 22;
+        this.maxStains = 800;
+        this.fadeDuration = 16;
         this.minAlpha = 0.32;
     }
 
@@ -11,99 +11,50 @@ class BloodStainSystem {
     }
 
     update(dt) {
-        for (const stain of this.stains) {
-            stain.age += dt;
+        for (const s of this.stains) s.age += dt;
+        this._trim();
+    }
+
+    _trim() {
+        while (this.stains.length > this.maxStains) {
+            const idx = this.stains.findIndex(s => s.age >= this.fadeDuration);
+            if (idx < 0) break;
+            this.stains.splice(idx, 1);
         }
     }
 
-    _stainAlpha(age) {
+    _alpha(age) {
         if (age >= this.fadeDuration) return this.minAlpha;
         const t = age / this.fadeDuration;
         return this.minAlpha + (1 - this.minAlpha) * (1 - t);
     }
 
-    _trimStains() {
-        while (this.stains.length > this.maxStains) {
-            const fadedIdx = this.stains.findIndex(s => s.age >= this.fadeDuration);
-            if (fadedIdx < 0) break;
-            this.stains.splice(fadedIdx, 1);
-        }
-    }
-
     spawn(x, y, intensity = 1, fromAngle = null) {
         const base = fromAngle !== null ? fromAngle : Math.random() * Math.PI * 2;
         const drops = [];
-        const streaks = [];
-
-        drops.push({
-            x: randRange(-2, 2),
-            y: randRange(-1, 2),
-            r: randRange(3, 5) * intensity,
-            color: '#ff2222',
-        });
-
-        const dropCount = Math.floor(10 + Math.random() * 14 * intensity);
-        for (let i = 0; i < dropCount; i++) {
-            const spread = randRange(-1.1, 1.1);
-            const a = base + spread;
-            const dist = randRange(6, 32 * intensity);
+        const n = Math.floor(8 + 12 * intensity);
+        for (let i = 0; i < n; i++) {
+            const a = base + randRange(-1.2, 1.2);
+            const d = randRange(3, 28 * intensity);
             drops.push({
-                x: Math.cos(a) * dist,
-                y: Math.sin(a) * dist * 0.75,
-                r: randRange(1, 3.5) * intensity,
-                color: pickRandom(['#ff1a1a', '#ff3333', '#e60000', '#ff4444', '#cc0000']),
+                x: Math.cos(a) * d,
+                y: Math.sin(a) * d * 0.75,
+                r: randRange(1.2, 3.8) * intensity,
+                c: pickRandom(['#cc1010', '#e61a1a', '#b80808']),
             });
         }
-
-        const streakCount = Math.floor(4 + Math.random() * 6 * intensity);
-        for (let i = 0; i < streakCount; i++) {
-            const a = base + randRange(-0.8, 0.8);
-            const len = randRange(8, 22 * intensity);
-            streaks.push({
-                x1: Math.cos(a) * 2,
-                y1: Math.sin(a) * 2,
-                x2: Math.cos(a) * len,
-                y2: Math.sin(a) * len * 0.7,
-                width: randRange(1, 2.5),
-                color: pickRandom(['#ff1a1a', '#e60000', '#ff4444']),
-            });
-        }
-
-        for (let i = 0; i < Math.floor(2 + Math.random() * 3); i++) {
-            const a = base + randRange(-1.5, 1.5);
-            const dist = randRange(4, 14);
-            drops.push({
-                x: Math.cos(a) * dist,
-                y: Math.sin(a) * dist * 0.6,
-                r: randRange(4, 7) * intensity,
-                color: pickRandom(['#ff2222', '#e61010']),
-            });
-        }
-
-        this.stains.push({ x, y, drops, streaks, age: 0 });
-        this._trimStains();
+        this.stains.push({ x, y, drops, age: 0 });
+        this._trim();
     }
 
     draw(ctx) {
-        for (const stain of this.stains) {
-            const alpha = this._stainAlpha(stain.age);
-
-            for (const s of stain.streaks) {
-                ctx.strokeStyle = s.color;
-                ctx.lineWidth = s.width;
-                ctx.lineCap = 'round';
-                ctx.globalAlpha = alpha * 0.92;
+        for (const s of this.stains) {
+            const a = this._alpha(s.age);
+            for (const d of s.drops) {
+                ctx.globalAlpha = a;
+                ctx.fillStyle = d.c;
                 ctx.beginPath();
-                ctx.moveTo(stain.x + s.x1, stain.y + s.y1);
-                ctx.lineTo(stain.x + s.x2, stain.y + s.y2);
-                ctx.stroke();
-            }
-
-            for (const d of stain.drops) {
-                ctx.fillStyle = d.color;
-                ctx.globalAlpha = alpha * 0.95;
-                ctx.beginPath();
-                ctx.arc(stain.x + d.x, stain.y + d.y, d.r, 0, Math.PI * 2);
+                ctx.arc(s.x + d.x, s.y + d.y, d.r, 0, Math.PI * 2);
                 ctx.fill();
             }
         }

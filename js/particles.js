@@ -47,6 +47,11 @@ class ParticleSystem {
         }
     }
 
+    clear() {
+        for (const p of this.pool) p.active = false;
+        this.lightningBolts = [];
+    }
+
     emit(x, y, vx, vy, life, size, color, gravity = 0, shrink = true, glow = false) {
         for (const p of this.pool) {
             if (!p.active) {
@@ -182,8 +187,10 @@ class ParticleSystem {
     }
 
     lightningEffect(x1, y1, x2, y2) {
-        const segments = 12;
-        const jitter = 16;
+        const dist = Math.hypot(x2 - x1, y2 - y1);
+        const segments = Math.max(18, Math.floor(dist / 14));
+        const jitter = Math.max(22, dist * 0.14);
+        const life = clamp(0.75 + dist * 0.0022, 0.85, 1.25);
         const points = [{ x: x1, y: y1 }];
         for (let i = 1; i < segments; i++) {
             const t = i / segments;
@@ -193,25 +200,26 @@ class ParticleSystem {
             });
         }
         points.push({ x: x2, y: y2 });
-        this.lightningBolts.push({ points, life: 0.5, maxLife: 0.5 });
+        this.lightningBolts.push({ points, life, maxLife: life });
 
-        for (let i = 0; i <= 24; i++) {
-            const t = i / 24;
-            const px = x1 + (x2 - x1) * t + randRange(-10, 10);
-            const py = y1 + (y2 - y1) * t + randRange(-10, 10);
-            this.emit(px, py, randRange(-30, 30), randRange(-30, 30),
-                randRange(0.28, 0.5), randRange(4, 9),
+        const sparkCount = Math.max(28, Math.floor(dist / 10));
+        for (let i = 0; i <= sparkCount; i++) {
+            const t = i / sparkCount;
+            const px = x1 + (x2 - x1) * t + randRange(-14, 14);
+            const py = y1 + (y2 - y1) * t + randRange(-14, 14);
+            this.emit(px, py, randRange(-40, 40), randRange(-40, 40),
+                randRange(0.35, 0.65), randRange(5, 11),
                 ['#ff0', '#fff', '#8ef', '#cef'][Math.floor(Math.random() * 4)],
                 0, true, true);
         }
 
-        for (let i = 0; i < 10; i++) {
-            const a = (i / 10) * Math.PI * 2;
-            const spd = randRange(60, 140);
+        for (let i = 0; i < 14; i++) {
+            const a = (i / 14) * Math.PI * 2;
+            const spd = randRange(80, 180);
             this.emit(x1, y1, Math.cos(a) * spd, Math.sin(a) * spd,
-                randRange(0.2, 0.4), randRange(5, 10), '#fff', 0, true, true);
+                randRange(0.28, 0.5), randRange(6, 12), '#fff', 0, true, true);
             this.emit(x2, y2, Math.cos(a) * spd, Math.sin(a) * spd,
-                randRange(0.2, 0.4), randRange(5, 10), '#ff0', 0, true, true);
+                randRange(0.28, 0.5), randRange(6, 12), '#ff0', 0, true, true);
         }
     }
 
@@ -236,25 +244,25 @@ class ParticleSystem {
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
-            ctx.strokeStyle = 'rgba(140, 220, 255, 0.55)';
-            ctx.lineWidth = 10;
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.65)';
+            ctx.lineWidth = 16;
             ctx.shadowColor = '#8cf';
-            ctx.shadowBlur = 18;
+            ctx.shadowBlur = 28;
             ctx.beginPath();
             ctx.moveTo(pts[0].x, pts[0].y);
             for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
             ctx.stroke();
 
             ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 4;
-            ctx.shadowBlur = 10;
+            ctx.lineWidth = 6;
+            ctx.shadowBlur = 16;
             ctx.beginPath();
             ctx.moveTo(pts[0].x, pts[0].y);
             for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
             ctx.stroke();
 
-            ctx.strokeStyle = '#ff0';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ffe840';
+            ctx.lineWidth = 3;
             ctx.shadowBlur = 0;
             ctx.beginPath();
             ctx.moveTo(pts[0].x, pts[0].y);

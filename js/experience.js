@@ -1,113 +1,62 @@
-class XpOrb {
-    constructor(x, y, value) {
-        this.x = x;
-        this.y = y;
-        this.value = value;
-        this.vx = randRange(-40, 40);
-        this.vy = randRange(-60, -20);
-        this.alive = true;
-        this.age = 0;
-        this.bobTimer = Math.random() * Math.PI * 2;
-        this.settled = false;
-        this.magnetized = false;
-        this.radius = CONFIG.XP.ORB_RADIUS;
-        this.pickupDelay = CONFIG.XP.PICKUP_DELAY;
-    }
-
-    canPickup() {
-        return this.age >= this.pickupDelay;
-    }
-
-    update(dt, playerX, playerY, magnetRadius) {
-        this.age += dt;
-        this.bobTimer += dt * 3;
-
-        if (!this.settled) {
-            this.vy += 120 * dt;
-            this.x += this.vx * dt;
-            this.y += this.vy * dt;
-            if (this.age > 0.4) {
-                this.settled = true;
-                this.vx = 0;
-                this.vy = 0;
-            }
-        }
-
-        const d = dist(this.x, this.y, playerX, playerY);
-        const pickupReady = this.canPickup();
-
-        if (pickupReady && d < magnetRadius) {
-            this.magnetized = true;
-        }
-
-        if (pickupReady && this.magnetized) {
-            const n = normalize(playerX - this.x, playerY - this.y);
-            let speed;
-            if (d < magnetRadius) {
-                speed = CONFIG.XP.ORB_SPEED * (1 - d / magnetRadius + 0.3);
-            } else {
-                speed = CONFIG.XP.ORB_SPEED * 1.4;
-            }
-            this.x += n.x * speed * dt;
-            this.y += n.y * speed * dt;
-        }
-
-        if (pickupReady && d < 15) {
-            this.alive = false;
-            return this.value;
-        }
-        return 0;
-    }
-
-    draw(ctx) {
-        if (!this.alive) return;
-        const bobY = Math.sin(this.bobTimer) * 2;
-        if (!this.canPickup()) {
-            ctx.save();
-            ctx.globalAlpha = 0.55;
-        }
-        drawSprite(ctx, SPRITES.xpOrb, Math.floor(this.x), Math.floor(this.y + bobY), 3);
-        if (!this.canPickup()) {
-            ctx.restore();
-        }
-
-        const glowAlpha = this.magnetized
-            ? 0.55 + Math.sin(this.bobTimer) * 0.25
-            : this.canPickup()
-                ? 0.45 + Math.sin(this.bobTimer) * 0.2
-                : 0.22;
-        ctx.globalAlpha = glowAlpha;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y + bobY, 6, 0, Math.PI * 2);
-        ctx.fillStyle = '#3a7bd5';
-        ctx.fill();
-        ctx.globalAlpha = 1;
-    }
-}
-
 class ExperienceManager {
-    constructor() {
-        this.orbs = [];
+    constructor(game) {
+        this.game = game;
+        this.level = 1;
+        this.exp = 0;
+        this.expToNext = this._calcExpToNext(1);
+        this.pendingLevelUps = 0;
     }
 
-    spawnOrb(x, y, value) {
-        const scale = CONFIG.XP.ORB_VALUE_SCALE ?? 1;
-        const xp = Math.max(1, Math.floor(value * scale));
-        this.orbs.push(new XpOrb(x, y, xp));
+    reset() {
+        this.level = 1;
+        this.exp = 0;
+        this.expToNext = this._calcExpToNext(1);
+        this.pendingLevelUps = 0;
     }
 
-    update(dt, playerX, playerY, magnetRadius) {
-        let totalXp = 0;
-        for (const orb of this.orbs) {
-            totalXp += orb.update(dt, playerX, playerY, magnetRadius);
+    _calcExpToNext(level) {
+        const cfg = CONFIG.EXP;
+        return Math.round(cfg.BASE_TO_LEVEL * Math.pow(cfg.GROWTH, level - 1));
+    }
+
+    getKillReward(monster) {
+        const rewards = CONFIG.EXP.KILL_REWARD;
+        let base = rewards[monster.kind] || rewards.NORMAL || 8;
+        if (monster.kind === MonsterKind.SPLITTER && monster.splitTier > 0) {
+            base = Math.max(1, Math.round(base * Math.pow(0.55, monster.splitTier)));
         }
-        this.orbs = this.orbs.filter(o => o.alive);
-        return totalXp;
+        return base;
     }
 
-    draw(ctx) {
-        for (const orb of this.orbs) {
-            orb.draw(ctx);
+    addExp(amount) {
+        if (amount <= 0) return;
+        const game = this.game;
+        if (game.state !== 'PLAYING' && game.state !== 'LEVEL_UP') return;
+
+        this.exp += amount;
+        while (this.exp >= this.expToNext) {
+            this.exp -= this.expToNext;
+            this.level++;
+            this.expToNext = this._calcExpToNext(this.level);
+            this.pendingLevelUps++;
         }
+    }
+
+    onMonsterKilled(monster) {
+        this.addExp(this.getKillReward(monster));
+    }
+
+    tryTriggerPendingUpgrade() {
+        if (this.pendingLevelUps <= 0) return;
+        if (this.game.state !== 'PLAYING') return;
+        if (this.game.isUpgradeBlocked()) return;
+
+        this.pendingLevelUps--;
+        const game = this.game;
+        if (game.input) game.input.cancelActivePointer();
+        game.state = 'LEVEL_UP';
+        game.upgrades.generateChoices();
+        game._lockOverlayInput();
+        game.audio.playLevelUp();
     }
 }

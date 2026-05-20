@@ -1,91 +1,87 @@
-let nextMonsterId = 0;
-
 class MonsterSpawner {
-    constructor() {
+    constructor(game) {
+        this.game = game;
         this.monsters = [];
-        this.spawnQueue = [];
-        this.spawnTimer = 0;
-        this.spawnInterval = 1.5;
     }
 
-    prepareLevelSpawns(levelIndex, canvasW, canvasH, playAreaBottom = canvasH) {
+    reset() {
         this.monsters = [];
-        this.spawnQueue = [];
-        this.spawnTimer = 0;
-
-        const levelConfig = CONFIG.LEVELS[levelIndex];
-        if (!levelConfig) return;
-
-        if (getBossKeyForLevel(levelIndex)) {
-            return;
-        }
-
-        const totalCount = levelConfig.count;
-        const waves = levelConfig.waves;
-        const perWave = Math.ceil(totalCount / waves);
-
-        for (let w = 0; w < waves; w++) {
-            const count = w === waves - 1 ? totalCount - perWave * w : perWave;
-            for (let i = 0; i < count; i++) {
-                const typeKey = pickRandom(levelConfig.types);
-                const config = CONFIG.MONSTERS[typeKey];
-                const edge = Math.floor(Math.random() * 4);
-                let x, y;
-                const edgePad = 72;
-                const alongPad = 80;
-                const playBottom = Math.min(playAreaBottom, canvasH);
-                const maxY = Math.max(alongPad + 20, playBottom - edgePad);
-                const minY = edgePad;
-
-                switch (edge) {
-                    case 0:
-                        x = randRange(alongPad, canvasW - alongPad);
-                        y = minY;
-                        break;
-                    case 1:
-                        x = randRange(alongPad, canvasW - alongPad);
-                        y = maxY;
-                        break;
-                    case 2:
-                        x = edgePad;
-                        y = randRange(minY, maxY);
-                        break;
-                    case 3:
-                        x = canvasW - edgePad;
-                        y = randRange(minY, maxY);
-                        break;
-                }
-
-                const spawnGap = totalCount > 40 ? 0.35 : totalCount > 25 ? 0.45 : 0.55;
-                const waveGap = totalCount > 40 ? 2.5 : 3.5;
-                this.spawnQueue.push({
-                    delay: w * waveGap + i * spawnGap,
-                    x, y, config, typeKey,
-                });
-            }
-        }
-
-        this.spawnQueue.sort((a, b) => a.delay - b.delay);
     }
 
-    update(dt) {
-        this.spawnTimer += dt;
+    _pickSpawnPos(w, h, playBottom, safeZone) {
+        const edgePad = 26;
+        const top = 88;
+        const bottom = Math.max(top + 80, playBottom - 26);
+        for (let i = 0; i < 100; i++) {
+            const x = randRange(edgePad, w - edgePad);
+            const y = randRange(top, bottom);
+            if (!safeZone) return { x, y };
+            if (dist(x, y, safeZone.x, safeZone.y) > safeZone.r + 24) return { x, y };
+        }
+        return { x: w * 0.5, y: (top + bottom) * 0.5 };
+    }
 
-        while (this.spawnQueue.length > 0 && this.spawnQueue[0].delay <= this.spawnTimer) {
-            const entry = this.spawnQueue.shift();
-            const m = new Monster(entry.x, entry.y, entry.config, nextMonsterId++);
-            m.configKey = entry.typeKey;
+    _spawnBatch(kind, count, w, h, playBottom, safeZone, splitTier = 0, withSpawnAnim = false) {
+        for (let i = 0; i < count; i++) {
+            const pos = this._pickSpawnPos(w, h, playBottom, safeZone);
+            const m = new Monster(pos.x, pos.y, kind, splitTier);
+            m.game = this.game;
+            if (withSpawnAnim) m.beginSpawn(CONFIG.MONSTER_SPAWN_ANIM + randRange(0, 0.12));
             this.monsters.push(m);
         }
+    }
 
+    _scaledCount(n) {
+        const scale = CONFIG.STAGE_MONSTER_SCALE || 1;
+        return Math.max(0, Math.round((n || 0) * scale));
+    }
+
+    spawnStage(stageIndex, w, h, playBottom, safeZone, withSpawnAnim = false) {
+        this.monsters = [];
+        const cfg = CONFIG.STAGES[clamp(stageIndex, 0, CONFIG.STAGES.length - 1)];
+        if (!cfg) return;
+        this._spawnBatch(MonsterKind.NORMAL, this._scaledCount(cfg.normal), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        this._spawnBatch(MonsterKind.ELITE, this._scaledCount(cfg.elite), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        this._spawnBatch(MonsterKind.SHIELD, this._scaledCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        this._spawnBatch(MonsterKind.BERSERKER, this._scaledCount(cfg.berserker), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        this._spawnBatch(MonsterKind.SPLITTER, this._scaledCount(cfg.splitter), w, h, playBottom, safeZone, 0, withSpawnAnim);
+    }
+
+    spawnSplitChildren(parent) {
+        if (!parent || !parent.canSplit()) return [];
+        const children = [];
+        const cnt = parent.base.splitCount || 2;
+        for (let i = 0; i < cnt; i++) {
+            const a = (i / cnt) * Math.PI * 2 + randRange(-0.25, 0.25);
+            const d = randRange(12, 20);
+            const child = new Monster(
+                parent.x + Math.cos(a) * d,
+                parent.y + Math.sin(a) * d,
+                MonsterKind.SPLITTER,
+                parent.splitTier + 1
+            );
+            child.game = this.game;
+            child.beginSpawn(CONFIG.MONSTER_SPAWN_ANIM * 0.85);
+            children.push(child);
+        }
+        this.monsters.push(...children);
+        return children;
+    }
+
+    update(dt, w, h, playBottom, playerZone) {
+        const resolving = this.game && this.game.combat && this.game.combat.isResolving();
+        for (const m of this.monsters) {
+            if (resolving && !m.dying) continue;
+            m.update(dt, w, h, playBottom, playerZone);
+        }
         this.monsters = this.monsters.filter(m => m.alive);
     }
 
-    allClear() {
-        return this.spawnQueue.length === 0 && this.monsters.length === 0;
+    getActiveMonsters() {
+        return this.monsters.filter(m => m.alive && !m.dying && !m.spawning);
     }
 
-    getActiveMonsters() {
-        return this.monsters.filter(m => m.alive && !m.dying);
+    allClear() {
+        return !this.monsters.some(m => m.alive && !m.dying);
     }
 }

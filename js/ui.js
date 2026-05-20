@@ -1,163 +1,193 @@
+function _parseHexColor(hex) {
+    const h = hex.replace('#', '');
+    return [
+        parseInt(h.slice(0, 2), 16),
+        parseInt(h.slice(2, 4), 16),
+        parseInt(h.slice(4, 6), 16),
+    ];
+}
+
+function lerpHexColor(c1, c2, t) {
+    const a = _parseHexColor(c1);
+    const b = _parseHexColor(c2);
+    const ch = (i) => Math.round(a[i] + (b[i] - a[i]) * t);
+    return `#${[0, 1, 2].map((i) => ch(i).toString(16).padStart(2, '0')).join('')}`;
+}
+
 class UI {
-    constructor() {
-        this.pauseRects = {};
-    }
-
-    draw(ctx, player, vp, uiScale, opts = {}) {
-        const s = uiScale || 1;
-        this.drawBottomPanel(ctx, vp, s);
-        this.drawHearts(ctx, player, vp, s);
-        this.drawKiBar(ctx, player, vp, s);
-        this.drawXpBar(ctx, player, vp, s);
-        this.drawComboBanner(ctx, player, vp, s, !!opts.hasBoss);
-    }
-
-    getBottomHudLayout(vp, s) {
-        const innerPad = Math.round(12 * s);
-        const xpBarH = Math.round(12 * s);
-        const kiBarH = Math.round(10 * s);
-        const heartScale = Math.round(4 * s);
-        const heartSpacing = 26 * s;
-        const heartBlockH = heartScale * 5;
-        const bottomPad = Math.round(14 * s);
-        const rowGap = Math.round(12 * s);
-        const panelTopPad = Math.round(22 * s);
-
-        const panelX = vp.x;
-        const panelW = vp.w;
-        const barW = panelW - innerPad * 2;
-        const barX = panelX + innerPad;
-
-        const xpY = vp.y + vp.h - bottomPad - xpBarH;
-        const kiY = xpY - rowGap - kiBarH;
-        const heartsY = kiY - rowGap - heartBlockH / 2;
-        const panelY = heartsY - heartBlockH / 2 - panelTopPad;
-
-        return {
-            panel: { x: panelX, y: panelY, w: panelW, h: vp.y + vp.h - panelY },
-            playAreaBottom: panelY,
-            xp: { x: barX, y: xpY, w: barW, h: xpBarH },
-            ki: { x: barX, y: kiY, w: barW, h: kiBarH },
-            hearts: { y: heartsY, scale: heartScale, spacing: heartSpacing },
-        };
-    }
-
-    getPlayAreaBottom(canvasH, uiScale) {
-        const s = uiScale || 1;
-        const vp = { x: 0, y: 0, w: CONFIG.DISPLAY.LOGICAL_WIDTH, h: canvasH };
-        return this.getBottomHudLayout(vp, s).playAreaBottom;
-    }
-
-    drawBottomPanel(ctx, vp, s) {
-        const { panel } = this.getBottomHudLayout(vp, s);
-        const r = Math.round(10 * s);
-        ctx.save();
-        ctx.fillStyle = 'rgba(36, 30, 24, 0.82)';
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(panel.x, panel.y, panel.w, panel.h, [r, r, 0, 0]);
-            ctx.fill();
+    _getComboColors(combo) {
+        const t = clamp((combo - 2) / 18, 0, 1);
+        let main;
+        let sub;
+        if (t < 0.45) {
+            const u = t / 0.45;
+            main = lerpHexColor('#fff8c0', '#ffc830', u);
+            sub = lerpHexColor('#ffe060', '#ff9838', u);
+        } else if (t < 0.8) {
+            const u = (t - 0.45) / 0.35;
+            main = lerpHexColor('#ffc830', '#ff6020', u);
+            sub = lerpHexColor('#ff9838', '#ff4028', u);
         } else {
-            ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+            const u = (t - 0.8) / 0.2;
+            main = lerpHexColor('#ff6020', '#fff8e8', u);
+            sub = lerpHexColor('#ff4028', '#ff3020', u);
         }
-        ctx.strokeStyle = 'rgba(130, 108, 82, 0.65)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(panel.x, panel.y + 1);
-        ctx.lineTo(panel.x + panel.w, panel.y + 1);
-        ctx.stroke();
-        ctx.restore();
+        const glow = lerpHexColor('#ffb830', '#ff3820', t);
+        return { main, sub, glow };
     }
 
-    getTopHudBottom(vp, s, hasBoss = false) {
-        const pauseBtn = this.getPauseButtonRect(vp, s);
-        let bottom = pauseBtn.y + pauseBtn.h + Math.round(8 * s);
-        if (hasBoss) {
-            const gap = Math.round(6 * s);
-            const barH = Math.round(8 * s);
-            const nameSize = Math.round(11 * s);
-            bottom += gap + barH + nameSize + Math.round(6 * s);
-        }
-        return bottom;
-    }
-
-    _drawComboLabel(ctx, text, x, y, size, fillColor) {
-        const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2.5) : 1;
-        const px = Math.round(size * dpr) / dpr;
+    _drawComboPixelText(ctx, text, x, y, sizePx, colors) {
+        ctx.save();
+        const px = Math.max(8, Math.round(sizePx));
         ctx.font = `bold ${px}px ${GAME_FONT}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.lineWidth = Math.max(2.5, px * 0.14);
-        ctx.strokeStyle = 'rgba(255, 248, 235, 0.92)';
         ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.miterLimit = 2;
+        const strokeW = Math.max(3, px * 0.13);
+        ctx.lineWidth = strokeW;
+        ctx.strokeStyle = '#000000';
         ctx.strokeText(text, x, y);
-        ctx.fillStyle = fillColor;
+        ctx.fillStyle = colors.main;
         ctx.fillText(text, x, y);
-    }
-
-    drawComboBanner(ctx, player, vp, s, hasBoss = false) {
-        const combo = player.comboDisplayPeak;
-        if (combo < 2 || player.comboDisplayTimer <= 0) return;
-
-        const fading = player.comboCount < 2;
-        const fadeDur = fading
-            ? CONFIG.PLAYER.COMBO_END_FADE
-            : CONFIG.PLAYER.COMBO_DISPLAY_HOLD;
-        const alpha = fading
-            ? clamp(player.comboDisplayTimer / fadeDur, 0, 1)
-            : 1;
-
-        const tier = combo >= 10 ? 2 : combo >= 5 ? 1 : 0;
-        const mainColors = ['#4a4038', '#8a5030', '#c04828'];
-        const mainColor = mainColors[tier];
-        const bonusColor = '#1a4888';
-
-        const mainSize = Math.round((28 + Math.min(combo - 2, 16) * 1.5) * s);
-        const bonusSize = Math.round(mainSize * 0.72);
-        const y = this.getTopHudBottom(vp, s, hasBoss) + Math.round(32 * s);
-
-        const mainLabel = `连击×${combo}`;
-        const bonusLabel = `+${player.getComboBonusPercent(combo)}%`;
-        const gap = 10 * s;
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
-
-        ctx.font = `bold ${mainSize}px ${GAME_FONT}`;
-        const mainW = ctx.measureText(mainLabel).width;
-        ctx.font = `bold ${bonusSize}px ${GAME_FONT}`;
-        const bonusW = ctx.measureText(bonusLabel).width;
-        const totalW = mainW + gap + bonusW;
-
-        const mainX = vp.cx - totalW / 2 + mainW / 2;
-        const bonusX = vp.cx - totalW / 2 + mainW + gap + bonusW / 2;
-
-        this._drawComboLabel(ctx, mainLabel, mainX, y, mainSize, mainColor);
-        this._drawComboLabel(ctx, bonusLabel, bonusX, y + 1 * s, bonusSize, bonusColor);
-
         ctx.restore();
     }
 
-    drawHearts(ctx, player, vp, s) {
-        const { panel, hearts } = this.getBottomHudLayout(vp, s);
-        const heartScale = hearts.scale;
-        const spacing = hearts.spacing;
-        const y = hearts.y;
-        const totalHearts = Math.ceil(player.maxHearts);
-        const totalW = totalHearts > 0 ? (totalHearts - 1) * spacing + heartScale * 5 : 0;
-        const startX = panel.x + (panel.w - totalW) / 2;
-        for (let i = 0; i < totalHearts; i++) {
-            const heartVal = player.hearts - i;
-            let sprite;
-            if (heartVal >= 1) {
-                sprite = SPRITES.heart.full;
-            } else if (heartVal >= 0.5) {
-                sprite = SPRITES.heart.half;
+    getPlayAreaBottom(canvasH, uiScale = 1) {
+        const reserve = (CONFIG.EXP.BAR_HEIGHT + 14) * uiScale;
+        return canvasH - reserve;
+    }
+
+    _getHudLayout(vp, s, player) {
+        const pad = 12 * s;
+        const kiY = vp.y + 28 * s;
+        const kiH = 40 * s;
+        const buffRowY = kiY + kiH + 8 * s;
+        const hasBuffs = player && player.collectedOrbBuffs && player.collectedOrbBuffs.length > 0;
+        const secondRowY = hasBuffs ? buffRowY + 30 * s : buffRowY;
+        return {
+            pad,
+            kiX: vp.x + pad,
+            kiY,
+            kiW: vp.w - pad * 2,
+            kiH,
+            buffRowY,
+            secondRowY,
+            comboY: secondRowY + 8 * s,
+        };
+    }
+
+    draw(ctx, game, vp, s) {
+        const layout = this._getHudLayout(vp, s, game.player);
+        this._lastHudLayout = layout;
+        this.drawTopKiBar(ctx, game.player, layout, s);
+        this.drawTurnBuffIcons(ctx, game.player, layout, s);
+        this.drawTurns(ctx, game, layout, s);
+        this.drawComboBanner(ctx, game.player, vp, layout, s);
+        this.drawMessage(ctx, game.player, vp, s);
+        this.drawBuffNotice(ctx, game.buffOrbs, vp, s);
+        if (game.experience) this.drawExpBar(ctx, game.experience, vp, s);
+    }
+
+    drawExpBar(ctx, exp, vp, s) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+
+        const h = Math.floor(CONFIG.EXP.BAR_HEIGHT * s);
+        const pad = Math.floor(12 * s);
+        const y = Math.floor(vp.y + vp.h - h - 8 * s);
+        const w = Math.floor(vp.w - pad * 2);
+        const x = Math.floor(vp.x + pad);
+        const border = Math.max(2, Math.floor(3 * s));
+        const block = Math.max(3, Math.floor(4 * s));
+        const innerX = x + border;
+        const innerY = y + border;
+        const innerW = w - border * 2;
+        const innerH = h - border * 2;
+        const ratio = clamp(exp.exp / Math.max(1, exp.expToNext), 0, 1);
+        const fillBlocks = Math.floor((innerW / block) * ratio);
+
+        drawPixelPanel(ctx, x, y, w, h, '#1a2030', '#c8a040', border);
+
+        for (let col = 0; col * block < innerW; col++) {
+            const bx = innerX + col * block;
+            const bw = Math.min(block - 1, innerW - col * block);
+            if (bw <= 0) continue;
+            if (col < fillBlocks) {
+                ctx.fillStyle = '#348848';
+                ctx.fillRect(bx, innerY, bw, innerH);
+                ctx.fillStyle = '#68c878';
+                ctx.fillRect(bx, innerY, bw, Math.max(2, Math.floor(innerH * 0.42)));
+                ctx.fillStyle = '#98e8a8';
+                ctx.fillRect(bx, innerY, bw, Math.max(1, Math.floor(innerH * 0.18)));
             } else {
-                sprite = SPRITES.heart.empty;
+                ctx.fillStyle = (col % 2 === 0) ? '#242c3a' : '#1e2430';
+                ctx.fillRect(bx, innerY, bw, innerH);
             }
-            drawSprite(ctx, sprite, startX + i * spacing, y, heartScale);
         }
+
+        ctx.fillStyle = '#5a4828';
+        const rivet = Math.max(2, Math.floor(2 * s));
+        ctx.fillRect(x + border, y + border, rivet, rivet);
+        ctx.fillRect(x + w - border - rivet, y + border, rivet, rivet);
+        ctx.fillRect(x + border, y + h - border - rivet, rivet, rivet);
+        ctx.fillRect(x + w - border - rivet, y + h - border - rivet, rivet, rivet);
+
+        drawPixelText(ctx, `Lv${exp.level}`, x + 10 * s, y + h / 2, Math.round(10 * s), '#ffe8a8', 'left', 'middle');
+        drawPixelText(
+            ctx,
+            `${Math.floor(exp.exp)}/${exp.expToNext}`,
+            x + w - 10 * s,
+            y + h / 2,
+            Math.round(9 * s),
+            '#e8f4ff',
+            'right',
+            'middle'
+        );
+        ctx.restore();
+    }
+
+    drawTopKiBar(ctx, player, layout, s) {
+        const ratio = clamp(player.ki / Math.max(1, player.kiMax), 0, 1);
+        this._drawPixelSwordKiBar(ctx, layout.kiX, layout.kiY, layout.kiW, layout.kiH, ratio);
+    }
+
+    drawTurnBuffIcons(ctx, player, layout, s) {
+        const buffs = player.collectedOrbBuffs;
+        if (!buffs || buffs.length === 0) return;
+
+        const counts = {};
+        for (const t of buffs) counts[t] = (counts[t] || 0) + 1;
+        const types = ['attack', 'ki', 'combo', 'ice'].filter(t => counts[t]);
+
+        const iconPx = Math.max(3, Math.floor(3 * s));
+        const slotW = iconPx * 8 + 10 * s;
+        const totalW = types.length * slotW - 4 * s;
+        let x = layout.kiX + layout.kiW / 2 - totalW / 2;
+        const cy = layout.buffRowY + 12 * s;
+
+        for (const type of types) {
+            const count = counts[type];
+            const sx = Math.floor(x);
+            const sy = Math.floor(cy - 12 * s);
+            drawPixelPanel(ctx, sx, sy, slotW - 4 * s, 24 * s, '#2a2838', '#c8b888', 2);
+            const pal = this._buffFrameColor(type);
+            ctx.fillStyle = pal;
+            ctx.fillRect(sx + 3, sy + 3, slotW - 10 * s, 4);
+            drawPixelIcon(ctx, getBuffOrbIconSprite(type), x + (slotW - 4 * s) / 2, cy, iconPx);
+            const label = count > 1 ? `${getBuffOrbShortLabel(type)}×${count}` : getBuffOrbShortLabel(type);
+            drawPixelText(ctx, label, x + (slotW - 4 * s) / 2, cy + 14 * s, Math.round(8 * s), '#fff0d0');
+            x += slotW;
+        }
+    }
+
+    _buffFrameColor(type) {
+        if (type === 'attack') return '#ff9050';
+        if (type === 'ki') return '#58c8ff';
+        if (type === 'combo') return '#f0a0f0';
+        if (type === 'ice') return '#88d8ff';
+        return '#e8d070';
     }
 
     _uiPx(ctx, ox, oy, col, row, color, px) {
@@ -166,402 +196,236 @@ class UI {
         ctx.fillRect(ox + col * px, oy + row * px, px, px);
     }
 
-    _drawKatanaKiBar(ctx, x, y, totalW, h, ratio, s, deepBreath = false) {
-        const px = Math.max(2, Math.floor(h / 5));
-        const rows = 5;
-        const barH = rows * px;
-        const barY = Math.floor(y + (h - barH) / 2);
-        const ox = Math.floor(x);
-
-        const pal = deepBreath ? {
-            outline: '#1a3848',
-            hilt0: '#2a4858', hilt1: '#4a6878', hilt2: '#6a98a8', hiltWrap: '#88c0d0',
-            tsuba: '#68b8d8', tsubaHi: '#a8e8ff',
-            track: '#2a4858', trackHi: '#3a5868',
-            kiLo: '#48c8e8', kiHi: '#b8ffff', kiEdge: '#d8ffff',
-            tip: '#4a7888', warn: '#e85848',
-        } : {
-            outline: '#2a1810',
-            hilt0: '#3a2818', hilt1: '#5a4030', hilt2: '#7a5840', hiltWrap: '#9a7860',
-            tsuba: '#6a6468', tsubaHi: '#9a9898',
-            track: '#3a4048', trackHi: '#4a5058',
-            kiLo: '#3a78a0', kiHi: '#8ad4f0', kiEdge: '#c8ecff',
-            tip: '#5a6068', warn: '#c45848',
-        };
-
-        const hiltCols = 4;
-        const tsubaCols = 2;
-        const tipCols = 3;
-        const bladeCols = Math.max(
-            6,
-            Math.floor((totalW - (hiltCols + tsubaCols + tipCols) * px) / px)
-        );
-        const totalPx = hiltCols + tsubaCols + bladeCols + tipCols;
-        const drawW = totalPx * px;
-        const dx = ox + Math.floor((totalW - drawW) / 2);
-
-        if (deepBreath) {
-            const pulse = 0.45 + Math.sin(Date.now() * 0.005) * 0.2;
-            ctx.save();
-            ctx.globalAlpha = pulse;
-            for (let c = 0; c < totalPx; c++) {
-                this._uiPx(ctx, dx - px, barY - px, c, 0, '#68e8ff', px);
-                this._uiPx(ctx, dx - px, barY + rows, c, 0, '#68e8ff', px);
-            }
-            ctx.restore();
-        }
-
-        const hiltRows = [
-            [pal.outline, pal.hilt0, pal.hilt0, pal.outline],
-            [pal.hilt1, pal.hilt2, pal.hiltWrap, pal.hilt1],
-            [pal.hilt1, pal.hiltWrap, pal.hiltWrap, pal.hilt1],
-            [pal.hilt1, pal.hilt2, pal.hiltWrap, pal.hilt1],
-            [pal.outline, pal.hilt0, pal.hilt0, pal.outline],
-        ];
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < hiltCols; c++) {
-                this._uiPx(ctx, dx, barY, c, r, hiltRows[r][c], px);
-            }
-        }
-
-        const tsubaCol = hiltCols;
-        const tsubaRows = [
-            [pal.outline, pal.outline],
-            [pal.tsubaHi, pal.tsuba],
-            [pal.tsuba, pal.tsuba],
-            [pal.tsuba, pal.tsuba],
-            [pal.outline, pal.outline],
-        ];
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < tsubaCols; c++) {
-                this._uiPx(ctx, dx, barY, tsubaCol + c, r, tsubaRows[r][c], px);
-            }
-        }
-
-        const bladeStart = hiltCols + tsubaCols;
-        const fillCols = Math.floor(bladeCols * ratio);
-        for (let c = 0; c < bladeCols; c++) {
-            const filled = c < fillCols;
-            const edge = c === 0 || c === bladeCols - 1;
-            const topHi = c < fillCols && c % 2 === 0;
-            for (let r = 0; r < rows; r++) {
-                const isEdgeRow = r === 0 || r === rows - 1;
-                let color;
-                if (filled) {
-                    if (isEdgeRow && !edge) color = pal.kiLo;
-                    else if (r <= 1 && topHi) color = pal.kiEdge;
-                    else if (r <= 2) color = pal.kiHi;
-                    else color = pal.kiLo;
-                } else {
-                    if (isEdgeRow || edge) color = pal.outline;
-                    else if (r === 1) color = pal.trackHi;
-                    else color = pal.track;
-                }
-                this._uiPx(ctx, dx, barY, bladeStart + c, r, color, px);
-            }
-        }
-
+    _swordRowSpan(col, rows, pommelCols, gripCols, guardCols, bladeCols, tipCols) {
+        const bladeStart = pommelCols + gripCols + guardCols;
         const tipStart = bladeStart + bladeCols;
-        const tipPattern = [
-            [null, null, pal.outline],
-            [null, pal.tip, pal.tip],
-            [pal.tip, pal.kiHi, pal.kiLo],
-            [null, pal.tip, pal.tip],
-            [null, null, pal.outline],
-        ];
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < tipCols; c++) {
-                this._uiPx(ctx, dx, barY, tipStart + c, r, tipPattern[r][c], px);
-            }
+        if (col < pommelCols) {
+            const mid = Math.floor(rows / 2);
+            return { rowMin: mid - 1, rowMax: mid + 1 };
         }
-
-        if (ratio < 0.25 && Math.floor(Date.now() / 280) % 2 === 0) {
-            this._uiPx(ctx, dx, barY, tipStart + 1, 2, pal.warn, px);
-            this._uiPx(ctx, dx, barY, tipStart + 2, 2, pal.warn, px);
+        if (col < pommelCols + gripCols) {
+            const gripMid = Math.floor(rows / 2);
+            return { rowMin: gripMid - 3, rowMax: gripMid + 2 };
         }
+        if (col < bladeStart) {
+            return { rowMin: 0, rowMax: rows - 1 };
+        }
+        if (col < tipStart) {
+            return { rowMin: 2, rowMax: rows - 3 };
+        }
+        const tipIdx = col - tipStart;
+        const inset = tipIdx + 1;
+        const rowMin = inset + 2;
+        const rowMax = rows - 3 - inset;
+        if (rowMin > rowMax) return null;
+        return { rowMin, rowMax };
     }
 
-    getKiBarLayout(vp, s) {
-        const { ki } = this.getBottomHudLayout(vp, s);
-        return { x: Math.floor(ki.x), y: Math.floor(ki.y), w: ki.w, h: ki.h, pad: 14 * s };
-    }
-
-    drawKiBar(ctx, player, vp, s) {
-        const { x, y, w, h } = this.getKiBarLayout(vp, s);
-        const ratio = clamp(player.ki / player.kiMax, 0, 1);
-        this._drawKatanaKiBar(ctx, x, y, w, h, ratio, s, player.bossRewardDeepBreath);
-    }
-
-    drawBossBar(ctx, boss, vp, s) {
-        if (!boss || (!boss.alive && !boss.dying)) return;
-
-        const pauseBtn = this.getPauseButtonRect(vp, s);
-        const gap = Math.round(6 * s);
-        const barH = Math.round(8 * s);
-        const pad = Math.round(12 * s);
-        const x = vp.x + pad;
-        const y = pauseBtn.y + pauseBtn.h + gap;
-        const barW = vp.w - pad * 2;
-        const ratio = clamp(boss.hp / boss.maxHp, 0, 1);
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(x - 1, y - 1, barW + 2, barH + 2);
-        ctx.fillStyle = '#2a1810';
-        ctx.fillRect(x, y, barW, barH);
-        ctx.fillStyle = ratio > 0.35 ? '#e84818' : '#c02010';
-        ctx.fillRect(x, y, barW * ratio, barH);
-        ctx.strokeStyle = '#ffaa66';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x, y, barW, barH);
-
-        const nameSize = Math.round(11 * s);
-        drawGameText(ctx, boss.cfg.name, vp.cx, y - 2 * s, nameSize, '#ffe8c0', 'center', 'bottom');
-    }
-
-    _drawPixelXpBar(ctx, x, y, totalW, h, ratio) {
-        const px = Math.max(2, Math.floor(h / 4));
-        const rows = 4;
+    _drawPixelSwordKiBar(ctx, x, y, totalW, h, ratio) {
+        const rows = 16;
+        const px = Math.max(2, Math.floor(h / rows));
         const barH = rows * px;
         const barY = Math.floor(y + (h - barH) / 2);
         const ox = Math.floor(x);
-
-        const cols = Math.max(12, Math.floor(totalW / px));
-        const drawW = cols * px;
-        const dx = ox + Math.floor((totalW - drawW) / 2);
 
         const pal = {
-            outline: '#2a2218',
-            track: '#3a4048',
-            trackHi: '#4a525c',
-            trackLo: '#2e343c',
-            fillLo: '#2850a0',
-            fillHi: '#4890d8',
-            fillEdge: '#68b8f0',
+            outline: '#1a1418',
+            pommel: '#4a4048', pommelHi: '#7a7078',
+            grip0: '#3a2818', grip1: '#5a4030', grip2: '#8a6848', gripWrap: '#a88868',
+            guard: '#5a5a62', guardHi: '#9a9aa8', guardEdge: '#2a2830',
+            track: '#2a3038', trackHi: '#3a424c',
+            kiLo: '#2a6890', kiMid: '#58b0d8', kiHi: '#9ae8ff', kiEdge: '#d8f8ff',
+            steel: '#6a7078', steelHi: '#aab0b8',
+            warn: '#e04838',
         };
 
-        const innerCols = Math.max(1, cols - 2);
-        const fillInner = Math.floor(innerCols * ratio);
-        const nearLevel = ratio >= 0.92;
-        const pulse = nearLevel && Math.floor(Date.now() / 200) % 2 === 0;
+        const pommelCols = 1;
+        const gripCols = 18;
+        const guardCols = 4;
+        const tipCols = 5;
+        const fixedCols = pommelCols + gripCols + guardCols + tipCols;
+        const bladeCols = Math.max(10, Math.floor((totalW - fixedCols * px) / px));
+        const totalCols = fixedCols + bladeCols;
+        const drawW = totalCols * px;
+        const dx = ox + Math.floor((totalW - drawW) / 2);
+        const bladeStart = pommelCols + gripCols + guardCols;
+        const tipStart = bladeStart + bladeCols;
+        const kiCols = bladeCols + tipCols;
+        const fillCols = Math.floor(kiCols * ratio);
+        const lowKi = ratio < 0.25 && Math.floor(Date.now() / 280) % 2 === 0;
 
-        for (let c = 0; c < cols; c++) {
-            for (let r = 0; r < rows; r++) {
-                const edgeRow = r === 0 || r === rows - 1;
-                const edgeCol = c === 0 || c === cols - 1;
-                const filled = c > 0 && c <= fillInner;
-                let color;
+        const inSpan = (col, row) => {
+            const span = this._swordRowSpan(col, rows, pommelCols, gripCols, guardCols, bladeCols, tipCols);
+            if (!span) return false;
+            return row >= span.rowMin && row <= span.rowMax;
+        };
 
-                if (edgeRow || edgeCol) {
-                    color = pal.outline;
-                } else if (filled) {
-                    if (pulse && c === fillInner) color = pal.fillEdge;
-                    else if (r === 1) color = pal.fillEdge;
-                    else if (r === 2) color = pal.fillHi;
-                    else color = pal.fillLo;
-                } else {
-                    color = (r + c) % 2 === 0 ? pal.track : pal.trackHi;
+        const colorAt = (col, row) => {
+            const isBlade = col >= bladeStart && col < tipStart;
+            const isTip = col >= tipStart;
+            const isGuard = col >= pommelCols + gripCols && col < bladeStart;
+            const isGrip = col >= pommelCols && col < pommelCols + gripCols;
+            const isPommel = col < pommelCols;
+            const bladeCol = col - bladeStart;
+            const tipCol = col - tipStart;
+            const kiCol = isBlade ? bladeCol : isTip ? bladeCols + tipCol : -1;
+            const filled = kiCol >= 0 && kiCol < fillCols;
+            const edgeRow = row === 0 || row === rows - 1;
+            const midRow = row === Math.floor(rows / 2);
+
+            if (isPommel) {
+                return midRow ? pal.pommelHi : pal.pommel;
+            }
+            if (isGrip) {
+                if (edgeRow) return pal.outline;
+                const g = (col + row) % 3;
+                if (g === 0) return pal.grip0;
+                if (g === 1) return pal.gripWrap;
+                return pal.grip1;
+            }
+            if (isGuard) {
+                if (edgeRow) return pal.guardEdge;
+                const guardEdgeBand = row <= 2 || row >= rows - 3;
+                return guardEdgeBand ? pal.guardHi : pal.guard;
+            }
+            if (isBlade) {
+                if (!filled) {
+                    if (edgeRow) return pal.outline;
+                    return row <= 2 ? pal.trackHi : pal.track;
                 }
-                this._uiPx(ctx, dx, barY, c, r, color, px);
+                if (edgeRow) return pal.kiLo;
+                if (row <= 2) return pal.kiEdge;
+                if (row <= 4) return pal.kiHi;
+                return pal.kiMid;
+            }
+            if (isTip) {
+                if (!filled) {
+                    if (edgeRow) return pal.outline;
+                    return pal.steel;
+                }
+                if (lowKi && midRow) return pal.warn;
+                if (edgeRow) return pal.kiLo;
+                if (row <= 3) return pal.kiHi;
+                return pal.kiMid;
+            }
+            return pal.outline;
+        };
+
+        ctx.imageSmoothingEnabled = false;
+        for (let col = 0; col < totalCols; col++) {
+            for (let row = 0; row < rows; row++) {
+                if (!inSpan(col, row)) continue;
+                this._uiPx(ctx, dx, barY, col, row, colorAt(col, row), px);
             }
         }
+
+        return dx + (pommelCols + gripCols) * px;
     }
 
-    drawXpBar(ctx, player, vp, s) {
-        const { xp } = this.getBottomHudLayout(vp, s);
-        const { x, y, w: barW, h: barH } = xp;
-        const ratio = clamp(player.xp / player.xpToNext, 0, 1);
-        const fontSize = Math.round(10 * s);
-        const textY = y + barH / 2;
+    drawTurns(ctx, game, layout, s) {
+        const turns = game.turnsLeft;
+        const urgent = turns <= 1;
+        const boxW = 80 * s;
+        const boxH = 52 * s;
+        const x = layout.kiX + layout.kiW - boxW;
+        const y = layout.secondRowY;
+        const cx = x + boxW / 2;
 
-        this._drawPixelXpBar(ctx, x, y, barW, barH, ratio);
+        const pulse = urgent && Math.floor(Date.now() / 320) % 2 === 0;
+        const fill = urgent ? (pulse ? '#5a1810' : '#3a1008') : '#242838';
+        const border = urgent ? '#ff6848' : '#e8c050';
+        drawPixelPanel(ctx, x, y, boxW, boxH, fill, border, 2);
 
-        drawGameText(ctx, `Lv.${player.level}`, x + 8 * s, textY,
-            fontSize, '#eef2f8', 'left', 'middle');
-        drawGameText(ctx, `${player.xp}/${player.xpToNext}`, x + barW - 8 * s, textY,
-            fontSize, '#d0dcf0', 'right', 'middle');
+        const numColor = urgent ? '#ffe0d0' : '#fff8e0';
+        drawPixelText(ctx, String(turns), cx, y + boxH * 0.38, Math.round(22 * s), numColor);
+        drawPixelText(ctx, '回合', cx, y + boxH * 0.76, Math.round(10 * s), urgent ? '#ffb0a0' : '#ffd890');
     }
 
-    getPauseButtonRect(vp, s) {
-        const size = Math.round(28 * s);
-        const x = Math.round(vp.x + vp.w - size - 10 * s);
-        const y = Math.round(vp.y + 10 * s);
-        return { x, y, w: size, h: size };
-    }
+    drawComboBanner(ctx, player, vp, layout, s) {
+        const combo = player.comboDisplayPeak;
+        if (combo < 2 || player.comboDisplayTimer <= 0) return;
+        const fading = player.comboCount < 2;
+        const fadeDur = fading ? CONFIG.PLAYER.COMBO_END_FADE : CONFIG.PLAYER.COMBO_DISPLAY_HOLD;
+        const alpha = fading ? clamp(player.comboDisplayTimer / fadeDur, 0, 1) : 1;
+        const y = layout.comboY + 28 * s;
 
-    isPauseButtonHit(x, y, vp, s) {
-        const r = this.getPauseButtonRect(vp, s);
-        return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-    }
+        const cfg = CONFIG.PLAYER;
+        const mainSize = Math.round(
+            (cfg.COMBO_TEXT_BASE + Math.min(cfg.COMBO_TEXT_MAX_GROW, (combo - 2) * cfg.COMBO_TEXT_GROW)) * s
+        );
+        const subSize = Math.round(mainSize * 0.5);
 
-    drawPauseButton(ctx, vp, s, active) {
-        const r = this.getPauseButtonRect(vp, s);
-        ctx.save();
-        ctx.globalAlpha = active ? 0.95 : 0.8;
-        ctx.fillStyle = 'rgba(28, 24, 20, 0.72)';
-        ctx.strokeStyle = 'rgba(210, 190, 160, 0.9)';
-        ctx.lineWidth = 2;
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(r.x, r.y, r.w, r.h, Math.round(6 * s));
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            ctx.fillRect(r.x, r.y, r.w, r.h);
-            ctx.strokeRect(r.x, r.y, r.w, r.h);
+        const shakeDur = cfg.COMBO_SHAKE_DURATION;
+        let shakeX = 0;
+        let shakeY = 0;
+        let popScale = 1;
+        if (player.comboShakeTimer > 0) {
+            const t = clamp(player.comboShakeTimer / shakeDur, 0, 1);
+            const mag = 7 * s * t;
+            shakeX = Math.sin(player.comboShakeTimer * 48) * mag;
+            shakeY = Math.sin(player.comboShakeTimer * 61) * mag * 0.7;
+            popScale = 1 + 0.14 * t;
         }
-        const barW = Math.max(3, Math.round(4 * s));
-        const barH = Math.max(12, Math.round(13 * s));
-        const gap = Math.max(4, Math.round(5 * s));
-        const cx = r.x + r.w / 2;
-        const cy = r.y + r.h / 2;
-        ctx.fillStyle = '#f2e7d2';
-        ctx.fillRect(Math.round(cx - gap / 2 - barW), Math.round(cy - barH / 2), barW, barH);
-        ctx.fillRect(Math.round(cx + gap / 2), Math.round(cy - barH / 2), barW, barH);
+
+        const colors = this._getComboColors(combo);
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(vp.cx + shakeX, y + shakeY);
+        ctx.scale(popScale, popScale);
+        this._drawComboPixelText(ctx, `连击×${combo}`, 0, 0, mainSize, colors);
+        this._drawComboPixelText(
+            ctx,
+            `+${player.getComboBonusPercent(combo)}%`,
+            0,
+            Math.round(mainSize * 0.72),
+            subSize,
+            { main: colors.sub, glow: colors.glow }
+        );
         ctx.restore();
     }
 
-    _drawPauseButton(ctx, rect, text, s, color) {
-        ctx.fillStyle = color || 'rgba(54, 46, 36, 0.9)';
-        ctx.strokeStyle = 'rgba(170, 145, 110, 0.95)';
-        ctx.lineWidth = 2;
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(rect.x, rect.y, rect.w, rect.h, Math.round(8 * s));
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-            ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-        }
-        drawGameText(ctx, text, rect.x + rect.w / 2, rect.y + rect.h / 2,
-            Math.round(14 * s), '#f2e7d2', 'center', 'middle');
+    drawMessage(ctx, player, vp, s) {
+        if (player.messageTimer <= 0 || !player.activeMessage) return;
+        const alpha = clamp(player.messageTimer / 1.25, 0, 1);
+        const text = player.activeMessage;
+        const fontSize = Math.round(12 * s);
+        const expReserve = (CONFIG.EXP.BAR_HEIGHT + 22) * s;
+        const y = vp.y + vp.h - expReserve;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.font = `bold ${fontSize}px ${GAME_FONT}`;
+        const tw = ctx.measureText(text).width;
+        const padX = 12 * s;
+        const padY = 8 * s;
+        const bx = Math.floor(vp.cx - tw / 2 - padX);
+        const by = Math.floor(y - fontSize / 2 - padY);
+        drawPixelPanel(ctx, bx, by, tw + padX * 2, fontSize + padY * 2, 'rgba(42,36,32,0.94)', '#c8b080', 2);
+        drawPixelText(ctx, text, vp.cx, y, fontSize, '#ffe7c8');
+        ctx.restore();
     }
 
-    _layoutDebugControls(px, panelW, rowY, s, withApply) {
-        const smallW = Math.round(30 * s);
-        const applyW = Math.round(56 * s);
-        const btnH = Math.round(30 * s);
-        const gap = Math.round(6 * s);
-        const right = px + panelW - 16 * s;
-        const plus = {
-            x: right - smallW,
-            y: rowY - btnH / 2,
-            w: smallW,
-            h: btnH,
-        };
-        const minus = {
-            x: plus.x - gap - smallW,
-            y: rowY - btnH / 2,
-            w: smallW,
-            h: btnH,
-        };
-        let apply = null;
-        if (withApply) {
-            apply = {
-                x: minus.x - gap - applyW,
-                y: rowY - btnH / 2,
-                w: applyW,
-                h: btnH,
-            };
-        }
-        return { minus, plus, apply, labelX: px + 16 * s };
-    }
+    drawBuffNotice(ctx, buffOrbs, vp, s) {
+        if (!buffOrbs || buffOrbs.noticeTimer <= 0 || !buffOrbs.notice) return;
+        const alpha = clamp(buffOrbs.noticeTimer / 1.6, 0, 1);
+        const text = buffOrbs.notice.replace(/^获得强化:\s*/, '');
+        const fontSize = Math.round(14 * s);
+        const y = vp.y + vp.h * 0.2;
 
-    _drawAdjustRow(ctx, label, value, labelX, rectMinus, rectPlus, rectApply, rowY, s) {
-        drawGameText(ctx, `${label}: ${value}`, labelX, rowY,
-            Math.round(13 * s), '#d7c7ae', 'left', 'middle');
-        this._drawPauseButton(ctx, rectMinus, '-', s, 'rgba(48, 40, 32, 0.9)');
-        this._drawPauseButton(ctx, rectPlus, '+', s, 'rgba(48, 40, 32, 0.9)');
-        if (rectApply) {
-            this._drawPauseButton(ctx, rectApply, '应用', s, 'rgba(68, 48, 32, 0.95)');
-        }
-    }
-
-    drawPauseOverlay(ctx, vp, s, data) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
-        const panelW = Math.min(vp.w - 26 * s, 330 * s);
-        const panelH = Math.min(vp.h - 40 * s, 420 * s);
-        const px = vp.x + (vp.w - panelW) / 2;
-        const py = vp.y + (vp.h - panelH) / 2;
-
-        ctx.fillStyle = 'rgba(36, 30, 24, 0.96)';
-        ctx.strokeStyle = 'rgba(166, 138, 104, 0.95)';
-        ctx.lineWidth = 2;
-        if (typeof ctx.roundRect === 'function') {
-            ctx.beginPath();
-            ctx.roundRect(px, py, panelW, panelH, Math.round(10 * s));
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            ctx.fillRect(px, py, panelW, panelH);
-            ctx.strokeRect(px, py, panelW, panelH);
-        }
-
-        drawGameText(ctx, '已暂停', vp.cx, py + 26 * s, Math.round(20 * s), '#f2e7d2');
-
-        const btnW = panelW * 0.72;
-        const btnH = 36 * s;
-        const btnX = px + (panelW - btnW) / 2;
-        const resumeRect = { x: btnX, y: py + 52 * s, w: btnW, h: btnH };
-        const passRect = { x: btnX, y: py + 96 * s, w: btnW, h: btnH };
-        this.pauseRects.resume = resumeRect;
-        this.pauseRects.password = passRect;
-        this._drawPauseButton(ctx, resumeRect, '继续', s, 'rgba(56, 74, 52, 0.92)');
-        this._drawPauseButton(ctx, passRect, '密码输入', s, 'rgba(76, 56, 38, 0.92)');
-
-        let y = py + 146 * s;
-        if (data.passwordMode && !data.debugUnlocked) {
-            drawGameText(ctx, `密码: ${data.passwordInput}`, vp.cx, y, Math.round(14 * s), '#e6d8c2');
-            y += 10 * s;
-            const keyW = Math.round(44 * s);
-            const keyH = Math.round(32 * s);
-            const keyGap = Math.round(8 * s);
-            const startX = vp.cx - (keyW * 3 + keyGap * 2) / 2;
-            const rows = [['1', '2', '3'], ['4', 'C', 'OK']];
-            this.pauseRects.keys = [];
-            for (let r = 0; r < rows.length; r++) {
-                for (let c = 0; c < rows[r].length; c++) {
-                    const rect = {
-                        x: startX + c * (keyW + keyGap),
-                        y: y + r * (keyH + keyGap),
-                        w: keyW,
-                        h: keyH,
-                        key: rows[r][c],
-                    };
-                    this.pauseRects.keys.push(rect);
-                    this._drawPauseButton(ctx, rect, rect.key, s, 'rgba(48, 40, 32, 0.92)');
-                }
-            }
-        } else {
-            this.pauseRects.keys = [];
-        }
-
-        if (data.debugUnlocked) {
-            drawGameText(ctx, '调试模式', vp.cx, py + 148 * s, Math.round(16 * s), '#ffd18a');
-            const rowY1 = py + 182 * s;
-            const rowY2 = py + 228 * s;
-            const rowY3 = py + 274 * s;
-
-            const row1 = this._layoutDebugControls(px, panelW, rowY1, s, true);
-            this.pauseRects.levelMinus = row1.minus;
-            this.pauseRects.levelPlus = row1.plus;
-            this.pauseRects.levelApply = row1.apply;
-            this._drawAdjustRow(ctx, '主角等级', data.debugLevelInput, row1.labelX,
-                row1.minus, row1.plus, row1.apply, rowY1, s);
-
-            const row2 = this._layoutDebugControls(px, panelW, rowY2, s, false);
-            this.pauseRects.chapterMinus = row2.minus;
-            this.pauseRects.chapterPlus = row2.plus;
-            this._drawAdjustRow(ctx, '当前章节', data.debugChapterInput, row2.labelX,
-                row2.minus, row2.plus, null, rowY2, s);
-
-            const row3 = this._layoutDebugControls(px, panelW, rowY3, s, true);
-            this.pauseRects.stageMinus = row3.minus;
-            this.pauseRects.stagePlus = row3.plus;
-            this.pauseRects.stageApply = row3.apply;
-            this._drawAdjustRow(ctx, '当前关卡', data.debugStageInput, row3.labelX,
-                row3.minus, row3.plus, row3.apply, rowY3, s);
-        }
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.imageSmoothingEnabled = false;
+        ctx.font = `bold ${fontSize}px ${GAME_FONT}`;
+        const tw = ctx.measureText(text).width;
+        const padX = 14 * s;
+        const padY = 10 * s;
+        const bw = tw + padX * 2;
+        const bh = fontSize + padY * 2;
+        const bx = Math.floor(vp.cx - bw / 2);
+        const by = Math.floor(y - bh / 2);
+        drawPixelPanel(ctx, bx, by, bw, bh, 'rgba(42,32,16,0.94)', '#ffd878', 2);
+        drawPixelText(ctx, text, vp.cx, y, fontSize, '#fff6d0');
+        ctx.restore();
     }
 }

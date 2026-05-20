@@ -1,98 +1,162 @@
 const CONFIG = {
-    BULLET_TIME_SCALE: 0.12,
+    BULLET_TIME_SCALE: 0.14,
+    BULLET_TIME_DIM_ALPHA: 0.42,
+    STAGE_INTRO_SLIDE_IN: 0.38,
+    STAGE_INTRO_LABEL_HOLD: 0.85,
+    STAGE_INTRO_SLIDE_OUT: 0.38,
+    MONSTER_SPAWN_ANIM: 0.42,
+    STAGE_CLEAR_FLASH: 0.55,
+    STAGE_FAIL_LABEL_DURATION: 0.85,
+    STAGE_FAIL_OVERLAY_FADE: 0.45,
+    STAGE_INTRO_SAKURA_EXTRA: 0.8,
+    FAIL_DEATH: {
+        WINDUP: 0.3,
+        SPEAR_STAGGER: 0.065,
+        SPEAR_SPEED: 640,
+        IMPACT_PAUSE: 0.24,
+        DEATH_DURATION: 0.9,
+    },
     NORMAL_TIME_SCALE: 1.0,
+
+    COMBAT_RESOLVE: {
+        FIRST_HIT_DELAY: 0.08,
+        HIT_INTERVAL: 0.048,
+        AFTERIMAGE_LIFE: 0.14,
+        DEATH_STAGGER: 0.07,
+    },
+
+    MONSTER_DEATH_FADE: 0.24,
 
     DISPLAY: {
         LOGICAL_WIDTH: 390,
         LOGICAL_HEIGHT: 700,
         NINJA_SPRITE_SCALE: 3,
-        MONSTER_SPRITE_SCALE: 3,
-        MONSTER_SPRITE_SCALE_STRONG: 4,
         GRID_SIZE: 28,
     },
 
     PLAYER: {
-        MAX_HEARTS: 3,
-        DAMAGE_PER_HIT: 0.5,
-        BASE_ATTACK: 18,
-        CRIT_RATE: 0.10,
-        CRIT_MULTIPLIER: 1.5,
-        KI_MAX: 100,
-        KI_DRAIN_RATE: 30,
-        KI_REGEN_RATE: 30,
-        ATTACK_SPEED: 2400,
-        RETURN_SPEED_INSTANT: 200,
-        RETURN_SPEED_SLOW: 48,
+        BASE_ATTACK: 95,
+        BASE_KI: 234,
+        BASE_CRIT_RATE: 0.08,
+        BASE_CRIT_DAMAGE: 1.6,
+        ATTACK_SPEED: 2300,
         HITBOX_RADIUS: 12,
         TRIGGER_RADIUS_RATIO: 0.11,
-        MAGNET_RADIUS: 120,
+        KI_PER_PIXEL: 0.18,
         SIZE_SCALE: 1.0,
-        INVINCIBLE_AFTER_HIT: 1.0,
-        HIT_FLASH_DURATION: 0.28,
         COMBO_DAMAGE_BONUS: 0.10,
-        COMBO_DISPLAY_HOLD: 0.55,
-        COMBO_END_FADE: 0.35,
+        COMBO_DISPLAY_HOLD: 0.6,
+        COMBO_END_FADE: 0.4,
+        COMBO_TEXT_BASE: 30,
+        COMBO_TEXT_GROW: 1.4,
+        COMBO_TEXT_MAX_GROW: 22,
+        COMBO_SHAKE_DURATION: 0.24,
     },
+
+    TURN: {
+        BASE_TURNS: 8,
+    },
+
+    EXP: {
+        BASE_TO_LEVEL: 100,
+        GROWTH: 1.22,
+        BAR_HEIGHT: 24,
+        KILL_REWARD: {
+            NORMAL: 5,
+            ELITE: 8,
+            SHIELD: 7,
+            BERSERKER: 9,
+            SPLITTER: 6,
+        },
+    },
+
+    STAGE_MONSTER_SCALE: 1.3,
+
+    STAGES: [
+        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0 },
+        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0 },
+        { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0 },
+        { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0 },
+        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0 },
+        { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0 },
+        { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0 },
+        { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0 },
+    ],
 
     MONSTERS: {
-        NORMAL_MELEE: {
-            name: 'Skeleton',
-            hp: 30, def: 3, range: 42, size: 11, speed: 22,
-            atkSpeed: 1.0, atkDamage: 1, type: 'melee',
-            color: '#8b9dc3', xp: 10,
+        NORMAL: {
+            name: '普通怪',
+            hp: 80,
+            def: 4,
+            size: 13,
+            speed: 19,
+            color: '#7a8ca2',
+            grade: 'B',
+            canMove: true,
         },
-        NORMAL_RANGED: {
-            name: 'Dark Mage',
-            hp: 20, def: 3, range: 140, size: 11, speed: 17,
-            atkSpeed: 1.8, atkDamage: 1, type: 'ranged',
-            color: '#9b59b6', xp: 15,
+        ELITE: {
+            name: '高级怪',
+            hp: 110,
+            def: 6,
+            size: 14,
+            speed: 21,
+            color: '#8a6aa8',
+            grade: 'B+',
+            canMove: true,
         },
-        STRONG_MELEE: {
-            name: 'Oni',
-            hp: 50, def: 5, range: 48, size: 15, speed: 19,
-            atkSpeed: 1.2, atkDamage: 1, type: 'melee',
-            color: '#e74c3c', xp: 25,
+        SHIELD: {
+            name: '盾牌怪',
+            hp: 120,
+            def: 5,
+            size: 15,
+            speed: 16,
+            color: '#5f7a88',
+            grade: 'B+',
+            canMove: true,
         },
-        STRONG_RANGED: {
-            name: 'Warlock',
-            hp: 35, def: 3, range: 180, size: 15, speed: 15,
-            atkSpeed: 2.0, atkDamage: 1, type: 'ranged',
-            color: '#8e44ad', xp: 30,
+        BERSERKER: {
+            name: '狂战士',
+            hp: 90,
+            def: 2,
+            size: 14,
+            speed: 26,
+            color: '#b85a4a',
+            grade: 'C/B',
+            canMove: true,
+            kiDrainOnHit: 10,
+        },
+        SPLITTER: {
+            name: '分裂怪',
+            hp: 70,
+            def: 2,
+            size: 18,
+            speed: 14,
+            color: '#7b9f5a',
+            grade: 'A+/C/C',
+            canMove: true,
+            maxSplitTier: 3,
+            splitCount: 2,
         },
     },
 
-    PROJECTILE: {
-        SPEED: 120,
-        RADIUS: 6,
-    },
-
-    BOSSES: {
-        FIRE_DRAGON: {
-            name: '火龙',
-            hp: 1400,
-            def: 10,
-            hitboxRadius: 56,
-            spriteScale: 5,
-            attackInterval: 2.0,
-            introDelay: 1.2,
-            xp: 250,
-            color: '#f84',
-            fireballCount: 18,
-            fireballSpeed: 210,
-            fireballRadius: 9,
-            fireballSpread: 0.55,
+    BUFF_ORB: {
+        BASE_TYPES: ['attack', 'ki', 'combo'],
+        RADIUS: 13,
+        MAX_PER_TYPE: 4,
+        SPAWN_CHANCE: {
+            attack: 0.55,
+            ki: 0.45,
+            combo: 0.42,
+            ice: 0.28,
         },
+        EXTRA_SPAWN_CHANCE: 0.48,
     },
 
-    SPAWN_FADE_DURATION: 1.0,
-
-    XP: {
-        BASE_REQUIRED: 30,
-        SCALE_FACTOR: 1.35,
-        ORB_VALUE_SCALE: 0.25,
-        ORB_SPEED: 180,
-        ORB_RADIUS: 5,
-        PICKUP_DELAY: 0.3,
+    UPGRADE_RARITY: {
+        white: { chance: 0.60, color: '#d8d8d8', name: '白色' },
+        blue: { chance: 0.25, color: '#58a8ff', name: '蓝色' },
+        purple: { chance: 0.10, color: '#b070ff', name: '紫色' },
+        orange: { chance: 0.05, color: '#ff9830', name: '橙色' },
     },
 
     SHAKE: {
@@ -101,55 +165,4 @@ const CONFIG = {
         COMBO_MAG_PER_HIT: 0.1,
         COMBO_MAG_CAP: 1.5,
     },
-
-    LEVELS: [
-        {
-            types: ['NORMAL_MELEE'],
-            count: 56, waves: 3,
-        },
-        {
-            types: ['NORMAL_MELEE'],
-            count: 90, waves: 4,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED'],
-            count: 120, waves: 4,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED'],
-            count: 150, waves: 5,
-            boss: 'FIRE_DRAGON',
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED', 'STRONG_MELEE'],
-            count: 190, waves: 5,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED', 'STRONG_MELEE'],
-            count: 230, waves: 6,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED', 'STRONG_MELEE', 'STRONG_RANGED'],
-            count: 270, waves: 6,
-        },
-        {
-            types: ['NORMAL_MELEE', 'NORMAL_RANGED', 'STRONG_MELEE', 'STRONG_RANGED'],
-            count: 320, waves: 8,
-            boss: null,
-        },
-    ],
 };
-
-function isBossLevel(levelIndex) {
-    return (levelIndex + 1) % 4 === 0;
-}
-
-function getBossKeyForLevel(levelIndex) {
-    const cfg = CONFIG.LEVELS[levelIndex];
-    if (!cfg || !isBossLevel(levelIndex)) return null;
-    if (cfg.boss === null) return null;
-    if (cfg.boss) return cfg.boss;
-    const chapterBoss = Math.floor(levelIndex / 4);
-    if (chapterBoss === 0) return 'FIRE_DRAGON';
-    return null;
-}

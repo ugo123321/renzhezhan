@@ -7,9 +7,10 @@ class SakuraSystem {
         this.fadeOutDuration = 1.8;
     }
 
-    start(worldW, worldH) {
+    start(worldW, worldH, duration) {
         this.petals = [];
         this.active = true;
+        if (duration != null) this.duration = duration;
         this.timer = this.duration;
         const count = 42;
         for (let i = 0; i < count; i++) {

@@ -30,6 +30,10 @@ function angle(x1, y1, x2, y2) {
     return Math.atan2(y2 - y1, x2 - x1);
 }
 
+function easeInQuad(t) {
+    return t * t;
+}
+
 function easeOutQuad(t) {
     return t * (2 - t);
 }
@@ -41,6 +45,16 @@ function easeInOutQuad(t) {
 function circlesCollide(x1, y1, r1, x2, y2, r2) {
     const d = dist(x1, y1, x2, y2);
     return d < r1 + r2;
+}
+
+function distPointToSegment(px, py, ax, ay, bx, by) {
+    const vx = bx - ax;
+    const vy = by - ay;
+    const len2 = vx * vx + vy * vy;
+    if (len2 < 1e-8) return dist(px, py, ax, ay);
+    let t = ((px - ax) * vx + (py - ay) * vy) / len2;
+    t = clamp(t, 0, 1);
+    return dist(px, py, ax + vx * t, ay + vy * t);
 }
 
 function pickRandom(arr) {

@@ -1,193 +1,286 @@
+const MonsterKind = {
+    NORMAL: 'NORMAL',
+    ELITE: 'ELITE',
+    SHIELD: 'SHIELD',
+    BERSERKER: 'BERSERKER',
+    SPLITTER: 'SPLITTER',
+};
+
+let nextMonsterId = 1;
+
 class Monster {
-    constructor(x, y, config, id) {
-        this.id = id;
+    constructor(x, y, kind, splitTier = 0) {
+        this.game = null;
+        this.id = nextMonsterId++;
+        this.kind = kind;
+        this.splitTier = splitTier;
+        this.base = CONFIG.MONSTERS[kind];
+
+        const splitScale = kind === MonsterKind.SPLITTER ? Math.pow(0.72, splitTier) : 1;
+        this.maxHp = Math.max(8, Math.round(this.base.hp * (kind === MonsterKind.SPLITTER ? Math.pow(0.66, splitTier) : 1)));
+        this.hp = this.maxHp;
+        this.def = Math.max(0, Math.round(this.base.def * (kind === MonsterKind.SPLITTER ? Math.pow(0.86, splitTier) : 1)));
+        this.size = Math.max(6, Math.round(this.base.size * splitScale));
+        this.speed = this.base.speed * (kind === MonsterKind.SPLITTER ? 1 + splitTier * 0.08 : 1);
+        this.color = this.base.color;
+
         this.x = x;
         this.y = y;
-        this.config = { ...config };
-        this.hp = config.hp;
-        this.maxHp = config.hp;
-        this.def = config.def;
-        this.range = config.range;
-        this.size = config.size;
-        this.speed = config.speed;
-        this.atkSpeed = config.atkSpeed;
-        this.atkDamage = config.atkDamage;
-        this.monsterType = config.type;
-        this.color = config.color;
-        this.xpValue = config.xp;
+        this.facing = randRange(0, Math.PI * 2);
+        this.moveDir = randRange(0, Math.PI * 2);
+        this.moveTimer = randRange(0.6, 1.4);
+        this.walkPhase = randRange(0, Math.PI * 2);
+        this.animPulse = randRange(0, Math.PI * 2);
 
         this.alive = true;
-        this.atkTimer = 0;
-        this.animFrame = 0;
-        this.animTimer = 0;
-        this.isMoving = false;
-        this.walkPhase = 0;
-
-        this.spawnTimer = CONFIG.SPAWN_FADE_DURATION;
-        this.spawning = true;
-        this.deathTimer = 0;
         this.dying = false;
-
-        this.frozen = false;
+        this.deathDelay = 0;
+        this.deathTimer = 0;
+        this.deathFade = CONFIG.MONSTER_DEATH_FADE;
+        this.spawnedChildren = false;
         this.frozenTimer = 0;
+        this.vulnerableMark = false;
+        this.spawning = false;
+        this.spawnTimer = 0;
+        this.spawnDuration = 0;
+        this.failThrowTimer = 0;
+    }
 
-        this.configKey = '';
+    beginSpawn(duration = CONFIG.MONSTER_SPAWN_ANIM) {
+        this.spawning = true;
+        this.spawnTimer = duration;
+        this.spawnDuration = duration;
+    }
+
+    getSpawnVisual() {
+        if (!this.spawning) return { scale: 1, alpha: 1 };
+        const t = 1 - clamp(this.spawnTimer / Math.max(0.001, this.spawnDuration), 0, 1);
+        return {
+            scale: 0.35 + 0.65 * easeOutQuad(t),
+            alpha: clamp(t * 1.15, 0, 1),
+        };
     }
 
     get hitboxRadius() {
         return this.size;
     }
 
-    update(dt, playerX, playerY) {
-        if (this.spawning) {
-            this.spawnTimer -= dt;
-            if (this.spawnTimer <= 0) {
-                this.spawning = false;
-            }
-            return null;
-        }
-
-        if (this.dying) {
-            this.deathTimer -= dt;
-            if (this.deathTimer <= 0) {
-                this.alive = false;
-            }
-            return null;
-        }
-
-        if (this.frozen) {
-            this.frozenTimer -= dt;
-            if (this.frozenTimer <= 0) {
-                this.frozen = false;
-            }
-            return null;
-        }
-
-        const d = dist(this.x, this.y, playerX, playerY);
-        this.isMoving = d > this.range;
-
-        this.walkPhase += dt * (this.isMoving ? 14 : 4);
-        const animInterval = this.isMoving ? 0.14 : 0.45;
-        this.animTimer += dt;
-        if (this.animTimer >= animInterval) {
-            this.animTimer = 0;
-            this.animFrame = (this.animFrame + 1) % 2;
-        }
-
-        if (this.isMoving) {
-            const n = normalize(playerX - this.x, playerY - this.y);
-            this.x += n.x * this.speed * dt;
-            this.y += n.y * this.speed * dt;
-        }
-
-        this.atkTimer += dt;
-        if (d <= this.range && this.atkTimer >= this.atkSpeed) {
-            this.atkTimer = 0;
-            if (this.monsterType === 'ranged') {
-                const a = angle(this.x, this.y, playerX, playerY);
-                return {
-                    type: 'shoot',
-                    x: this.x, y: this.y,
-                    angle: a,
-                };
-            } else {
-                return {
-                    type: 'melee',
-                    damage: this.atkDamage,
-                    targetX: playerX,
-                    targetY: playerY,
-                };
-            }
-        }
-
-        return null;
-    }
-
-    takeDamage(rawDamage) {
-        const actual = Math.max(1, rawDamage - this.def);
-        this.hp -= actual;
-        if (this.hp <= 0) {
-            this.hp = 0;
-            this.dying = true;
-            this.deathTimer = 0.3;
-            this.deathHandled = false;
-        }
-        return actual;
+    canSplit() {
+        return this.kind === MonsterKind.SPLITTER && this.splitTier < this.base.maxSplitTier;
     }
 
     freeze(duration) {
-        this.frozen = true;
-        this.frozenTimer = duration;
+        this.frozenTimer = Math.max(this.frozenTimer, duration);
     }
 
-    getSpriteKey() {
-        switch (this.configKey) {
-            case 'NORMAL_MELEE': return SPRITES.normalMelee;
-            case 'NORMAL_RANGED': return SPRITES.normalRanged;
-            case 'STRONG_MELEE': return SPRITES.strongMelee;
-            case 'STRONG_RANGED': return SPRITES.strongRanged;
-            default: return SPRITES.normalMelee;
+    isFrozen() {
+        return this.frozenTimer > 0;
+    }
+
+    _pushOutOfPlayerZone(playerZone) {
+        if (!playerZone) return;
+        const dx = this.x - playerZone.x;
+        const dy = this.y - playerZone.y;
+        let d = Math.hypot(dx, dy);
+        const minDist = playerZone.r + this.hitboxRadius;
+        if (d >= minDist) return;
+
+        let nx, ny;
+        if (d < 0.001) {
+            const a = randRange(0, Math.PI * 2);
+            nx = Math.cos(a);
+            ny = Math.sin(a);
+        } else {
+            nx = dx / d;
+            ny = dy / d;
+        }
+        this.x = playerZone.x + nx * minDist;
+        this.y = playerZone.y + ny * minDist;
+
+        const vx = Math.cos(this.moveDir);
+        const vy = Math.sin(this.moveDir);
+        const dot = vx * nx + vy * ny;
+        if (dot < 0) {
+            this.moveDir = Math.atan2(vy - 2 * dot * ny, vx - 2 * dot * nx);
         }
     }
 
-    getWalkBob() {
-        if (!this.isMoving || this.spawning || this.dying) return 0;
-        return Math.sin(this.walkPhase) * 3;
+    _move(dt, w, h, playBottom, playerZone) {
+        this.moveTimer -= dt;
+        if (this.moveTimer <= 0) {
+            this.moveTimer = randRange(0.55, 1.6);
+            this.moveDir += randRange(-1.5, 1.5);
+        }
+        this.walkPhase += dt * 7;
+        this.animPulse += dt * 3.6;
+        const step = this.speed * dt;
+        this.x += Math.cos(this.moveDir) * step;
+        this.y += Math.sin(this.moveDir) * step;
+
+        const margin = 24;
+        const top = 84;
+        const bottom = Math.max(top + 60, playBottom - 20);
+        if (this.x < margin || this.x > w - margin) {
+            this.moveDir = Math.PI - this.moveDir;
+            this.x = clamp(this.x, margin, w - margin);
+        }
+        if (this.y < top || this.y > bottom) {
+            this.moveDir = -this.moveDir;
+            this.y = clamp(this.y, top, bottom);
+        }
+        this._pushOutOfPlayerZone(playerZone);
+        this.facing = this.moveDir;
+    }
+
+    update(dt, w, h, playBottom, playerZone) {
+        if (!this.alive) return;
+        if (this.failThrowTimer > 0) {
+            this.failThrowTimer -= dt;
+            return;
+        }
+        if (this.spawning) {
+            this.spawnTimer -= dt;
+            if (this.spawnTimer <= 0) this.spawning = false;
+            return;
+        }
+        if (this.dying) {
+            if (this.deathDelay > 0) {
+                this.deathDelay -= dt;
+                return;
+            }
+            this.deathTimer -= dt;
+            if (this.deathTimer <= 0) this.alive = false;
+            return;
+        }
+        if (this.frozenTimer > 0) {
+            this.frozenTimer -= dt;
+            return;
+        }
+        if (this.base.canMove) this._move(dt, w, h, playBottom, playerZone);
+    }
+
+    takeDamage(rawDamage, hitAngle = null) {
+        let blockedByShield = false;
+        if (this.kind === MonsterKind.SHIELD && hitAngle !== null) {
+            const diff = Math.abs(Math.atan2(
+                Math.sin(hitAngle - this.facing),
+                Math.cos(hitAngle - this.facing)
+            ));
+            // Front hemisphere blocks damage.
+            if (diff < Math.PI * 0.55) blockedByShield = true;
+        }
+        if (blockedByShield) return { actualDamage: 0, blockedByShield: true };
+
+        const vulnerableMult = this.vulnerableMark ? 2 : 1;
+        this.vulnerableMark = false;
+        const actualDamage = Math.max(1, Math.round((rawDamage - this.def) * vulnerableMult));
+        this.hp -= actualDamage;
+        if (this.hp <= 0) {
+            this.hp = 0;
+            this.dying = true;
+            this.deathFade = CONFIG.MONSTER_DEATH_FADE;
+            this.deathTimer = this.deathFade;
+            this.deathDelay = (this.game && this.game.combat)
+                ? this.game.combat.scheduleDeathFade()
+                : 0;
+        }
+        return { actualDamage, blockedByShield: false };
     }
 
     draw(ctx) {
         if (!this.alive) return;
+        const spawnVis = this.getSpawnVisual();
+        const fadeDur = this.deathFade || CONFIG.MONSTER_DEATH_FADE;
+        const deathAlpha = this.dying
+            ? (this.deathDelay > 0 ? 1 : clamp(this.deathTimer / fadeDur, 0, 1))
+            : 1;
+        const alpha = deathAlpha * spawnVis.alpha;
+        const bobY = this.dying || this.spawning ? 0 : Math.sin(this.walkPhase) * 1.6;
+        const x = Math.floor(this.x);
+        const y = Math.floor(this.y + bobY);
+        const r = this.hitboxRadius;
+        const spriteSet = this._getSpriteSet();
+        const frameIdx = Math.floor(this.walkPhase * 0.22) % 2;
+        const sprite = (spriteSet.idle || [])[frameIdx % (spriteSet.idle || [spriteSet]).length] || spriteSet;
+        const scale = clamp(Math.round(this.size / 4), 2, 4);
+        const flipX = Math.cos(this.facing) < 0;
+        const tint = this.kind === MonsterKind.BERSERKER ? 0.16 : 0;
 
-        let alpha = 1;
+        ctx.save();
+        if (spawnVis.scale !== 1) {
+            ctx.translate(x, y);
+            ctx.scale(spawnVis.scale, spawnVis.scale);
+            ctx.translate(-x, -y);
+        }
         if (this.spawning) {
-            alpha = 1 - (this.spawnTimer / CONFIG.SPAWN_FADE_DURATION);
-        }
-        if (this.dying) {
-            alpha = this.deathTimer / 0.3;
-        }
-
-        const spriteSet = this.getSpriteKey();
-        const isAttacking = !this.isMoving && this.atkTimer < 0.35 && !this.spawning;
-        let frames = spriteSet.walk || spriteSet.idle;
-        if (isAttacking && spriteSet.attack) {
-            frames = spriteSet.attack;
-        }
-        const sprite = frames[this.animFrame % frames.length];
-        const scale = this.size > 13
-            ? CONFIG.DISPLAY.MONSTER_SPRITE_SCALE_STRONG
-            : CONFIG.DISPLAY.MONSTER_SPRITE_SCALE;
-
-        const drawY = Math.floor(this.y + this.getWalkBob());
-
-        if (this.frozen) {
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+            const ringR = r * (1.4 - spawnVis.scale * 0.5);
+            ctx.strokeStyle = `rgba(255, 220, 140, ${0.35 * spawnVis.alpha})`;
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(this.x, drawY, this.hitboxRadius + 4, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha = 1;
+            ctx.arc(x, y, ringR, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        drawSprite(ctx, sprite, x, y, scale, alpha, flipX, tint);
+
+        const failDeath = this.game && this.game.failDeath;
+        if (failDeath && failDeath.isThrowing() && this.failThrowTimer > 0) {
+            failDeath.drawMonsterThrowSpear(ctx, this);
         }
 
-        drawSprite(ctx, sprite, Math.floor(this.x), drawY, scale, alpha);
-
-        if (!this.spawning && !this.dying && this.hp < this.maxHp) {
-            this.drawHpBar(ctx, drawY);
+        if (this.kind === MonsterKind.SHIELD) {
+            const sx = x + Math.cos(this.facing) * (r + 2);
+            const sy = y + Math.sin(this.facing) * (r + 2);
+            ctx.strokeStyle = '#bfd8ee';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x - Math.sin(this.facing) * r * 0.7, y + Math.cos(this.facing) * r * 0.7);
+            ctx.lineTo(x + Math.sin(this.facing) * r * 0.7, y - Math.cos(this.facing) * r * 0.7);
+            ctx.stroke();
+            ctx.fillStyle = '#d6e7f8';
+            ctx.fillRect(Math.floor(sx - 2), Math.floor(sy - 2), 4, 4);
+        } else if (this.kind === MonsterKind.BERSERKER) {
+            ctx.fillStyle = '#ff8a68';
+            ctx.fillRect(x - 2, y - r - 4, 4, 4);
+        } else if (this.kind === MonsterKind.SPLITTER) {
+            ctx.fillStyle = '#d2f6a8';
+            ctx.fillRect(x - 2, y - 2, 4, 4);
+            ctx.fillRect(x + 3, y - 2, 3, 3);
+            if (this.splitTier > 0) {
+                ctx.fillStyle = '#4e7c38';
+                ctx.fillRect(x - 6, y + r * 0.5, 3, 3);
+            }
         }
+
+        if (this.isFrozen()) {
+            ctx.strokeStyle = 'rgba(120,220,255,0.9)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        if (!this.dying && this.hp < this.maxHp) {
+            const w = Math.max(18, r * 1.6);
+            const h = 4;
+            const bx = x - w / 2;
+            const by = y - r - 14;
+            const ratio = this.hp / this.maxHp;
+            ctx.fillStyle = '#231a14';
+            ctx.fillRect(bx, by, w, h);
+            ctx.fillStyle = ratio > 0.5 ? '#68d070' : ratio > 0.25 ? '#f0c850' : '#e05840';
+            ctx.fillRect(bx, by, w * ratio, h);
+        }
+        ctx.restore();
     }
 
-    drawHpBar(ctx, drawY) {
-        const barW = 22;
-        const barH = 3;
-        const x = this.x - barW / 2;
-        const y = drawY - this.hitboxRadius - 10;
-        const ratio = this.hp / this.maxHp;
-
-        ctx.fillStyle = '#333';
-        ctx.fillRect(x, y, barW, barH);
-        ctx.fillStyle = ratio > 0.5 ? '#4f4' : ratio > 0.25 ? '#ff0' : '#f44';
-        ctx.fillRect(x, y, barW * ratio, barH);
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x, y, barW, barH);
+    _getSpriteSet() {
+        switch (this.kind) {
+            case MonsterKind.NORMAL: return SPRITES.normalMelee;
+            case MonsterKind.ELITE: return SPRITES.strongMelee;
+            case MonsterKind.SHIELD: return SPRITES.strongRanged;
+            case MonsterKind.BERSERKER: return SPRITES.strongMelee;
+            case MonsterKind.SPLITTER: return SPRITES.normalRanged;
+            default: return SPRITES.normalMelee;
+        }
     }
 }
