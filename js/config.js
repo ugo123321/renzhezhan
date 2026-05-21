@@ -57,7 +57,7 @@ const CONFIG = {
         COMBO_TEXT_GROW: 1.4,
         COMBO_TEXT_MAX_GROW: 22,
         COMBO_SHAKE_DURATION: 0.24,
-        KI_REGEN_RATE: 104,
+        KI_REGEN_RATE: 135,
     },
 
     EXP: {

@@ -145,7 +145,7 @@ const CONFIG = {
         COMBO_TEXT_GROW: 1.4,
         COMBO_TEXT_MAX_GROW: 22,
         COMBO_SHAKE_DURATION: 0.24,
-        KI_REGEN_RATE: 104,
+        KI_REGEN_RATE: 135,
     },
 
     EXP: {
@@ -1966,6 +1966,16 @@ class Monster {
         return this.frozenTimer > 0;
     }
 
+    _isShieldFacingLocked() {
+        if (this.kind !== MonsterKind.SHIELD || !this.game) return false;
+        const p = this.game.player;
+        const combat = this.game.combat;
+        if (!p || !combat) return false;
+        if (p.state === PlayerState.BULLET_TIME || p.state === PlayerState.ATTACKING) return true;
+        if (!combat.roundAttackResolved || combat.isResolving()) return true;
+        return false;
+    }
+
     _move(dt, w, h, playBottom, playerTarget) {
         if (!playerTarget) return;
         this.walkPhase += dt * 7;
@@ -1976,8 +1986,10 @@ class Monster {
         const distToPlayer = Math.hypot(dx, dy);
         if (distToPlayer < 0.001) return;
 
-        this.moveDir = Math.atan2(dy, dx);
-        this.facing = this.moveDir;
+        if (!this._isShieldFacingLocked()) {
+            this.moveDir = Math.atan2(dy, dx);
+            this.facing = this.moveDir;
+        }
 
         let stopDist;
         if (this._isRangedKind()) {
