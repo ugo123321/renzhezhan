@@ -211,6 +211,7 @@ class Game {
         this.projectiles.update(worldDt, this.renderer.w, this.renderer.h, playerTarget);
         this.groundEffects.update(worldDt, playerTarget);
         this.combat.update(dt);
+        if (this.abilities) this.abilities.updatePassive(dt);
         this.buffOrbs.update(realDt);
         this.sakura.update(realDt, this.renderer.w, this.renderer.h);
         this.grass.update(realDt);
@@ -526,8 +527,10 @@ class Game {
         if (showCombatFx) {
             this.combat.drawAfterimages(ctx);
         }
-        if (showCombatFx && this.abilities.hasActiveFx()) {
-            this.abilities.drawFront(ctx);
+        if (showCombatFx && (this.abilities.hasActiveFx() || this.abilities.hasAutoDarts() || this.abilities.batSwarms.length > 0)) {
+            this.abilities.drawAutoDarts(ctx);
+            if (this.abilities.batSwarms.length > 0) this.abilities.drawBatSwarms(ctx);
+            if (this.abilities.hasActiveFx()) this.abilities.drawFront(ctx);
         }
         if (this.state === 'FAIL_DEATH' && this.failDeath.isActive()) {
             this.failDeath.drawSpears(ctx);

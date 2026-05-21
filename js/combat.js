@@ -61,6 +61,7 @@ class CombatManager {
             }
         }
         if (this.game.experience) this.game.experience.onMonsterKilled(m);
+        if (this.game.player) this.game.player.onEnemyKilledForUpgrades(m.x, m.y);
     }
 
     _shouldSpawnSplitChildren(deadMonster) {

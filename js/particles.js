@@ -149,15 +149,38 @@ class ParticleSystem {
         }
     }
 
-    freezeEffect(x, y) {
-        for (let i = 0; i < 8; i++) {
+    freezeEffect(x, y, intensity = 1) {
+        const n = Math.round(10 * intensity);
+        for (let i = 0; i < n; i++) {
             const a = randRange(0, Math.PI * 2);
-            const speed = randRange(20, 60);
+            const speed = randRange(25, 80) * intensity;
             this.emit(x, y,
                 Math.cos(a) * speed, Math.sin(a) * speed,
-                randRange(0.3, 0.6), randRange(2, 5),
-                ['#0ff', '#8ff', '#aef'][Math.floor(Math.random() * 3)],
+                randRange(0.35, 0.7), randRange(3, 7) * intensity,
+                ['#c8f0ff', '#78d8ff', '#a8e8ff', '#e8ffff'][Math.floor(Math.random() * 4)],
                 0, true, true);
+        }
+    }
+
+    iceBurstEffect(x, y, radius) {
+        for (let i = 0; i < 28; i++) {
+            const a = (i / 28) * Math.PI * 2 + randRange(-0.2, 0.2);
+            const speed = randRange(90, 200);
+            this.emit(x, y,
+                Math.cos(a) * speed, Math.sin(a) * speed,
+                randRange(0.25, 0.55), randRange(5, 11),
+                ['#c8f0ff', '#58b8f0', '#88e0ff', '#e8ffff'][Math.floor(Math.random() * 4)],
+                0, true, true);
+        }
+        for (let i = 0; i < 16; i++) {
+            const a = randRange(0, Math.PI * 2);
+            const distR = radius * randRange(0.25, 0.95);
+            this.emit(
+                x + Math.cos(a) * distR, y + Math.sin(a) * distR,
+                Math.cos(a) * randRange(10, 40), Math.sin(a) * randRange(10, 40),
+                randRange(0.4, 0.75), randRange(4, 9),
+                '#a8e8ff', 0, true, true
+            );
         }
     }
 

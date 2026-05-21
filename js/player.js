@@ -57,6 +57,12 @@ class Player {
         this.drawSessionSnapshot = null;
         this.activeMessage = '';
         this.messageTimer = 0;
+
+        this.holyShieldCharges = 0;
+        this.holyShieldTimer = 0;
+        this.killCountForVampire = 0;
+        this.healingComboFiredThisResolve = false;
+        this.comboFireballMilestone = 0;
     }
 
     get effectiveRadius() {
@@ -109,11 +115,17 @@ class Player {
         this.drawSessionSnapshot = null;
         this.invincibleTimer = 0;
         this.damageFlashTimer = 0;
+        this.holyShieldCharges = 0;
+        this.holyShieldTimer = 0;
+        this.killCountForVampire = 0;
+        this.healingComboFiredThisResolve = false;
+        this.comboFireballMilestone = 0;
         this.hp = this.maxHp;
         if (this.game && this.game.buffOrbs) {
             this.game.buffOrbs.drawSessionEaten = [];
         }
         this.resetLineBuffs();
+        this._refreshHolyShieldInterval();
         const turnKiMax = Math.round(this.baseKi * (1 + this.nextTurnKiBonus));
         this.kiMax = Math.max(20, turnKiMax);
         this.ki = this.kiMax;
@@ -133,6 +145,8 @@ class Player {
         this.comboDisplayTimer = 0;
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
+        this.healingComboFiredThisResolve = false;
+        this.comboFireballMilestone = 0;
         this.drawSessionSnapshot = null;
         if (this.game && this.game.buffOrbs) {
             this.game.buffOrbs.drawSessionEaten = [];
@@ -158,8 +172,65 @@ class Player {
         this.ki = Math.min(this.kiMax, this.ki + rate * realDt);
     }
 
+    getHealMultiplier() {
+        const lv = this.getUpgradeLevel('super_heal');
+        return 1 + 0.5 * lv;
+    }
+
+    heal(amount) {
+        if (amount <= 0 || this.hp <= 0) return 0;
+        const actual = Math.max(1, Math.round(amount * this.getHealMultiplier()));
+        const before = this.hp;
+        this.hp = Math.min(this.maxHp, this.hp + actual);
+        return this.hp - before;
+    }
+
+    getHolyShieldInterval() {
+        const lv = this.getUpgradeLevel('holy_shield');
+        if (lv <= 0) return 0;
+        return Math.max(1.5, 6 - 0.5 * (lv - 1));
+    }
+
+    _refreshHolyShieldInterval() {
+        if (this.getUpgradeLevel('holy_shield') <= 0) return;
+        if (this.holyShieldCharges < 1 && this.holyShieldTimer <= 0) {
+            this.holyShieldTimer = this.getHolyShieldInterval();
+        }
+    }
+
+    _updateHolyShield(dt) {
+        if (this.getUpgradeLevel('holy_shield') <= 0) return;
+        if (this.holyShieldCharges >= 1) return;
+        this.holyShieldTimer -= dt;
+        if (this.holyShieldTimer <= 0) {
+            this.holyShieldCharges = 1;
+            this.holyShieldTimer = this.getHolyShieldInterval();
+        }
+    }
+
+    onEnemyKilledForUpgrades(killX, killY) {
+        const lv = this.getUpgradeLevel('vampire_bat');
+        if (lv <= 0) return;
+        this.killCountForVampire++;
+        const need = 10;
+        if (this.killCountForVampire < need) return;
+        this.killCountForVampire -= need;
+        if (this.game?.abilities) {
+            this.game.abilities.spawnVampireBatSwarm(
+                killX ?? this.x,
+                killY ?? this.y
+            );
+        }
+    }
+
     takeDamage(rawDamage) {
         if (this.isAttackInvincible() || this.invincibleTimer > 0 || this.hp <= 0) return 0;
+        if (this.holyShieldCharges > 0) {
+            this.holyShieldCharges = 0;
+            this.holyShieldTimer = this.getHolyShieldInterval();
+            this.queueMessage('圣盾抵挡');
+            return 0;
+        }
         const actual = Math.max(1, Math.round(rawDamage));
         this.hp = Math.max(0, this.hp - actual);
         this.invincibleTimer = CONFIG.PLAYER.INVINCIBLE_TIME || 0.45;
@@ -224,6 +295,8 @@ class Player {
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
         this.whirlCharge = 0;
+        this.healingComboFiredThisResolve = false;
+        this.comboFireballMilestone = 0;
         return true;
     }
 
@@ -232,8 +305,9 @@ class Player {
         if (source !== 'path') return this.comboCount;
         if (!this.game?.combat?.isResolving()) return this.comboCount;
 
-        const baseInc = this.getUpgradeLevel('dual_wield') > 0 ? 2 : 1;
-        const inc = baseInc * this.turnBuffs.comboMult;
+        const baseInc = 1;
+        const multiComboLv = this.getUpgradeLevel('multi_combo');
+        const inc = baseInc * this.turnBuffs.comboMult * Math.pow(1.2, multiComboLv);
         this.comboCount += inc;
         this.comboDisplayPeak = Math.max(this.comboDisplayPeak, this.comboCount);
         this.comboDisplayTimer = CONFIG.PLAYER.COMBO_DISPLAY_HOLD;
@@ -310,6 +384,30 @@ class Player {
         return Math.max(1, Math.round(this.baseAttack * this.attackPowerScale * mult));
     }
 
+    /** 画线普攻基础伤害（不含暴击随机） */
+    getLineAttackDamage() {
+        let dmg = this.baseAttack * this.attackPowerScale;
+        dmg *= this.turnBuffs.attackMult;
+        dmg *= 1 + Math.max(0, this.comboCount - 1) * this.comboDamageBonus;
+        return Math.max(1, Math.round(dmg));
+    }
+
+    getAutoDartDamage() {
+        const mult = CONFIG.PLAYER.AUTO_DART?.DAMAGE_MULT ?? 0.20;
+        let dmg = this.getLineAttackDamage() * mult;
+        const spiritLv = this.getUpgradeLevel('spirit_bomb');
+        if (spiritLv > 0) dmg *= 1 + 0.5 * spiritLv;
+        return Math.max(1, Math.round(dmg));
+    }
+
+    getAutoDartScale() {
+        return 1 + 0.2 * this.getUpgradeLevel('giant_dart');
+    }
+
+    hasSpiritBomb() {
+        return this.getUpgradeLevel('spirit_bomb') > 0;
+    }
+
     queueMessage(text) {
         this.activeMessage = text;
         this.messageTimer = 1.25;
@@ -345,6 +443,7 @@ class Player {
         }
 
         if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
+        this._updateHolyShield(dt);
         this._updateKiRegen(realDt || dt);
         this._syncShadowClones();
     }
@@ -515,6 +614,18 @@ class Player {
         drawSprite(ctx, sprite, px, py, this.spriteScale, alpha, false, tint);
 
         this._drawHpBar(ctx);
+
+        if (this.holyShieldCharges > 0) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(120, 200, 255, 0.85)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(px, py, this.effectiveRadius + 10, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(90, 170, 255, 0.18)';
+            ctx.fill();
+            ctx.restore();
+        }
 
         if (this.getUpgradeLevel('luck') > 0) {
             const lv = this.getUpgradeLevel('luck');

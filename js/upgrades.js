@@ -12,14 +12,99 @@ const UPGRADE_DEFS = [
         },
     },
     {
+        id: 'multi_dart',
+        rarity: 'blue',
+        name: '多重飞镖',
+        icon: '🎯',
+        desc: '普攻飞镖数量+1',
+        apply() {},
+    },
+    {
+        id: 'giant_dart',
+        rarity: 'white',
+        name: '巨大飞镖',
+        icon: '⭕',
+        desc: '普攻飞镖体积+20%',
+        apply() {},
+    },
+    {
+        id: 'ice_dart',
+        rarity: 'purple',
+        name: '寒冰飞镖',
+        icon: '❄️',
+        desc: '飞镖命中5%概率释放寒冰气，冰冻2秒(伤害=飞镖20%)；重复升级提高概率与伤害',
+        apply() {},
+    },
+    {
+        id: 'spirit_bomb',
+        rarity: 'orange',
+        name: '元气弹',
+        icon: '💫',
+        desc: '飞镖升级为元气弹，伤害+50%',
+        apply() {},
+    },
+    {
         id: 'shuriken',
         rarity: 'blue',
         name: '手里剑',
         icon: '🎯',
-        desc: '结算时在路径上释放像素手里剑(10%攻击力)',
+        desc: '每次连击释放2个手里剑(10%攻击力)',
+        apply() {},
+    },
+    {
+        id: 'multi_combo',
+        rarity: 'orange',
+        name: '多重连击',
+        icon: '🔥',
+        desc: '连击次数×1.2倍',
+        apply() {},
+    },
+    {
+        id: 'healing_combo',
+        rarity: 'orange',
+        name: '愈合连击',
+        icon: '🌿',
+        desc: '连击≥15时释放藤蔓减速并造成少量伤害，回复5%最大生命',
+        apply() {},
+    },
+    {
+        id: 'holy_shield',
+        rarity: 'blue',
+        name: '圣盾',
+        icon: '🛡️',
+        desc: '每6秒获得可抵挡1次伤害的护盾(最多1层)',
         apply(player) {
-            player.upgradeStacks.shuriken = (player.upgradeStacks.shuriken || 0) + 1;
+            player._refreshHolyShieldInterval();
         },
+    },
+    {
+        id: 'vampire_bat',
+        rarity: 'purple',
+        name: '吸血蝙蝠',
+        icon: '🦇',
+        desc: '每击败10个敌人释放蝙蝠群攻击附近敌人，飞回后回复2%最大生命/层',
+        apply() {},
+    },
+    {
+        id: 'meat_shield',
+        rarity: 'white',
+        name: '变肉',
+        icon: '🥩',
+        desc: '最大生命+10%，体积+15%',
+        apply(player) {
+            const oldMax = player.maxHp;
+            player.maxHp = Math.round(player.maxHp * 1.1);
+            player.hp = Math.min(player.maxHp, player.hp + (player.maxHp - oldMax));
+            player.sizeScale *= 1.15;
+        },
+    },
+    {
+        id: 'super_heal',
+        rarity: 'orange',
+        name: '超级治疗',
+        icon: '✨',
+        desc: '所有回血效果+50%',
+        apply() {},
     },
     {
         id: 'lightning_chain',
@@ -72,7 +157,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '豪火球术',
         icon: '🔥',
-        desc: '结算开始时沿路径发射豪火球(100%攻击力)',
+        desc: '连击每+10在攻击点释放豪火球(100%攻击力)',
         apply(player) {
             player.upgradeStacks.great_fireball = (player.upgradeStacks.great_fireball || 0) + 1;
         },

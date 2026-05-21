@@ -58,6 +58,12 @@ const CONFIG = {
         COMBO_TEXT_MAX_GROW: 22,
         COMBO_SHAKE_DURATION: 0.24,
         KI_REGEN_RATE: 135,
+        AUTO_DART: {
+            INTERVAL: 0.5,
+            DAMAGE_MULT: 0.20,
+            SPEED: 420,
+            LIFE: 0.9,
+        },
     },
 
     EXP: {
@@ -229,10 +235,10 @@ const CONFIG = {
     },
 
     UPGRADE_RARITY: {
-        white: { chance: 0.60, color: '#d8d8d8', name: '白色' },
-        blue: { chance: 0.25, color: '#58a8ff', name: '蓝色' },
-        purple: { chance: 0.10, color: '#b070ff', name: '紫色' },
-        orange: { chance: 0.05, color: '#ff9830', name: '橙色' },
+        white: { chance: 0.40, color: '#d8d8d8', name: '白色' },
+        blue: { chance: 0.30, color: '#58a8ff', name: '蓝色' },
+        purple: { chance: 0.20, color: '#b070ff', name: '紫色' },
+        orange: { chance: 0.10, color: '#ff9830', name: '橙色' },
     },
 
     SHAKE: {

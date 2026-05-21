@@ -322,7 +322,7 @@ class UI {
     }
 
     drawComboBanner(ctx, player, vp, layout, s) {
-        const combo = player.comboDisplayPeak;
+        const combo = Math.floor(player.comboDisplayPeak);
         if (combo < 2 || player.comboDisplayTimer <= 0) return;
         const fading = player.comboCount < 2;
         const fadeDur = fading ? CONFIG.PLAYER.COMBO_END_FADE : CONFIG.PLAYER.COMBO_DISPLAY_HOLD;

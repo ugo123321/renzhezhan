@@ -146,6 +146,12 @@ const CONFIG = {
         COMBO_TEXT_MAX_GROW: 22,
         COMBO_SHAKE_DURATION: 0.24,
         KI_REGEN_RATE: 135,
+        AUTO_DART: {
+            INTERVAL: 0.5,
+            DAMAGE_MULT: 0.20,
+            SPEED: 420,
+            LIFE: 0.9,
+        },
     },
 
     EXP: {
@@ -317,10 +323,10 @@ const CONFIG = {
     },
 
     UPGRADE_RARITY: {
-        white: { chance: 0.60, color: '#d8d8d8', name: '白色' },
-        blue: { chance: 0.25, color: '#58a8ff', name: '蓝色' },
-        purple: { chance: 0.10, color: '#b070ff', name: '紫色' },
-        orange: { chance: 0.05, color: '#ff9830', name: '橙色' },
+        white: { chance: 0.40, color: '#d8d8d8', name: '白色' },
+        blue: { chance: 0.30, color: '#58a8ff', name: '蓝色' },
+        purple: { chance: 0.20, color: '#b070ff', name: '紫色' },
+        orange: { chance: 0.10, color: '#ff9830', name: '橙色' },
     },
 
     SHAKE: {
@@ -939,15 +945,38 @@ class ParticleSystem {
         }
     }
 
-    freezeEffect(x, y) {
-        for (let i = 0; i < 8; i++) {
+    freezeEffect(x, y, intensity = 1) {
+        const n = Math.round(10 * intensity);
+        for (let i = 0; i < n; i++) {
             const a = randRange(0, Math.PI * 2);
-            const speed = randRange(20, 60);
+            const speed = randRange(25, 80) * intensity;
             this.emit(x, y,
                 Math.cos(a) * speed, Math.sin(a) * speed,
-                randRange(0.3, 0.6), randRange(2, 5),
-                ['#0ff', '#8ff', '#aef'][Math.floor(Math.random() * 3)],
+                randRange(0.35, 0.7), randRange(3, 7) * intensity,
+                ['#c8f0ff', '#78d8ff', '#a8e8ff', '#e8ffff'][Math.floor(Math.random() * 4)],
                 0, true, true);
+        }
+    }
+
+    iceBurstEffect(x, y, radius) {
+        for (let i = 0; i < 28; i++) {
+            const a = (i / 28) * Math.PI * 2 + randRange(-0.2, 0.2);
+            const speed = randRange(90, 200);
+            this.emit(x, y,
+                Math.cos(a) * speed, Math.sin(a) * speed,
+                randRange(0.25, 0.55), randRange(5, 11),
+                ['#c8f0ff', '#58b8f0', '#88e0ff', '#e8ffff'][Math.floor(Math.random() * 4)],
+                0, true, true);
+        }
+        for (let i = 0; i < 16; i++) {
+            const a = randRange(0, Math.PI * 2);
+            const distR = radius * randRange(0.25, 0.95);
+            this.emit(
+                x + Math.cos(a) * distR, y + Math.sin(a) * distR,
+                Math.cos(a) * randRange(10, 40), Math.sin(a) * randRange(10, 40),
+                randRange(0.4, 0.75), randRange(4, 9),
+                '#a8e8ff', 0, true, true
+            );
         }
     }
 
@@ -1394,6 +1423,12 @@ class Player {
         this.drawSessionSnapshot = null;
         this.activeMessage = '';
         this.messageTimer = 0;
+
+        this.holyShieldCharges = 0;
+        this.holyShieldTimer = 0;
+        this.killCountForVampire = 0;
+        this.healingComboFiredThisResolve = false;
+        this.comboFireballMilestone = 0;
     }
 
     get effectiveRadius() {
@@ -1446,11 +1481,17 @@ class Player {
         this.drawSessionSnapshot = null;
         this.invincibleTimer = 0;
         this.damageFlashTimer = 0;
+        this.holyShieldCharges = 0;
+        this.holyShieldTimer = 0;
+        this.killCountForVampire = 0;
+        this.healingComboFiredThisResolve = false;
+        this.comboFireballMilestone = 0;
         this.hp = this.maxHp;
         if (this.game && this.game.buffOrbs) {
             this.game.buffOrbs.drawSessionEaten = [];
         }
         this.resetLineBuffs();
+        this._refreshHolyShieldInterval();
         const turnKiMax = Math.round(this.baseKi * (1 + this.nextTurnKiBonus));
         this.kiMax = Math.max(20, turnKiMax);
         this.ki = this.kiMax;
@@ -1470,6 +1511,8 @@ class Player {
         this.comboDisplayTimer = 0;
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
+        this.healingComboFiredThisResolve = false;
+        this.comboFireballMilestone = 0;
         this.drawSessionSnapshot = null;
         if (this.game && this.game.buffOrbs) {
             this.game.buffOrbs.drawSessionEaten = [];
@@ -1495,8 +1538,65 @@ class Player {
         this.ki = Math.min(this.kiMax, this.ki + rate * realDt);
     }
 
+    getHealMultiplier() {
+        const lv = this.getUpgradeLevel('super_heal');
+        return 1 + 0.5 * lv;
+    }
+
+    heal(amount) {
+        if (amount <= 0 || this.hp <= 0) return 0;
+        const actual = Math.max(1, Math.round(amount * this.getHealMultiplier()));
+        const before = this.hp;
+        this.hp = Math.min(this.maxHp, this.hp + actual);
+        return this.hp - before;
+    }
+
+    getHolyShieldInterval() {
+        const lv = this.getUpgradeLevel('holy_shield');
+        if (lv <= 0) return 0;
+        return Math.max(1.5, 6 - 0.5 * (lv - 1));
+    }
+
+    _refreshHolyShieldInterval() {
+        if (this.getUpgradeLevel('holy_shield') <= 0) return;
+        if (this.holyShieldCharges < 1 && this.holyShieldTimer <= 0) {
+            this.holyShieldTimer = this.getHolyShieldInterval();
+        }
+    }
+
+    _updateHolyShield(dt) {
+        if (this.getUpgradeLevel('holy_shield') <= 0) return;
+        if (this.holyShieldCharges >= 1) return;
+        this.holyShieldTimer -= dt;
+        if (this.holyShieldTimer <= 0) {
+            this.holyShieldCharges = 1;
+            this.holyShieldTimer = this.getHolyShieldInterval();
+        }
+    }
+
+    onEnemyKilledForUpgrades(killX, killY) {
+        const lv = this.getUpgradeLevel('vampire_bat');
+        if (lv <= 0) return;
+        this.killCountForVampire++;
+        const need = 10;
+        if (this.killCountForVampire < need) return;
+        this.killCountForVampire -= need;
+        if (this.game?.abilities) {
+            this.game.abilities.spawnVampireBatSwarm(
+                killX ?? this.x,
+                killY ?? this.y
+            );
+        }
+    }
+
     takeDamage(rawDamage) {
         if (this.isAttackInvincible() || this.invincibleTimer > 0 || this.hp <= 0) return 0;
+        if (this.holyShieldCharges > 0) {
+            this.holyShieldCharges = 0;
+            this.holyShieldTimer = this.getHolyShieldInterval();
+            this.queueMessage('圣盾抵挡');
+            return 0;
+        }
         const actual = Math.max(1, Math.round(rawDamage));
         this.hp = Math.max(0, this.hp - actual);
         this.invincibleTimer = CONFIG.PLAYER.INVINCIBLE_TIME || 0.45;
@@ -1561,6 +1661,8 @@ class Player {
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
         this.whirlCharge = 0;
+        this.healingComboFiredThisResolve = false;
+        this.comboFireballMilestone = 0;
         return true;
     }
 
@@ -1569,8 +1671,9 @@ class Player {
         if (source !== 'path') return this.comboCount;
         if (!this.game?.combat?.isResolving()) return this.comboCount;
 
-        const baseInc = this.getUpgradeLevel('dual_wield') > 0 ? 2 : 1;
-        const inc = baseInc * this.turnBuffs.comboMult;
+        const baseInc = 1;
+        const multiComboLv = this.getUpgradeLevel('multi_combo');
+        const inc = baseInc * this.turnBuffs.comboMult * Math.pow(1.2, multiComboLv);
         this.comboCount += inc;
         this.comboDisplayPeak = Math.max(this.comboDisplayPeak, this.comboCount);
         this.comboDisplayTimer = CONFIG.PLAYER.COMBO_DISPLAY_HOLD;
@@ -1647,6 +1750,30 @@ class Player {
         return Math.max(1, Math.round(this.baseAttack * this.attackPowerScale * mult));
     }
 
+    /** 画线普攻基础伤害（不含暴击随机） */
+    getLineAttackDamage() {
+        let dmg = this.baseAttack * this.attackPowerScale;
+        dmg *= this.turnBuffs.attackMult;
+        dmg *= 1 + Math.max(0, this.comboCount - 1) * this.comboDamageBonus;
+        return Math.max(1, Math.round(dmg));
+    }
+
+    getAutoDartDamage() {
+        const mult = CONFIG.PLAYER.AUTO_DART?.DAMAGE_MULT ?? 0.20;
+        let dmg = this.getLineAttackDamage() * mult;
+        const spiritLv = this.getUpgradeLevel('spirit_bomb');
+        if (spiritLv > 0) dmg *= 1 + 0.5 * spiritLv;
+        return Math.max(1, Math.round(dmg));
+    }
+
+    getAutoDartScale() {
+        return 1 + 0.2 * this.getUpgradeLevel('giant_dart');
+    }
+
+    hasSpiritBomb() {
+        return this.getUpgradeLevel('spirit_bomb') > 0;
+    }
+
     queueMessage(text) {
         this.activeMessage = text;
         this.messageTimer = 1.25;
@@ -1682,6 +1809,7 @@ class Player {
         }
 
         if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
+        this._updateHolyShield(dt);
         this._updateKiRegen(realDt || dt);
         this._syncShadowClones();
     }
@@ -1853,6 +1981,18 @@ class Player {
 
         this._drawHpBar(ctx);
 
+        if (this.holyShieldCharges > 0) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(120, 200, 255, 0.85)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(px, py, this.effectiveRadius + 10, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(90, 170, 255, 0.18)';
+            ctx.fill();
+            ctx.restore();
+        }
+
         if (this.getUpgradeLevel('luck') > 0) {
             const lv = this.getUpgradeLevel('luck');
             for (let i = 0; i < Math.min(8, lv * 2); i++) {
@@ -1924,6 +2064,8 @@ class Monster {
         this.deathFade = CONFIG.MONSTER_DEATH_FADE;
         this.spawnedChildren = false;
         this.frozenTimer = 0;
+        this.slowTimer = 0;
+        this.slowMult = 1;
         this.vulnerableMark = false;
         this.spawning = false;
         this.spawnTimer = 0;
@@ -1966,6 +2108,11 @@ class Monster {
         return this.frozenTimer > 0;
     }
 
+    slow(duration, speedMult = 0.45) {
+        this.slowTimer = Math.max(this.slowTimer, duration);
+        this.slowMult = Math.min(this.slowMult ?? 1, speedMult);
+    }
+
     _isShieldFacingLocked() {
         if (this.kind !== MonsterKind.SHIELD || !this.game) return false;
         const p = this.game.player;
@@ -1999,7 +2146,9 @@ class Monster {
             stopDist = this.hitboxRadius + (playerTarget.effectiveRadius || 12) + 2;
         }
 
-        const step = Math.min(this.speed * dt, Math.max(0, distToPlayer - stopDist));
+        let moveSpeed = this.speed;
+        if (this.slowTimer > 0) moveSpeed *= this.slowMult ?? 0.45;
+        const step = Math.min(moveSpeed * dt, Math.max(0, distToPlayer - stopDist));
         this.x += Math.cos(this.moveDir) * step;
         this.y += Math.sin(this.moveDir) * step;
 
@@ -2102,6 +2251,10 @@ class Monster {
         if (this.frozenTimer > 0) {
             this.frozenTimer -= dt;
             return;
+        }
+        if (this.slowTimer > 0) {
+            this.slowTimer -= dt;
+            if (this.slowTimer <= 0) this.slowMult = 1;
         }
         if (this.base.canMove) this._move(dt, w, h, playBottom, playerTarget);
 
@@ -2254,7 +2407,13 @@ class Monster {
         let tintR = 255;
         let tintG = 72;
         let tintB = 72;
-        if (this.kind === MonsterKind.BERSERKER) {
+        const frozen = this.isFrozen();
+        if (frozen) {
+            tint = 0.82;
+            tintR = 72;
+            tintG = 168;
+            tintB = 255;
+        } else if (this.kind === MonsterKind.BERSERKER) {
             tint = 0.16;
         } else if (this.kind === MonsterKind.FIRE_MAGE) {
             tint = 0.52;
@@ -2337,12 +2496,8 @@ class Monster {
             ctx.fillRect(Math.floor(sx), Math.floor(sy - 9), 2, 2);
         }
 
-        if (this.isFrozen()) {
-            ctx.strokeStyle = 'rgba(120,220,255,0.9)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(x, y, r + 3, 0, Math.PI * 2);
-            ctx.stroke();
+        if (frozen) {
+            this._drawIceCover(ctx, x, y, r, scale, alpha);
         }
 
         if (!this.dying && this.hp < this.maxHp) {
@@ -2356,6 +2511,60 @@ class Monster {
             ctx.fillStyle = ratio > 0.5 ? '#68d070' : ratio > 0.25 ? '#f0c850' : '#e05840';
             ctx.fillRect(bx, by, w * ratio, h);
         }
+        ctx.restore();
+    }
+
+    _drawIceCover(ctx, x, y, r, scale, alpha) {
+        const pulse = 0.88 + Math.sin(Date.now() * 0.009) * 0.12;
+        const iceR = (r + 8) * pulse;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        const glow = ctx.createRadialGradient(x, y, 1, x, y, iceR);
+        glow.addColorStop(0, 'rgba(210, 245, 255, 0.92)');
+        glow.addColorStop(0.45, 'rgba(88, 175, 255, 0.72)');
+        glow.addColorStop(0.78, 'rgba(48, 120, 220, 0.45)');
+        glow.addColorStop(1, 'rgba(24, 72, 160, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, y, iceR, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.strokeStyle = 'rgba(200, 240, 255, 0.95)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(120, 200, 255, 0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.arc(x, y, r + 9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const px = Math.max(3, Math.round(scale * 0.9));
+        const shardColors = ['#e8ffff', '#b8f0ff', '#78d8ff', '#c8f8ff'];
+        const seed = Math.floor(this.id * 17.3);
+        for (let i = 0; i < 16; i++) {
+            const a = (i / 16) * Math.PI * 2 + seed * 0.1;
+            const distR = r * (0.35 + ((i * 7 + seed) % 5) * 0.12);
+            const sx = Math.floor(x + Math.cos(a) * distR);
+            const sy = Math.floor(y + Math.sin(a) * distR * 0.92);
+            ctx.fillStyle = shardColors[i % shardColors.length];
+            ctx.fillRect(sx - px, sy - px, px * 2, px * 2);
+            if (i % 3 === 0) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(sx, sy - 1, Math.max(2, px - 1), Math.max(2, px - 1));
+            }
+        }
+
+        ctx.fillStyle = 'rgba(160, 220, 255, 0.35)';
+        ctx.fillRect(x - r - 2, y - 2, (r + 2) * 2, 4);
+        ctx.fillRect(x - 2, y - r - 2, 4, (r + 2) * 2);
+
         ctx.restore();
     }
 
@@ -2651,14 +2860,99 @@ const UPGRADE_DEFS = [
         },
     },
     {
+        id: 'multi_dart',
+        rarity: 'blue',
+        name: '多重飞镖',
+        icon: '🎯',
+        desc: '普攻飞镖数量+1',
+        apply() {},
+    },
+    {
+        id: 'giant_dart',
+        rarity: 'white',
+        name: '巨大飞镖',
+        icon: '⭕',
+        desc: '普攻飞镖体积+20%',
+        apply() {},
+    },
+    {
+        id: 'ice_dart',
+        rarity: 'purple',
+        name: '寒冰飞镖',
+        icon: '❄️',
+        desc: '飞镖命中5%概率释放寒冰气，冰冻2秒(伤害=飞镖20%)；重复升级提高概率与伤害',
+        apply() {},
+    },
+    {
+        id: 'spirit_bomb',
+        rarity: 'orange',
+        name: '元气弹',
+        icon: '💫',
+        desc: '飞镖升级为元气弹，伤害+50%',
+        apply() {},
+    },
+    {
         id: 'shuriken',
         rarity: 'blue',
         name: '手里剑',
         icon: '🎯',
-        desc: '结算时在路径上释放像素手里剑(10%攻击力)',
+        desc: '每次连击释放2个手里剑(10%攻击力)',
+        apply() {},
+    },
+    {
+        id: 'multi_combo',
+        rarity: 'orange',
+        name: '多重连击',
+        icon: '🔥',
+        desc: '连击次数×1.2倍',
+        apply() {},
+    },
+    {
+        id: 'healing_combo',
+        rarity: 'orange',
+        name: '愈合连击',
+        icon: '🌿',
+        desc: '连击≥15时释放藤蔓减速并造成少量伤害，回复5%最大生命',
+        apply() {},
+    },
+    {
+        id: 'holy_shield',
+        rarity: 'blue',
+        name: '圣盾',
+        icon: '🛡️',
+        desc: '每6秒获得可抵挡1次伤害的护盾(最多1层)',
         apply(player) {
-            player.upgradeStacks.shuriken = (player.upgradeStacks.shuriken || 0) + 1;
+            player._refreshHolyShieldInterval();
         },
+    },
+    {
+        id: 'vampire_bat',
+        rarity: 'purple',
+        name: '吸血蝙蝠',
+        icon: '🦇',
+        desc: '每击败10个敌人释放蝙蝠群攻击附近敌人，飞回后回复2%最大生命/层',
+        apply() {},
+    },
+    {
+        id: 'meat_shield',
+        rarity: 'white',
+        name: '变肉',
+        icon: '🥩',
+        desc: '最大生命+10%，体积+15%',
+        apply(player) {
+            const oldMax = player.maxHp;
+            player.maxHp = Math.round(player.maxHp * 1.1);
+            player.hp = Math.min(player.maxHp, player.hp + (player.maxHp - oldMax));
+            player.sizeScale *= 1.15;
+        },
+    },
+    {
+        id: 'super_heal',
+        rarity: 'orange',
+        name: '超级治疗',
+        icon: '✨',
+        desc: '所有回血效果+50%',
+        apply() {},
     },
     {
         id: 'lightning_chain',
@@ -2711,7 +3005,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '豪火球术',
         icon: '🔥',
-        desc: '结算开始时沿路径发射豪火球(100%攻击力)',
+        desc: '连击每+10在攻击点释放豪火球(100%攻击力)',
         apply(player) {
             player.upgradeStacks.great_fireball = (player.upgradeStacks.great_fireball || 0) + 1;
         },
@@ -3265,6 +3559,9 @@ class AbilityManager {
         this.blackHoles = [];
         this.whirls = [];
         this.shurikens = [];
+        this.vines = [];
+        this.batSwarms = [];
+        this.autoDartCooldown = 0;
         this.resolveFxTimer = 0;
         this.lightningChain = null;
         this.blackHoleSpawnedThisResolve = false;
@@ -3276,14 +3573,22 @@ class AbilityManager {
         this.blackHoles = [];
         this.whirls = [];
         this.shurikens = [];
+        this.vines = [];
+        this.batSwarms = [];
+        this.autoDartCooldown = 0;
         this.resolveFxTimer = 0;
         this.lightningChain = null;
         this.blackHoleSpawnedThisResolve = false;
     }
 
+    hasAutoDarts() {
+        return this.shurikens.some(s => s.kind === 'auto');
+    }
+
     _hasFlyingProjectiles() {
         return this.fireballs.length > 0 || this.waterTornados.length > 0 || this.blackHoles.length > 0
-            || this.whirls.length > 0 || this.shurikens.length > 0 || this.lightningChain != null;
+            || this.whirls.length > 0 || this.shurikens.length > 0 || this.vines.length > 0
+            || this.batSwarms.length > 0 || this.lightningChain != null;
     }
 
     hasActiveFx() {
@@ -3303,25 +3608,9 @@ class AbilityManager {
     onResolveStarted(attackPath) {
         this.blackHoleSpawnedThisResolve = false;
         const p = this.game.player;
-        if (!p || !attackPath || attackPath.length < 2) return;
-
-        const start = attackPath[0];
-        if (p.getUpgradeLevel('great_fireball') > 0) {
-            const cnt = 3 + Math.max(0, p.getUpgradeLevel('great_fireball') - 1);
-            const baseAng = angle(start.x, start.y, attackPath[1].x, attackPath[1].y);
-            for (let i = 0; i < cnt; i++) {
-                const a = baseAng + randRange(-0.9, 0.9);
-                this.fireballs.push({
-                    x: start.x, y: start.y,
-                    vx: Math.cos(a) * 280, vy: Math.sin(a) * 280,
-                    life: 0.95,
-                    maxLife: 0.95,
-                    rot: a,
-                    hit: new Set(),
-                    dmgMul: 1.0,
-                    kind: 'great',
-                });
-            }
+        if (p) {
+            p.healingComboFiredThisResolve = false;
+            p.comboFireballMilestone = 0;
         }
     }
 
@@ -3334,8 +3623,28 @@ class AbilityManager {
         const segAng = angle(hit.pathFrom.x, hit.pathFrom.y, hit.pathTo.x, hit.pathTo.y);
         const ctx = { x: mx, y: my, segAng, hit };
 
-        this._emitPathShurikens(ctx);
         this.onComboHit(combo, ctx);
+    }
+
+    _spawnComboFireballs(x, y, segAng) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('great_fireball');
+        if (lv <= 0) return;
+        const cnt = 3 + Math.max(0, lv - 1);
+        const baseAng = segAng;
+        for (let i = 0; i < cnt; i++) {
+            const a = baseAng + randRange(-0.9, 0.9);
+            this.fireballs.push({
+                x, y,
+                vx: Math.cos(a) * 280, vy: Math.sin(a) * 280,
+                life: 0.95,
+                maxLife: 0.95,
+                rot: a,
+                hit: new Set(),
+                dmgMul: 1.0,
+                kind: 'great',
+            });
+        }
     }
 
     onComboHit(combo, ctx) {
@@ -3343,7 +3652,26 @@ class AbilityManager {
         if (!p || !this.game.combat.isResolving()) return;
         const pos = this._ctxPos(ctx);
 
-        if (p.getUpgradeLevel('lightning_chain') > 0 && combo % 5 === 0) {
+        const comboFloor = Math.floor(combo);
+        const fireMilestone = Math.floor(comboFloor / 10) * 10;
+        if (p.getUpgradeLevel('great_fireball') > 0 && fireMilestone >= 10 && fireMilestone > p.comboFireballMilestone) {
+            p.comboFireballMilestone = fireMilestone;
+            this._spawnComboFireballs(pos.x, pos.y, ctx?.segAng ?? 0);
+        }
+        if (p.getUpgradeLevel('shuriken') > 0 && comboFloor > 0) {
+            this._spawnComboShurikens(pos.x, pos.y, ctx?.segAng ?? 0);
+        }
+        if (comboFloor >= 15 && !p.healingComboFiredThisResolve && p.getUpgradeLevel('healing_combo') > 0) {
+            p.healingComboFiredThisResolve = true;
+            this._spawnHealingVine(pos.x, pos.y, ctx?.segAng ?? 0);
+            const healed = p.heal(p.maxHp * 0.05);
+            if (healed > 0) {
+                this.game.combat.spawnDamageNumber(
+                    p.x, p.y - p.effectiveRadius - 12, healed, false, '#68d878'
+                );
+            }
+        }
+        if (p.getUpgradeLevel('lightning_chain') > 0 && comboFloor > 0 && comboFloor % 5 === 0) {
             this._spawnLightningChain(3, pos.x, pos.y);
         }
         if (p.getUpgradeLevel('water_tornado') > 0) {
@@ -3356,7 +3684,7 @@ class AbilityManager {
                 }
             }
         }
-        if (p.getUpgradeLevel('black_hole') > 0 && combo === 8 && !this.blackHoleSpawnedThisResolve) {
+        if (p.getUpgradeLevel('black_hole') > 0 && comboFloor === 8 && !this.blackHoleSpawnedThisResolve) {
             this._spawnBlackHole(pos.x, pos.y);
             this.blackHoleSpawnedThisResolve = true;
         }
@@ -3369,18 +3697,15 @@ class AbilityManager {
         }
     }
 
-    _emitPathShurikens(ctx) {
-        const p = this.game.player;
-        const lv = p.getUpgradeLevel('shuriken');
-        if (lv <= 0) return;
-        const segAng = ctx.segAng ?? 0;
-        const count = Math.min(6, lv + 2);
+    _spawnComboShurikens(x, y, segAng) {
+        const count = 2;
         for (let i = 0; i < count; i++) {
-            const spread = segAng + randRange(-1.1, 1.1);
+            const spread = segAng + randRange(-0.55, 0.55);
             const spd = randRange(SHURIKEN_SPEED_MIN, SHURIKEN_SPEED_MAX);
             this.shurikens.push({
-                x: ctx.x + randRange(-4, 4),
-                y: ctx.y + randRange(-4, 4),
+                kind: 'skill',
+                x: x + randRange(-4, 4),
+                y: y + randRange(-4, 4),
                 vx: Math.cos(spread) * spd,
                 vy: Math.sin(spread) * spd,
                 rot: randRange(0, Math.PI * 2),
@@ -3390,6 +3715,48 @@ class AbilityManager {
                 dmgMul: 0.10,
             });
         }
+    }
+
+    _spawnHealingVine(x, y, segAng) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('healing_combo');
+        const a = this._nearestMonsterAngle(x, y, segAng);
+        const spd = 320;
+        this.vines.push({
+            x, y,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd,
+            rot: a,
+            life: 0.95,
+            maxLife: 0.95,
+            hit: new Set(),
+            hitR: 28 + lv * 4,
+            damage: p.getAbilityDamage(0.12 + 0.04 * Math.max(0, lv - 1)),
+            slowDur: 3,
+        });
+    }
+
+    spawnVampireBatSwarm(fromX, fromY) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('vampire_bat');
+        if (!p || lv <= 0) return;
+        const radius = 130 + lv * 12;
+        const monsters = this.game.spawner.getActiveMonsters()
+            .filter(m => dist(fromX, fromY, m.x, m.y) <= radius + m.hitboxRadius)
+            .sort((a, b) => dist(fromX, fromY, a.x, a.y) - dist(fromX, fromY, b.x, b.y));
+        const maxTargets = Math.min(monsters.length, 4 + lv * 2);
+        this.batSwarms.push({
+            ox: fromX,
+            oy: fromY,
+            targets: monsters.slice(0, maxTargets),
+            idx: 0,
+            phase: 'attack',
+            timer: 0,
+            stepDelay: 0.07,
+            damage: p.getAbilityDamage(0.14),
+            healAmount: Math.round(p.maxHp * 0.02 * lv),
+            batParticles: [],
+        });
     }
 
     _spawnLightningChain(maxTargets, fromX, fromY) {
@@ -3440,9 +3807,9 @@ class AbilityManager {
         if (ch.idx === 1) this.game.renderer.shake(10, 0.28);
     }
 
-    _nearestMonsterAngle(x, y, segAng) {
+    _findNearestMonster(x, y) {
         const monsters = this.game.spawner.getActiveMonsters();
-        if (!monsters.length) return segAng;
+        if (!monsters.length) return null;
         let nearest = monsters[0];
         let best = dist(x, y, nearest.x, nearest.y);
         for (let i = 1; i < monsters.length; i++) {
@@ -3453,7 +3820,116 @@ class AbilityManager {
                 nearest = m;
             }
         }
+        return nearest;
+    }
+
+    _nearestMonsterAngle(x, y, segAng) {
+        const nearest = this._findNearestMonster(x, y);
+        if (!nearest) return segAng;
         return angle(x, y, nearest.x, nearest.y);
+    }
+
+    _canAutoDart() {
+        const g = this.game;
+        if (!g || g.state !== 'PLAYING') return false;
+        const p = g.player;
+        if (!p || p.hp <= 0) return false;
+        if (p.state === PlayerState.BULLET_TIME) return false;
+        if (g.isUpgradeBlocked()) return false;
+        return g.spawner.getActiveMonsters().length > 0;
+    }
+
+    _getAutoDartOrigin() {
+        const p = this.game.player;
+        if (p.state === PlayerState.ATTACKING) return { x: p.x, y: p.y };
+        return { x: p.homeX, y: p.homeY };
+    }
+
+    _spawnAutoDart() {
+        const p = this.game.player;
+        const origin = this._getAutoDartOrigin();
+        const target = this._findNearestMonster(origin.x, origin.y);
+        if (!target) return;
+
+        const cfg = CONFIG.PLAYER.AUTO_DART || {};
+        const baseAng = angle(origin.x, origin.y, target.x, target.y);
+        const spd = cfg.SPEED || 420;
+        const count = 1 + p.getUpgradeLevel('multi_dart');
+        const scale = p.getAutoDartScale();
+        const hitR = this._shurikenHitRadius() * scale;
+        const damage = p.getAutoDartDamage();
+        const isSpirit = p.hasSpiritBomb();
+
+        for (let i = 0; i < count; i++) {
+            const spread = count > 1
+                ? baseAng + (i - (count - 1) * 0.5) * 0.18
+                : baseAng;
+            this.shurikens.push({
+                kind: 'auto',
+                x: origin.x,
+                y: origin.y,
+                vx: Math.cos(spread) * spd,
+                vy: Math.sin(spread) * spd,
+                rot: spread,
+                spin: isSpirit ? 6 : 14,
+                life: cfg.LIFE || 0.9,
+                hit: new Set(),
+                damage,
+                hitRadius: hitR,
+                visualScale: scale,
+                isSpirit,
+            });
+        }
+    }
+
+    _getIceDartProcChance() {
+        const lv = this.game.player.getUpgradeLevel('ice_dart');
+        if (lv <= 0) return 0;
+        return Math.min(0.95, 0.05 + 0.04 * Math.max(0, lv - 1));
+    }
+
+    _getIceDartFrostMult() {
+        const lv = this.game.player.getUpgradeLevel('ice_dart');
+        if (lv <= 0) return 0;
+        return 0.2 + 0.05 * Math.max(0, lv - 1);
+    }
+
+    _tryIceDartBurst(x, y, dartDamage) {
+        if (this.game.player.getUpgradeLevel('ice_dart') <= 0) return;
+        if (Math.random() >= this._getIceDartProcChance()) return;
+        this._triggerIceDartBurst(x, y, dartDamage);
+    }
+
+    _triggerIceDartBurst(x, y, dartDamage) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('ice_dart');
+        if (lv <= 0) return;
+        const radius = 78 + lv * 8;
+        const dmg = Math.max(1, Math.round(dartDamage * this._getIceDartFrostMult()));
+        const monsters = this.game.spawner.getActiveMonsters();
+        let hitAny = false;
+        for (const m of monsters) {
+            if (dist(x, y, m.x, m.y) > radius + m.hitboxRadius) continue;
+            m.freeze(2);
+            const hit = m.takeDamage(dmg, angle(x, y, m.x, m.y));
+            if (hit.actualDamage > 0) {
+                hitAny = true;
+                this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#78d8ff');
+                this.game.particles.freezeEffect(m.x, m.y, 1.35);
+            }
+            if (m.dying) this.game.combat._handleMonsterKilled(m);
+        }
+        this.game.particles.iceBurstEffect(x, y, radius);
+        if (!hitAny) this.game.particles.freezeEffect(x, y, 1.2);
+    }
+
+    _updateAutoDartFire(dt) {
+        if (!this._canAutoDart()) return;
+        const interval = CONFIG.PLAYER.AUTO_DART?.INTERVAL ?? 0.5;
+        this.autoDartCooldown -= dt;
+        if (this.autoDartCooldown > 0) return;
+        this._spawnAutoDart();
+        this.autoDartCooldown = interval;
     }
 
     _spawnWaterTornado(x, y, segAng, idx, total) {
@@ -3745,22 +4221,40 @@ class AbilityManager {
         ctx.restore();
     }
 
-    _updateShurikens(dt) {
+    _shurikenHitRadius(s) {
+        if (s && s.hitRadius != null) return s.hitRadius;
+        return 7 * (SHURIKEN_PIXEL / 2);
+    }
+
+    _shurikenDamage(s) {
+        if (s.damage != null) return s.damage;
+        return this.game.player.getAbilityDamage(s.dmgMul);
+    }
+
+    _updateShurikens(dt, kindFilter = 'all') {
         const monsters = this.game.spawner.getActiveMonsters();
+        const p = this.game.player;
         for (const s of this.shurikens) {
+            if (kindFilter === 'auto' && s.kind !== 'auto') continue;
+            if (kindFilter === 'skill' && s.kind === 'auto') continue;
+            const hitR = this._shurikenHitRadius(s);
             s.life -= dt;
             s.x += s.vx * dt;
             s.y += s.vy * dt;
             s.rot += s.spin * dt;
             for (const m of monsters) {
                 if (s.hit.has(m.id)) continue;
-                if (!circlesCollide(s.x, s.y, 7 * (SHURIKEN_PIXEL / 2), m.x, m.y, m.hitboxRadius)) continue;
+                if (!circlesCollide(s.x, s.y, hitR, m.x, m.y, m.hitboxRadius)) continue;
                 s.hit.add(m.id);
-                const dmg = this.game.player.getAbilityDamage(s.dmgMul);
+                const dmg = this._shurikenDamage(s);
                 const hit = m.takeDamage(dmg, angle(s.x, s.y, m.x, m.y));
                 if (hit.actualDamage > 0) {
-                    this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#a8c0e8');
+                    const color = s.isSpirit ? '#ffe878' : (s.kind === 'auto' ? '#98b8d8' : '#a8c0e8');
+                    this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, color);
                     this.game.particles.hitSpark(m.x, m.y, false);
+                }
+                if (s.kind === 'auto') {
+                    this._tryIceDartBurst(s.x, s.y, dmg);
                 }
                 if (m.dying) this.game.combat._handleMonsterKilled(m);
             }
@@ -3900,12 +4394,133 @@ class AbilityManager {
         this.whirls = this.whirls.filter(w => w.life > 0);
     }
 
+    _updateVines(dt) {
+        const monsters = this.game.spawner.getActiveMonsters();
+        for (const v of this.vines) {
+            v.life -= dt;
+            v.x += v.vx * dt;
+            v.y += v.vy * dt;
+            for (const m of monsters) {
+                if (v.hit.has(m.id)) continue;
+                if (!circlesCollide(v.x, v.y, v.hitR, m.x, m.y, m.hitboxRadius)) continue;
+                v.hit.add(m.id);
+                m.slow(v.slowDur, 0.4);
+                const hit = m.takeDamage(v.damage, angle(v.x, v.y, m.x, m.y));
+                if (hit.actualDamage > 0) {
+                    this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#58c878');
+                    this.game.particles.hitSpark(m.x, m.y, false);
+                }
+                if (m.dying) this.game.combat._handleMonsterKilled(m);
+            }
+        }
+        this.vines = this.vines.filter(v => v.life > 0);
+    }
+
+    _updateBatSwarms(dt) {
+        const p = this.game.player;
+        if (!p) return;
+        for (const swarm of this.batSwarms) {
+            swarm.timer -= dt;
+            if (swarm.timer > 0) continue;
+
+            if (swarm.phase === 'attack') {
+                if (swarm.idx >= swarm.targets.length) {
+                    swarm.phase = 'return';
+                    swarm.idx = 0;
+                    swarm.timer = swarm.stepDelay * 0.5;
+                    continue;
+                }
+                const m = swarm.targets[swarm.idx];
+                if (m.alive && !m.dying) {
+                    this.game.particles.emit(
+                        swarm.ox, swarm.oy,
+                        (m.x - swarm.ox) * 2, (m.y - swarm.oy) * 2,
+                        0.12, 4, '#402858', 0, true, false
+                    );
+                    const hit = m.takeDamage(swarm.damage, angle(swarm.ox, swarm.oy, m.x, m.y));
+                    if (hit.actualDamage > 0) {
+                        this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#a070c8');
+                        this.game.particles.hitSpark(m.x, m.y, false);
+                    }
+                    if (m.dying) this.game.combat._handleMonsterKilled(m);
+                }
+                swarm.idx++;
+                swarm.timer = swarm.stepDelay;
+            } else if (swarm.phase === 'return') {
+                const healed = p.heal(swarm.healAmount);
+                if (healed > 0) {
+                    this.game.combat.spawnDamageNumber(
+                        p.x, p.y - p.effectiveRadius - 12, healed, false, '#68d878'
+                    );
+                }
+                swarm.phase = 'done';
+            }
+        }
+        this.batSwarms = this.batSwarms.filter(s => s.phase !== 'done');
+    }
+
+    _drawVine(ctx, v) {
+        const lifeT = v.maxLife ? v.life / v.maxLife : 1;
+        const cx = Math.floor(v.x);
+        const cy = Math.floor(v.y);
+        const len = 36 + v.hitR;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(v.rot);
+        ctx.globalAlpha = clamp(0.55 + lifeT * 0.45, 0.4, 1);
+        const g = ctx.createLinearGradient(-len * 0.5, 0, len * 0.5, 0);
+        g.addColorStop(0, 'rgba(40, 100, 48, 0)');
+        g.addColorStop(0.35, 'rgba(72, 168, 88, 0.85)');
+        g.addColorStop(0.65, 'rgba(48, 130, 62, 0.9)');
+        g.addColorStop(1, 'rgba(30, 80, 40, 0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 10 + v.hitR * 0.15;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-len * 0.5, 0);
+        ctx.lineTo(len * 0.5, 0);
+        ctx.stroke();
+        ctx.fillStyle = '#88e8a0';
+        for (let i = -2; i <= 2; i++) {
+            ctx.fillRect(len * 0.15 * i - 2, -4 + (i % 2) * 3, 4, 4);
+        }
+        ctx.restore();
+    }
+
+    _drawBatSwarm(ctx, swarm) {
+        const p = this.game.player;
+        if (!p) return;
+        const t = Date.now() * 0.01;
+        const count = 6;
+        for (let i = 0; i < count; i++) {
+            const a = t + (i / count) * Math.PI * 2;
+            const orbit = swarm.phase === 'return' ? 8 : 18 + i * 3;
+            const cx = swarm.phase === 'return'
+                ? lerp(swarm.ox, p.x, 0.55 + Math.sin(t + i) * 0.15)
+                : swarm.ox + Math.cos(a) * orbit;
+            const cy = swarm.phase === 'return'
+                ? lerp(swarm.oy, p.y, 0.55 + Math.cos(t + i) * 0.15)
+                : swarm.oy + Math.sin(a) * orbit;
+            ctx.fillStyle = '#302040';
+            ctx.fillRect(Math.floor(cx) - 3, Math.floor(cy) - 2, 6, 4);
+            ctx.fillStyle = '#8060a8';
+            ctx.fillRect(Math.floor(cx) - 2, Math.floor(cy) - 3, 4, 2);
+        }
+    }
+
+    updatePassive(dt) {
+        this._updateAutoDartFire(dt);
+        if (this.shurikens.some(s => s.kind === 'auto')) this._updateShurikens(dt, 'auto');
+        if (this.batSwarms.length > 0) this._updateBatSwarms(dt);
+    }
+
     update(dt) {
         if (this.resolveFxTimer > 0) this.resolveFxTimer -= dt;
         if (!this._isResolvePhase()) return;
 
         this._updateLightningChain(dt);
-        this._updateShurikens(dt);
+        if (this.shurikens.some(s => s.kind !== 'auto')) this._updateShurikens(dt, 'skill');
+        if (this.vines.length > 0) this._updateVines(dt);
         this._updateFireballs(dt);
         this._updateWaterTornados(dt);
         this._updateBlackHoles(dt);
@@ -3930,10 +4545,52 @@ class AbilityManager {
         }
     }
 
+    _drawSpiritBomb(ctx, x, y, rot, scale) {
+        const px = Math.floor(x);
+        const py = Math.floor(y);
+        const r = 10 * scale;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(rot);
+        const pulse = 0.9 + Math.sin(Date.now() * 0.012) * 0.1;
+        const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, r * 1.6 * pulse);
+        glow.addColorStop(0, 'rgba(255, 248, 200, 0.95)');
+        glow.addColorStop(0.45, 'rgba(255, 210, 80, 0.75)');
+        glow.addColorStop(1, 'rgba(255, 140, 40, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.5 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff8c8';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.55 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffb830';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    drawAutoDarts(ctx) {
+        for (const s of this.shurikens) {
+            if (s.kind !== 'auto') continue;
+            const scale = s.visualScale || 1;
+            if (s.isSpirit) {
+                this._drawSpiritBomb(ctx, s.x, s.y, s.rot, scale);
+            } else {
+                const px = SHURIKEN_PIXEL * scale;
+                this._drawPixelShuriken(ctx, s.x, s.y, s.rot, px);
+            }
+        }
+    }
+
     drawFront(ctx) {
-        if (!this._isResolvePhase()) return;
+        const showAuto = this.hasAutoDarts();
+        if (!this._isResolvePhase() && !showAuto) return;
 
         for (const s of this.shurikens) {
+            if (s.kind === 'auto') continue;
             this._drawPixelShuriken(ctx, s.x, s.y, s.rot, SHURIKEN_PIXEL);
         }
 
@@ -3953,6 +4610,15 @@ class AbilityManager {
         }
         for (const w of this.whirls) {
             this._drawPixelBladeWhirl(ctx, w);
+        }
+        for (const v of this.vines) {
+            this._drawVine(ctx, v);
+        }
+    }
+
+    drawBatSwarms(ctx) {
+        for (const swarm of this.batSwarms) {
+            this._drawBatSwarm(ctx, swarm);
         }
     }
 }
@@ -5161,7 +5827,7 @@ class UI {
     }
 
     drawComboBanner(ctx, player, vp, layout, s) {
-        const combo = player.comboDisplayPeak;
+        const combo = Math.floor(player.comboDisplayPeak);
         if (combo < 2 || player.comboDisplayTimer <= 0) return;
         const fading = player.comboCount < 2;
         const fadeDur = fading ? CONFIG.PLAYER.COMBO_END_FADE : CONFIG.PLAYER.COMBO_DISPLAY_HOLD;
@@ -5314,6 +5980,7 @@ class CombatManager {
             }
         }
         if (this.game.experience) this.game.experience.onMonsterKilled(m);
+        if (this.game.player) this.game.player.onEnemyKilledForUpgrades(m.x, m.y);
     }
 
     _shouldSpawnSplitChildren(deadMonster) {
@@ -6114,6 +6781,7 @@ class Game {
         this.projectiles.update(worldDt, this.renderer.w, this.renderer.h, playerTarget);
         this.groundEffects.update(worldDt, playerTarget);
         this.combat.update(dt);
+        if (this.abilities) this.abilities.updatePassive(dt);
         this.buffOrbs.update(realDt);
         this.sakura.update(realDt, this.renderer.w, this.renderer.h);
         this.grass.update(realDt);
@@ -6429,8 +7097,10 @@ class Game {
         if (showCombatFx) {
             this.combat.drawAfterimages(ctx);
         }
-        if (showCombatFx && this.abilities.hasActiveFx()) {
-            this.abilities.drawFront(ctx);
+        if (showCombatFx && (this.abilities.hasActiveFx() || this.abilities.hasAutoDarts() || this.abilities.batSwarms.length > 0)) {
+            this.abilities.drawAutoDarts(ctx);
+            if (this.abilities.batSwarms.length > 0) this.abilities.drawBatSwarms(ctx);
+            if (this.abilities.hasActiveFx()) this.abilities.drawFront(ctx);
         }
         if (this.state === 'FAIL_DEATH' && this.failDeath.isActive()) {
             this.failDeath.drawSpears(ctx);

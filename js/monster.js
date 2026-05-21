@@ -45,6 +45,8 @@ class Monster {
         this.deathFade = CONFIG.MONSTER_DEATH_FADE;
         this.spawnedChildren = false;
         this.frozenTimer = 0;
+        this.slowTimer = 0;
+        this.slowMult = 1;
         this.vulnerableMark = false;
         this.spawning = false;
         this.spawnTimer = 0;
@@ -87,6 +89,11 @@ class Monster {
         return this.frozenTimer > 0;
     }
 
+    slow(duration, speedMult = 0.45) {
+        this.slowTimer = Math.max(this.slowTimer, duration);
+        this.slowMult = Math.min(this.slowMult ?? 1, speedMult);
+    }
+
     _isShieldFacingLocked() {
         if (this.kind !== MonsterKind.SHIELD || !this.game) return false;
         const p = this.game.player;
@@ -120,7 +127,9 @@ class Monster {
             stopDist = this.hitboxRadius + (playerTarget.effectiveRadius || 12) + 2;
         }
 
-        const step = Math.min(this.speed * dt, Math.max(0, distToPlayer - stopDist));
+        let moveSpeed = this.speed;
+        if (this.slowTimer > 0) moveSpeed *= this.slowMult ?? 0.45;
+        const step = Math.min(moveSpeed * dt, Math.max(0, distToPlayer - stopDist));
         this.x += Math.cos(this.moveDir) * step;
         this.y += Math.sin(this.moveDir) * step;
 
@@ -223,6 +232,10 @@ class Monster {
         if (this.frozenTimer > 0) {
             this.frozenTimer -= dt;
             return;
+        }
+        if (this.slowTimer > 0) {
+            this.slowTimer -= dt;
+            if (this.slowTimer <= 0) this.slowMult = 1;
         }
         if (this.base.canMove) this._move(dt, w, h, playBottom, playerTarget);
 
@@ -375,7 +388,13 @@ class Monster {
         let tintR = 255;
         let tintG = 72;
         let tintB = 72;
-        if (this.kind === MonsterKind.BERSERKER) {
+        const frozen = this.isFrozen();
+        if (frozen) {
+            tint = 0.82;
+            tintR = 72;
+            tintG = 168;
+            tintB = 255;
+        } else if (this.kind === MonsterKind.BERSERKER) {
             tint = 0.16;
         } else if (this.kind === MonsterKind.FIRE_MAGE) {
             tint = 0.52;
@@ -458,12 +477,8 @@ class Monster {
             ctx.fillRect(Math.floor(sx), Math.floor(sy - 9), 2, 2);
         }
 
-        if (this.isFrozen()) {
-            ctx.strokeStyle = 'rgba(120,220,255,0.9)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(x, y, r + 3, 0, Math.PI * 2);
-            ctx.stroke();
+        if (frozen) {
+            this._drawIceCover(ctx, x, y, r, scale, alpha);
         }
 
         if (!this.dying && this.hp < this.maxHp) {
@@ -477,6 +492,60 @@ class Monster {
             ctx.fillStyle = ratio > 0.5 ? '#68d070' : ratio > 0.25 ? '#f0c850' : '#e05840';
             ctx.fillRect(bx, by, w * ratio, h);
         }
+        ctx.restore();
+    }
+
+    _drawIceCover(ctx, x, y, r, scale, alpha) {
+        const pulse = 0.88 + Math.sin(Date.now() * 0.009) * 0.12;
+        const iceR = (r + 8) * pulse;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        const glow = ctx.createRadialGradient(x, y, 1, x, y, iceR);
+        glow.addColorStop(0, 'rgba(210, 245, 255, 0.92)');
+        glow.addColorStop(0.45, 'rgba(88, 175, 255, 0.72)');
+        glow.addColorStop(0.78, 'rgba(48, 120, 220, 0.45)');
+        glow.addColorStop(1, 'rgba(24, 72, 160, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, y, iceR, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.strokeStyle = 'rgba(200, 240, 255, 0.95)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(120, 200, 255, 0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.arc(x, y, r + 9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const px = Math.max(3, Math.round(scale * 0.9));
+        const shardColors = ['#e8ffff', '#b8f0ff', '#78d8ff', '#c8f8ff'];
+        const seed = Math.floor(this.id * 17.3);
+        for (let i = 0; i < 16; i++) {
+            const a = (i / 16) * Math.PI * 2 + seed * 0.1;
+            const distR = r * (0.35 + ((i * 7 + seed) % 5) * 0.12);
+            const sx = Math.floor(x + Math.cos(a) * distR);
+            const sy = Math.floor(y + Math.sin(a) * distR * 0.92);
+            ctx.fillStyle = shardColors[i % shardColors.length];
+            ctx.fillRect(sx - px, sy - px, px * 2, px * 2);
+            if (i % 3 === 0) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(sx, sy - 1, Math.max(2, px - 1), Math.max(2, px - 1));
+            }
+        }
+
+        ctx.fillStyle = 'rgba(160, 220, 255, 0.35)';
+        ctx.fillRect(x - r - 2, y - 2, (r + 2) * 2, 4);
+        ctx.fillRect(x - 2, y - r - 2, 4, (r + 2) * 2);
+
         ctx.restore();
     }
 
