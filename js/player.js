@@ -399,17 +399,22 @@ class Player {
     drawTriggerZone(ctx) {
         if (this.state === PlayerState.BULLET_TIME || this.state === PlayerState.ATTACKING) return;
         ctx.save();
-        ctx.strokeStyle = 'rgba(90, 110, 130, 0.42)';
-        ctx.setLineDash([6, 4]);
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(72, 168, 255, 0.88)';
+        ctx.setLineDash([7, 5]);
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(90, 110, 130, 0.08)';
+        ctx.fillStyle = 'rgba(72, 168, 255, 0.16)';
         ctx.beginPath();
         ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = 'rgba(160, 220, 255, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(this.homeX, this.homeY, this.triggerRadius - 2, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.restore();
     }
 
