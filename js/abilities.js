@@ -29,6 +29,7 @@ class AbilityManager {
         this.shurikens = [];
         this.resolveFxTimer = 0;
         this.lightningChain = null;
+        this.blackHoleSpawnedThisResolve = false;
     }
 
     reset() {
@@ -39,6 +40,7 @@ class AbilityManager {
         this.shurikens = [];
         this.resolveFxTimer = 0;
         this.lightningChain = null;
+        this.blackHoleSpawnedThisResolve = false;
     }
 
     _hasFlyingProjectiles() {
@@ -61,6 +63,7 @@ class AbilityManager {
     }
 
     onResolveStarted(attackPath) {
+        this.blackHoleSpawnedThisResolve = false;
         const p = this.game.player;
         if (!p || !attackPath || attackPath.length < 2) return;
 
@@ -115,8 +118,9 @@ class AbilityManager {
                 }
             }
         }
-        if (p.getUpgradeLevel('black_hole') > 0 && combo % 8 === 0) {
+        if (p.getUpgradeLevel('black_hole') > 0 && combo === 8 && !this.blackHoleSpawnedThisResolve) {
             this._spawnBlackHole(pos.x, pos.y);
+            this.blackHoleSpawnedThisResolve = true;
         }
         if (p.getUpgradeLevel('blade_whirl') > 0) {
             p.whirlCharge = (p.whirlCharge || 0) + 1;

@@ -54,7 +54,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '黑洞',
         icon: '🕳️',
-        desc: '连击每+8在攻击点生成黑洞',
+        desc: '连击达到8时在攻击点生成黑洞（每次攻击最多1个）',
         apply(player) {
             player.upgradeStacks.black_hole = (player.upgradeStacks.black_hole || 0) + 1;
         },
