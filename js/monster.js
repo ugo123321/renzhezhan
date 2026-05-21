@@ -234,6 +234,86 @@ class Monster {
         }
     }
 
+    _drawShieldPlate(ctx, x, y, r, alpha) {
+        const px = Math.max(2, Math.round(r / 4));
+        const facing = this.facing;
+        const dist = r + px * 2.5;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(x, y);
+        ctx.rotate(facing);
+        ctx.imageSmoothingEnabled = false;
+
+        const pattern = [
+            '..OOO..',
+            '.OOOOO.',
+            'OOOOOOO',
+            'OHHHHHO',
+            'OHHHHHO',
+            'OOOOOOO',
+            '.OOOOO.',
+            '..O.O..',
+            '...O...',
+        ];
+        const palette = {
+            O: ['#4a6888', '#8ab0d0', '#c8e0f8'],
+            H: ['#5a7898', '#a8c8e8', '#f0f8ff'],
+        };
+        const cols = pattern[0].length;
+        const rows = pattern.length;
+        const w = cols * px;
+        const h = rows * px;
+        const sx = Math.floor(dist - px);
+        const sy = Math.floor(-h / 2);
+
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+                const ch = pattern[row][col];
+                if (ch === '.') continue;
+                const colors = palette[ch] || palette.O;
+                const edge = row === 0 || col === 0 || col === cols - 1 || pattern[row][col - 1] === '.' || pattern[row][col + 1] === '.';
+                const hi = ch === 'H' && col >= 2 && col <= 4 && row >= 2 && row <= 4;
+                ctx.fillStyle = edge ? colors[0] : (hi ? colors[2] : colors[1]);
+                ctx.fillRect(sx + col * px, sy + row * px, px, px);
+            }
+        }
+
+        // 盾心十字
+        const cx = sx + Math.floor(w * 0.5) - px;
+        const cy = sy + Math.floor(h * 0.42);
+        ctx.fillStyle = '#3a5878';
+        ctx.fillRect(cx, cy - px * 2, px, px * 5);
+        ctx.fillRect(cx - px * 2, cy, px * 5, px);
+        ctx.fillStyle = '#e8f4ff';
+        ctx.fillRect(cx, cy - px, px, px * 3);
+        ctx.fillRect(cx - px, cy, px * 3, px);
+
+        // 朝向箭头（指向前方）
+        const ax = sx + w + px * 1.2;
+        const ay = sy + h * 0.5;
+        ctx.fillStyle = '#ffd060';
+        ctx.fillRect(Math.floor(ax), Math.floor(ay - px), px * 2, px * 2);
+        ctx.fillRect(Math.floor(ax + px * 2), Math.floor(ay - px * 0.5), px * 2, px);
+
+        ctx.restore();
+
+        // 前方格挡范围提示弧
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.28;
+        ctx.strokeStyle = '#78a8d8';
+        ctx.fillStyle = 'rgba(120, 168, 220, 0.12)';
+        ctx.lineWidth = Math.max(2, px * 0.6);
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.arc(x, y, r + px * 6, facing - Math.PI * 0.55, facing + Math.PI * 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
     takeDamage(rawDamage, hitAngle = null) {
         let blockedByShield = false;
         if (this.kind === MonsterKind.SHIELD && hitAngle !== null) {
@@ -335,16 +415,7 @@ class Monster {
         }
 
         if (this.kind === MonsterKind.SHIELD) {
-            const sx = x + Math.cos(this.facing) * (r + 2);
-            const sy = y + Math.sin(this.facing) * (r + 2);
-            ctx.strokeStyle = '#bfd8ee';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(x - Math.sin(this.facing) * r * 0.7, y + Math.cos(this.facing) * r * 0.7);
-            ctx.lineTo(x + Math.sin(this.facing) * r * 0.7, y - Math.cos(this.facing) * r * 0.7);
-            ctx.stroke();
-            ctx.fillStyle = '#d6e7f8';
-            ctx.fillRect(Math.floor(sx - 2), Math.floor(sy - 2), 4, 4);
+            this._drawShieldPlate(ctx, x, y, r, alpha);
         } else if (this.kind === MonsterKind.BERSERKER) {
             ctx.fillStyle = '#ff8a68';
             ctx.fillRect(x - 2, y - r - 4, 4, 4);

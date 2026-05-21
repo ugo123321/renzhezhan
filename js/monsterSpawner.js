@@ -139,6 +139,11 @@ class MonsterSpawner {
         return Math.max(0, Math.round((n || 0) * scale * mul));
     }
 
+    _scaledShieldCount(n) {
+        const mul = CONFIG.SHIELD_COUNT_MUL ?? 1;
+        return Math.max(0, Math.round(this._scaledCount(n) * mul));
+    }
+
     spawnStage(stageIndex, w, h, playBottom, safeZone, withSpawnAnim = false) {
         this.monsters = [];
         this._initSpawnClusters(w, h, playBottom, safeZone);
@@ -147,7 +152,7 @@ class MonsterSpawner {
         const stageStatScale = getStageStatScale(stageIndex);
         this._spawnBatch(MonsterKind.NORMAL, this._scaledCount(cfg.normal), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.ELITE, this._scaledCount(cfg.elite), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
-        this._spawnBatch(MonsterKind.SHIELD, this._scaledCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        this._spawnBatch(MonsterKind.SHIELD, this._scaledShieldCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.BERSERKER, this._scaledCount(cfg.berserker), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.SPLITTER, this._scaledCount(cfg.splitter), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         if (stageIndex >= 1) {

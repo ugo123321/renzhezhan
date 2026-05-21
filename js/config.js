@@ -91,6 +91,7 @@ const CONFIG = {
 
     STAGE_MONSTER_SCALE: 1.3,
     STAGE_COUNT_MUL: 2 / 3,
+    SHIELD_COUNT_MUL: 1 / 3,
 
     // 关卡递增：第 1 关系数 1.0，每往后一关 HP/DEF 按幂次增长
     STAGE_STAT_SCALE: {
