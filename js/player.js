@@ -227,7 +227,11 @@ class Player {
         return true;
     }
 
-    registerComboHit() {
+    registerComboHit(source = 'path') {
+        // 连击仅由画线冲刺的路径碰撞伤害叠加，技能/黑洞等特效伤害不得调用
+        if (source !== 'path') return this.comboCount;
+        if (!this.game?.combat?.isResolving()) return this.comboCount;
+
         const baseInc = this.getUpgradeLevel('dual_wield') > 0 ? 2 : 1;
         const inc = baseInc * this.turnBuffs.comboMult;
         this.comboCount += inc;

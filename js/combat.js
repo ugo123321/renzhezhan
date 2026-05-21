@@ -202,9 +202,6 @@ class CombatManager {
         this.game.particles.slashTrail(m.x, m.y, hitAngle);
         this.game.particles.slashTrail(p.x, p.y, dashAngle);
 
-        const combo = p.registerComboHit();
-        this.game.abilities.onResolveHit(hit, combo);
-
         const { damage, isCrit } = p.getDamage();
         const strike = m.takeDamage(damage, hitAngle);
 
@@ -213,13 +210,16 @@ class CombatManager {
             return;
         }
 
-        if (strike.actualDamage > 0) {
-            this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, strike.actualDamage, isCrit);
-            this.game.particles.hitSpark(m.x, m.y, isCrit);
-            this.game.renderer.shakeAttackHit(isCrit, combo);
-        }
+        if (strike.actualDamage <= 0) return;
 
-        if (m.kind === MonsterKind.BERSERKER && strike.actualDamage > 0) {
+        const combo = p.registerComboHit('path');
+        this.game.abilities.onResolveHit(hit, combo);
+
+        this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, strike.actualDamage, isCrit);
+        this.game.particles.hitSpark(m.x, m.y, isCrit);
+        this.game.renderer.shakeAttackHit(isCrit, combo);
+
+        if (m.kind === MonsterKind.BERSERKER) {
             const drain = m.base.kiDrainOnHit || 0;
             p.ki = Math.max(0, p.ki - drain);
         }

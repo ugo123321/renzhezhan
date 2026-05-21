@@ -166,7 +166,7 @@ const CONFIG = {
     // 火柱半径 ≈ 黑洞基础半径(82) 的一半
     FIRE_PILLAR: {
         RADIUS: 60,
-        WARNING_TIME: 1.5,
+        WARNING_TIME: 1.1,
         ACTIVE_TIME: 0.5,
         FADE_TIME: 0.3,
         DAMAGE: 16,
@@ -1561,7 +1561,11 @@ class Player {
         return true;
     }
 
-    registerComboHit() {
+    registerComboHit(source = 'path') {
+        // 连击仅由画线冲刺的路径碰撞伤害叠加，技能/黑洞等特效伤害不得调用
+        if (source !== 'path') return this.comboCount;
+        if (!this.game?.combat?.isResolving()) return this.comboCount;
+
         const baseInc = this.getUpgradeLevel('dual_wield') > 0 ? 2 : 1;
         const inc = baseInc * this.turnBuffs.comboMult;
         this.comboCount += inc;
@@ -5352,9 +5356,6 @@ class CombatManager {
         this.game.particles.slashTrail(m.x, m.y, hitAngle);
         this.game.particles.slashTrail(p.x, p.y, dashAngle);
 
-        const combo = p.registerComboHit();
-        this.game.abilities.onResolveHit(hit, combo);
-
         const { damage, isCrit } = p.getDamage();
         const strike = m.takeDamage(damage, hitAngle);
 
@@ -5363,13 +5364,16 @@ class CombatManager {
             return;
         }
 
-        if (strike.actualDamage > 0) {
-            this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, strike.actualDamage, isCrit);
-            this.game.particles.hitSpark(m.x, m.y, isCrit);
-            this.game.renderer.shakeAttackHit(isCrit, combo);
-        }
+        if (strike.actualDamage <= 0) return;
 
-        if (m.kind === MonsterKind.BERSERKER && strike.actualDamage > 0) {
+        const combo = p.registerComboHit('path');
+        this.game.abilities.onResolveHit(hit, combo);
+
+        this.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, strike.actualDamage, isCrit);
+        this.game.particles.hitSpark(m.x, m.y, isCrit);
+        this.game.renderer.shakeAttackHit(isCrit, combo);
+
+        if (m.kind === MonsterKind.BERSERKER) {
             const drain = m.base.kiDrainOnHit || 0;
             p.ki = Math.max(0, p.ki - drain);
         }
