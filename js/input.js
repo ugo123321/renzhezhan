@@ -1,116 +1,8 @@
-class VirtualJoystick {
-    constructor(game) {
-        this.game = game;
-        this.active = false;
-        this.baseX = 0;
-        this.baseY = 0;
-        this.stickOffsetX = 0;
-        this.stickOffsetY = 0;
-        this._syncDefaultBase();
-    }
-
-    _syncDefaultBase() {
-        const r = this.game.renderer;
-        const ui = this.game.ui;
-        const playBottom = ui.getPlayAreaBottom
-            ? ui.getPlayAreaBottom(r.h, r.uiScale)
-            : r.h;
-        const offset = (CONFIG.JOYSTICK.DEFAULT_BOTTOM_OFFSET || 72) * r.uiScale;
-        this.defaultX = r.w / 2;
-        this.defaultY = playBottom - offset;
-        if (!this.active) {
-            this.baseX = this.defaultX;
-            this.baseY = this.defaultY;
-        }
-    }
-
-    resetToDefault() {
-        this.active = false;
-        this.stickOffsetX = 0;
-        this.stickOffsetY = 0;
-        this._syncDefaultBase();
-    }
-
-    beginAt(clientX, clientY) {
-        this._syncDefaultBase();
-        const pos = this.game.renderer.screenToGame(clientX, clientY);
-        this.baseX = pos.x;
-        this.baseY = pos.y;
-        this.active = true;
-        this._updateStick(clientX, clientY);
-    }
-
-    move(clientX, clientY) {
-        if (!this.active) return;
-        this._updateStick(clientX, clientY);
-    }
-
-    end() {
-        this.resetToDefault();
-    }
-
-    _updateStick(clientX, clientY) {
-        const pos = this.game.renderer.screenToGame(clientX, clientY);
-        let dx = pos.x - this.baseX;
-        let dy = pos.y - this.baseY;
-        const max = CONFIG.JOYSTICK.MAX_OFFSET || 46;
-        const len = Math.hypot(dx, dy);
-        if (len > max) {
-            dx = (dx / len) * max;
-            dy = (dy / len) * max;
-        }
-        this.stickOffsetX = dx;
-        this.stickOffsetY = dy;
-    }
-
-    getDirection() {
-        const len = Math.hypot(this.stickOffsetX, this.stickOffsetY);
-        const dead = CONFIG.JOYSTICK.DEAD_ZONE || 10;
-        if (len < dead) return null;
-        return { x: this.stickOffsetX / len, y: this.stickOffsetY / len };
-    }
-
-    draw(ctx) {
-        this._syncDefaultBase();
-        const cfg = CONFIG.JOYSTICK;
-        const baseR = cfg.BASE_RADIUS || 52;
-        const stickR = cfg.STICK_RADIUS || 22;
-        const alpha = this.active ? 0.92 : 0.55;
-        const stickX = this.baseX + this.stickOffsetX;
-        const stickY = this.baseY + this.stickOffsetY;
-
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.35;
-        ctx.fillStyle = '#1a2430';
-        ctx.beginPath();
-        ctx.arc(this.baseX, this.baseY, baseR, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.globalAlpha = alpha * 0.55;
-        ctx.strokeStyle = '#8aa0b8';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(this.baseX, this.baseY, baseR, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = '#d8e4f0';
-        ctx.beginPath();
-        ctx.arc(stickX, stickY, stickR, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#5a7088';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.restore();
-    }
-}
-
 class InputManager {
     constructor(canvas, game) {
         this.canvas = canvas;
         this.game = game;
         this.isDrawing = false;
-        this.joystick = new VirtualJoystick(game);
 
         canvas.addEventListener('touchstart', (e) => this.onStart(e), { passive: false });
         canvas.addEventListener('touchmove', (e) => this.onMove(e), { passive: false });
@@ -128,18 +20,36 @@ class InputManager {
         return { clientX: e.clientX, clientY: e.clientY };
     }
 
+    getPos(e) {
+        const { clientX, clientY } = this._getClientPos(e);
+        return this.game.renderer.screenToGame(clientX, clientY);
+    }
+
     onStart(e) {
         if (this.game.state !== 'PLAYING') return;
         e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.IDLE) return;
+
+        const pos = this.getPos(e);
+        if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
+        if (dist(pos.x, pos.y, player.homeX, player.homeY) > player.triggerRadius) return;
         if (player.ki <= 0 || player.hp <= 0) return;
 
-        const { clientX, clientY } = this._getClientPos(e);
         this.isDrawing = true;
-        this.joystick.beginAt(clientX, clientY);
         this.game.enterBulletTime();
         player.startBulletTime();
+        player.addPathPoint(player.homeX, player.homeY);
+        player.addPathPoint(pos.x, pos.y);
+        this._checkPathOrbs(player);
+    }
+
+    _checkPathOrbs(player) {
+        const path = player.attackPath;
+        if (path.length < 2) return;
+        const from = path[path.length - 2];
+        const to = path[path.length - 1];
+        this.game.buffOrbs.checkPathSegment(from, to);
     }
 
     onMove(e) {
@@ -147,15 +57,26 @@ class InputManager {
         e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
-        const { clientX, clientY } = this._getClientPos(e);
-        this.joystick.move(clientX, clientY);
+        const pos = this.getPos(e);
+        if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
+        const last = player.attackPath[player.attackPath.length - 1];
+        if (!last) return;
+        const step = dist(last.x, last.y, pos.x, pos.y);
+        if (step < 2) return;
+
+        if (!player.consumeKiByDistance(step)) {
+            this.isDrawing = false;
+            this.game.exitBulletTime(false);
+            return;
+        }
+        player.addPathPoint(pos.x, pos.y);
+        this._checkPathOrbs(player);
     }
 
     onEnd(e) {
         if (!this.isDrawing) return;
         if (e) e.preventDefault();
         this.isDrawing = false;
-        this.joystick.end();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
         if (player.attackPath.length < 2) {
@@ -168,7 +89,6 @@ class InputManager {
 
     cancelActivePointer() {
         this.isDrawing = false;
-        this.joystick.resetToDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
         this.game.timeScale = CONFIG.NORMAL_TIME_SCALE;

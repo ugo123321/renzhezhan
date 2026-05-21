@@ -98,8 +98,9 @@ class StageFailAnimator {
     update(dt) {
         if (!this.active) return;
         const cfg = CONFIG.FAIL_DEATH;
+        const speed = cfg.PLAYBACK_SPEED || 1;
         const p = this.game.player;
-        this.timer += dt;
+        this.timer += dt * speed;
 
         if (this.phase === 'windup') {
             if (this.timer >= cfg.WINDUP) {

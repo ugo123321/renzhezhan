@@ -55,6 +55,7 @@ class ExperienceManager {
         const game = this.game;
         if (game.input) game.input.cancelActivePointer();
         game.state = 'LEVEL_UP';
+        game._pauseForUpgrade();
         game.upgrades.generateChoices();
         game._lockOverlayInput();
         game.audio.playLevelUp();

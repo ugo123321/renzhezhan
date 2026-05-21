@@ -75,6 +75,15 @@ function shuffleArray(arr) {
     return a;
 }
 
+function getStageStatScale(stageIndex) {
+    const cfg = CONFIG.STAGE_STAT_SCALE || {};
+    const idx = Math.max(0, stageIndex | 0);
+    return {
+        hp: Math.pow(cfg.HP_GROWTH || 1.1, idx),
+        def: Math.pow(cfg.DEF_GROWTH || 1.08, idx),
+    };
+}
+
 
 // ---- config.js ----
 const CONFIG = {
@@ -94,21 +103,23 @@ const CONFIG = {
         SPEAR_SPEED: 640,
         IMPACT_PAUSE: 0.24,
         DEATH_DURATION: 0.9,
+        PLAYBACK_SPEED: 2,
     },
     NORMAL_TIME_SCALE: 1.0,
 
     COMBAT_RESOLVE: {
-        FIRST_HIT_DELAY: 0.08,
-        HIT_INTERVAL: 0.048,
-        AFTERIMAGE_LIFE: 0.14,
-        DEATH_STAGGER: 0.07,
+        FIRST_HIT_DELAY: 0.04,
+        HIT_INTERVAL: 0.012,
+        AFTERIMAGE_LIFE: 0.1,
+        DEATH_STAGGER: 0.012,
     },
 
-    MONSTER_DEATH_FADE: 0.24,
+    MONSTER_DEATH_FADE: 0.1,
 
     DISPLAY: {
         LOGICAL_WIDTH: 390,
         LOGICAL_HEIGHT: 700,
+        UNIT_SCALE: 1.3,
         NINJA_SPRITE_SCALE: 3,
         GRID_SIZE: 28,
     },
@@ -120,31 +131,21 @@ const CONFIG = {
         BASE_CRIT_RATE: 0.08,
         BASE_CRIT_DAMAGE: 1.6,
         ATTACK_SPEED: 2300,
-        DRAW_SPEED: 520,
         HITBOX_RADIUS: 12,
-        SPAWN_SAFE_RADIUS: 40,
+        TRIGGER_RADIUS_RATIO: 0.06,
+        TRIGGER_RADIUS_MIN: 30,
         KI_PER_PIXEL: 0.18,
         SIZE_SCALE: 1.0,
         INVINCIBLE_TIME: 0.45,
-        COMBO_DAMAGE_BONUS: 0.10,
+        DAMAGE_FLASH_TIME: 0.42,
+        COMBO_DAMAGE_BONUS: 0.01,
         COMBO_DISPLAY_HOLD: 0.6,
         COMBO_END_FADE: 0.4,
         COMBO_TEXT_BASE: 30,
         COMBO_TEXT_GROW: 1.4,
         COMBO_TEXT_MAX_GROW: 22,
         COMBO_SHAKE_DURATION: 0.24,
-    },
-
-    JOYSTICK: {
-        BASE_RADIUS: 52,
-        STICK_RADIUS: 22,
-        MAX_OFFSET: 46,
-        DEAD_ZONE: 10,
-        DEFAULT_BOTTOM_OFFSET: 72,
-    },
-
-    TURN: {
-        BASE_TURNS: 8,
+        KI_REGEN_RATE: 104,
     },
 
     EXP: {
@@ -152,25 +153,46 @@ const CONFIG = {
         GROWTH: 1.22,
         BAR_HEIGHT: 24,
         KILL_REWARD: {
-            NORMAL: 5,
-            ELITE: 8,
-            SHIELD: 7,
-            BERSERKER: 9,
-            SPLITTER: 6,
+            NORMAL: 2,
+            ELITE: 4,
+            SHIELD: 3,
+            BERSERKER: 4,
+            SPLITTER: 3,
+            ARCHER: 3,
         },
+    },
+
+    ARROW: {
+        RADIUS: 6,
+        SPEED: 85,
     },
 
     STAGE_MONSTER_SCALE: 1.3,
 
+    // 关卡递增：第 1 关系数 1.0，每往后一关 HP/DEF 按幂次增长
+    STAGE_STAT_SCALE: {
+        HP_GROWTH: 1.8,
+        DEF_GROWTH: 1.8,
+    },
+
+    SPAWN: {
+        MIN_DIST_FROM_PLAYER: 100,
+        MIN_MONSTER_SPACING: 20,
+        CLUSTER_COUNT_MIN: 5,
+        CLUSTER_COUNT_MAX: 9,
+        CLUSTER_PICK_CHANCE: 0.74,
+        SPARSE_PICK_CHANCE: 0.26,
+    },
+
     STAGES: [
-        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0 },
-        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0 },
-        { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0 },
-        { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0 },
-        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0 },
-        { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0 },
-        { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0 },
-        { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0 },
+        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 8 },
+        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10 },
+        { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0, archer: 12 },
+        { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0, archer: 14 },
+        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0, archer: 16 },
+        { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0, archer: 18 },
+        { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0, archer: 20 },
+        { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0, archer: 22 },
     ],
 
     MONSTERS: {
@@ -237,6 +259,21 @@ const CONFIG = {
             maxSplitTier: 3,
             splitCount: 2,
         },
+        ARCHER: {
+            name: '射箭怪',
+            hp: 75,
+            def: 3,
+            attack: 12,
+            attackInterval: 1.35,
+            attackRange: 215,
+            arrowSpeed: 85,
+            size: 12,
+            speed: 17,
+            color: '#6a8a5a',
+            grade: 'B',
+            canMove: true,
+            ranged: true,
+        },
     },
 
     BUFF_ORB: {
@@ -275,86 +312,88 @@ const SPRITES = {
     ninja: {
         idle: [
             [
-                [_, _, _, '#333', '#333', _, _, '#543', '#ccc'],
-                [_, _, '#333', '#222', '#222', '#333', _, '#aaa', '#ddd'],
-                [_, _, '#333', '#fff', '#fff', '#333', '#543', '#ccc', '#eee'],
-                [_, _, _, '#333', '#333', _, _, '#ccc', '#ddd'],
-                [_, _, '#555', '#224', '#224', '#555', _, '#aaa', '#ccc'],
-                [_, '#555', '#224', '#224', '#224', '#224', '#555', '#ccc', '#ddd'],
-                [_, _, '#224', '#224', '#224', '#224', _, '#eee', _],
-                [_, _, '#224', _, _, '#224', _, '#ddd', _],
-                [_, _, '#333', _, _, '#333', _, _, _],
-                [_, _, '#444', _, _, '#444', _, _, _],
+                [_, _, '#1a1410', '#2a2218', '#1a1410', _, _, _, _, _],
+                [_, '#1a1410', '#2a2218', '#3a3028', '#2a2218', '#1a1410', _, _, _, _],
+                [_, '#2a2218', '#ffffff', '#ffffff', '#2a2218', '#3a3028', _, _, _, _],
+                ['#2a2218', '#1a1410', '#4898c8', '#2a6898', '#4898c8', '#2a2218', _, _, _, _],
+                ['#788088', '#a8b0b8', '#c89878', '#a87858', '#c89878', '#3a3028', _, _, _, _],
+                ['#98a8b0', '#788088', '#c89878', '#b88860', '#987048', '#4a3828', _, _, _, _],
+                [_, '#7a5830', '#7a5830', '#2a2448', '#343060', '#3a3870', '#4a3828', _, _, _],
+                [_, _, '#2a2448', '#343060', '#343060', '#2a2448', _, _, _, _],
+                [_, '#343060', _, _, _, '#343060', _, _, _, _],
+                [_, '#252525', _, _, _, '#252525', _, _, _, _],
             ],
             [
-                [_, _, _, '#333', '#333', _, _, '#543', '#ccc'],
-                [_, _, '#333', '#222', '#222', '#333', _, '#ccc', '#eee'],
-                [_, _, '#333', '#fff', '#fff', '#333', '#543', '#ddd', '#fff'],
-                [_, _, _, '#333', '#333', _, _, '#bbb', '#ddd'],
-                [_, _, '#555', '#224', '#224', '#555', _, '#aaa', '#ccc'],
-                [_, '#555', '#224', '#224', '#224', '#224', '#555', '#ccc', '#eee'],
-                [_, _, '#224', '#224', '#224', '#224', _, _, _],
-                [_, _, '#444', _, _, '#444', _, '#ccc', _],
-                [_, _, '#333', _, _, '#333', _, _, _],
-                [_, _, '#444', _, _, '#333', _, _, _],
+                [_, _, _, '#2a2218', '#1a1410', _, _, _, _, _],
+                [_, _, '#1a1410', '#3a3028', '#2a2218', '#1a1410', _, _, _, _],
+                [_, '#2a2218', '#ffffff', '#ffffff', '#2a2218', '#2a2218', _, _, _, _],
+                ['#3a3028', '#2a2218', '#58a8d8', '#4898c8', '#58a8d8', '#1a1410', _, _, _, _],
+                ['#889098', '#b8c0c8', '#d4a878', '#b88860', '#c89878', '#3a3028', _, _, _, _],
+                ['#a8b0b8', '#889098', '#c89878', '#a87858', '#987048', '#4a3828', _, _, _, _],
+                [_, '#8a6840', '#7a5830', '#343060', '#2a2448', '#3a3870', '#4a3828', _, _, _],
+                [_, _, '#343060', '#2a2448', '#343060', '#343060', _, _, _, _],
+                [_, '#343060', _, _, _, '#2a2448', _, _, _, _],
+                [_, '#333333', _, _, _, '#252525', _, _, _, _],
             ],
         ],
         attack: [
             [
-                [_, _, '#333', '#333', _, _, _, _, '#543', '#aaa'],
-                [_, _, '#333', '#222', '#222', '#333', _, '#543', '#ccc'],
-                [_, _, '#333', '#fff', '#fff', '#333', '#543', '#ccc', '#eee'],
-                [_, _, _, '#333', '#333', _, '#543', '#ddd', '#fff'],
-                [_, _, '#224', '#224', '#224', '#224', '#ccc', '#eee', '#fff'],
-                [_, _, '#224', '#224', '#224', '#224', '#ddd', '#fff', _],
-                [_, _, '#224', '#224', '#224', '#224', _, _, _],
-                [_, _, '#224', _, _, '#224', _, _, _],
-                [_, _, '#333', _, _, '#333', _, _, _],
+                [_, _, '#1a1410', '#2a2218', '#1a1410', _, _, _, _, _],
+                [_, '#1a1410', '#2a2218', '#3a3028', '#2a2218', '#1a1410', _, _, _, _],
+                [_, '#2a2218', '#ffffff', '#ffffff', '#2a2218', '#3a3028', _, _, '#889098', '#b8c0c8'],
+                ['#2a2218', '#1a1410', '#4898c8', '#2a6898', '#4898c8', '#2a2218', _, '#788088', '#d8e0e8', '#eef4ff'],
+                ['#788088', '#a8b0b8', '#c89878', '#a87858', '#c89878', '#3a3028', _, '#909898', '#d8e0e8', '#ffffff'],
+                ['#98a8b0', '#788088', '#c89878', '#b88860', '#987048', '#4a3828', _, '#788088', '#c8d0d8', _],
+                [_, '#7a5830', '#7a5830', '#2a2448', '#343060', '#3a3870', '#4a3828', _, _, _],
+                [_, _, '#2a2448', '#343060', '#343060', '#2a2448', _, _, _, _],
+                [_, '#343060', _, _, _, '#343060', _, _, _, _],
             ],
             [
-                [_, _, _, '#333', '#333', _, _, _, _, '#543', '#ccc', '#ddd', '#eee'],
-                [_, _, '#333', '#222', '#222', '#333', _, _, '#aaa', '#ccc', '#ddd', '#fff'],
-                [_, _, '#333', '#fff', '#fff', '#333', _, '#543', '#ccc', '#ddd', '#eee'],
-                [_, _, _, '#333', '#333', _, _, '#543', '#ccc', '#ddd', '#fff'],
-                [_, _, '#224', '#224', '#224', '#224', '#ccc', '#eee', '#fff', '#fff', _],
-                [_, _, '#224', '#224', '#224', '#224', '#ddd', '#fff', '#cef', _],
-                [_, _, '#224', '#224', '#224', '#224', _, _, _, _],
-                [_, _, '#224', _, _, '#224', _, _, _],
-                [_, _, '#444', _, _, '#444', _, _, _],
+                [_, _, _, '#1a1410', '#2a2218', _, _, _, _, '#788088', '#a8b0b8', '#d8e0e8', '#eef4ff'],
+                [_, _, '#1a1410', '#2a2218', '#3a3028', '#2a2218', _, _, '#889098', '#c8d0d8', '#ffffff', '#eef4ff'],
+                [_, '#2a2218', '#ffffff', '#ffffff', '#2a2218', '#3a3028', _, '#788088', '#d8e0e8', '#ffffff', '#eef4ff'],
+                [_, '#2a2218', '#4898c8', '#2a6898', '#4898c8', '#2a2218', '#788088', '#a8b0b8', '#d8e0e8', '#ffffff', _],
+                [_, '#788088', '#c89878', '#a87858', '#c89878', '#3a3028', '#909898', '#d8e0e8', '#ffffff', '#eef4ff', _],
+                [_, '#889098', '#c89878', '#b88860', '#987048', '#4a3828', _, '#b8c0c8', '#eef4ff', _, _],
+                [_, _, '#7a5830', '#2a2448', '#343060', '#3a3870', '#4a3828', _, _, _, _],
+                [_, _, '#343060', '#343060', '#2a2448', '#343060', _, _, _, _],
+                [_, '#343060', _, _, _, '#343060', _, _, _, _],
+                [_, '#252525', _, _, _, '#252525', _, _, _, _],
             ],
             [
-                [_, _, _, '#333', '#333', _, _, _, '#eee', '#fff', '#cef', '#adf'],
-                [_, _, '#333', '#222', '#222', '#333', _, _, '#ddd', '#fff', '#cef', _],
-                [_, _, '#333', '#fff', '#fff', '#333', _, '#543', '#ccc', '#eee', _],
-                [_, _, _, '#333', '#333', _, _, '#ccc', '#ddd', '#fff', _],
-                [_, _, '#224', '#224', '#224', '#224', '#aaa', '#cef', '#fff', _],
-                [_, _, '#224', '#224', '#224', '#224', _, _, _],
-                [_, _, '#224', _, _, '#224', _, _, _],
-                [_, _, '#333', _, _, '#333', _, _, _],
+                [_, _, '#1a1410', '#2a2218', _, _, '#909898', '#d8e0e8', '#ffffff', '#cef0ff'],
+                [_, '#1a1410', '#2a2218', '#3a3028', '#2a2218', _, '#788088', '#c8d0d8', '#eef4ff', _],
+                [_, '#2a2218', '#ffffff', '#ffffff', '#2a2218', '#788088', '#a8b0b8', '#d8e0e8', _, _],
+                ['#2a2218', '#4898c8', '#2a6898', '#4898c8', '#889098', '#b8c0c8', '#d8e0e8', _, _, _],
+                ['#788088', '#c89878', '#a87858', '#c89878', '#909898', '#d8e0e8', '#ffffff', _, _, _],
+                [_, '#c89878', '#b88860', '#987048', '#4a3828', _, _, _, _, _],
+                [_, '#7a5830', '#2a2448', '#343060', '#3a3870', _, _, _, _, _],
+                [_, '#343060', _, _, '#343060', _, _, _, _, _],
+                [_, '#252525', _, _, '#252525', _, _, _, _, _],
             ],
         ],
         run: [
             [
-                [_, _, _, '#333', '#333', _, _, '#543', '#ccc'],
-                [_, _, '#333', '#222', '#222', '#333', _, '#ccc', '#eee'],
-                [_, _, '#333', '#fff', '#fff', '#333', '#543', '#ddd', '#fff'],
-                [_, _, _, '#333', '#333', _, _, '#bbb', '#ddd'],
-                [_, _, '#555', '#224', '#224', '#555', _, '#aaa', '#ccc'],
-                [_, '#555', '#224', '#224', '#224', '#224', '#555', '#ccc', '#eee'],
-                [_, _, '#224', '#224', _, '#224', '#224', _, _],
-                [_, _, '#333', '#224', '#224', '#333', _, _, _],
-                [_, _, '#444', _, _, '#444', _, _, _],
+                [_, _, '#1a1410', '#2a2218', '#1a1410', _, _, _, _, _],
+                [_, '#1a1410', '#2a2218', '#3a3028', '#2a2218', '#1a1410', _, _, _, _],
+                [_, '#2a2218', '#ffffff', '#ffffff', '#2a2218', '#3a3028', _, _, _, _],
+                ['#2a2218', '#1a1410', '#4898c8', '#2a6898', '#4898c8', '#2a2218', _, _, _, _],
+                ['#788088', '#a8b0b8', '#c89878', '#a87858', '#c89878', '#3a3028', _, _, _, _],
+                ['#98a8b0', '#788088', '#c89878', '#b88860', '#987048', '#4a3828', _, _, _, _],
+                [_, '#7a5830', '#7a5830', '#2a2448', '#343060', '#343060', '#2a2448', _, _, _],
+                [_, _, '#343060', '#343060', _, '#2a2448', '#343060', _, _, _],
+                [_, '#343060', '#343060', _, _, '#252525', '#252525', _, _, _],
             ],
             [
-                [_, _, _, '#333', '#333', _, _, '#543', '#ccc'],
-                [_, _, '#333', '#222', '#222', '#333', _, '#aaa', '#ddd'],
-                [_, _, '#333', '#fff', '#fff', '#333', '#543', '#ccc', '#eee'],
-                [_, _, _, '#333', '#333', _, _, '#ccc', '#ddd'],
-                [_, _, '#555', '#224', '#224', '#555', _, '#aaa', '#ccc'],
-                [_, '#555', '#224', '#224', '#224', '#224', '#555', '#ddd', '#fff'],
-                [_, _, '#224', _, '#224', '#224', '#224', _, _],
-                [_, _, '#444', _, _, '#444', _, _, _],
-                [_, _, '#333', _, _, '#333', _, _, _],
+                [_, _, '#1a1410', '#2a2218', '#1a1410', _, _, _, _, _],
+                [_, '#1a1410', '#2a2218', '#3a3028', '#2a2218', '#1a1410', _, _, _, _],
+                [_, '#2a2218', '#ffffff', '#ffffff', '#2a2218', '#3a3028', _, _, _, _],
+                ['#2a2218', '#1a1410', '#4898c8', '#2a6898', '#4898c8', '#2a2218', _, _, _, _],
+                ['#788088', '#a8b0b8', '#c89878', '#a87858', '#c89878', '#3a3028', _, _, _, _],
+                ['#98a8b0', '#788088', '#c89878', '#b88860', '#987048', '#4a3828', _, _, _, _],
+                [_, '#7a5830', '#7a5830', '#2a2448', _, '#343060', '#343060', '#2a2448', _, _],
+                [_, _, '#2a2448', _, '#343060', '#343060', _, _, _, _],
+                [_, '#252525', _, _, _, '#343060', _, _, _, _],
             ],
         ],
     },
@@ -1204,17 +1243,25 @@ class Renderer {
     }
 
     updateShake(dt) {
-        if (this.shakeTimer > 0) {
-            this.shakeTimer -= dt;
-            const intensity = this.shakeTimer / this.shakeDur;
-            this.shakeX = (Math.random() - 0.5) * 2 * this.shakeMag * intensity;
-            this.shakeY = (Math.random() - 0.5) * 2 * this.shakeMag * intensity;
-            if (this.shakeTimer <= 0) {
-                this.shakeX = 0;
-                this.shakeY = 0;
-                this.shakeMag = 0;
-            }
+        if (this.shakeTimer <= 0) return;
+        if (dt <= 0) return;
+        this.shakeTimer -= dt;
+        const intensity = this.shakeTimer / this.shakeDur;
+        this.shakeX = (Math.random() - 0.5) * 2 * this.shakeMag * intensity;
+        this.shakeY = (Math.random() - 0.5) * 2 * this.shakeMag * intensity;
+        if (this.shakeTimer <= 0) {
+            this.shakeX = 0;
+            this.shakeY = 0;
+            this.shakeMag = 0;
         }
+    }
+
+    clearShake() {
+        this.shakeX = 0;
+        this.shakeY = 0;
+        this.shakeMag = 0;
+        this.shakeDur = 0;
+        this.shakeTimer = 0;
     }
 
     clear() {
@@ -1305,8 +1352,10 @@ class Player {
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment = new Set();
+        this.hitProjectilesInSegment = new Set();
         this.invalidPathTimer = 0;
         this.kiAtDrawStart = this.ki;
+        this.damageFlashTimer = 0;
 
         this.turnBuffs = {
             attackMult: 1,
@@ -1323,15 +1372,29 @@ class Player {
     }
 
     get effectiveRadius() {
-        return CONFIG.PLAYER.HITBOX_RADIUS * this.sizeScale;
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        return CONFIG.PLAYER.HITBOX_RADIUS * this.sizeScale * unit;
+    }
+
+    get triggerRadius() {
+        const refW = CONFIG.DISPLAY.LOGICAL_WIDTH;
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        const minR = CONFIG.PLAYER.TRIGGER_RADIUS_MIN || 30;
+        const base = Math.max(minR, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
+        return base * this.sizeScale * unit;
     }
 
     get spriteScale() {
-        return CONFIG.DISPLAY.NINJA_SPRITE_SCALE * this.sizeScale;
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        return CONFIG.DISPLAY.NINJA_SPRITE_SCALE * this.sizeScale * unit;
     }
 
     isInAttackMode() {
         return this.state === PlayerState.ATTACKING;
+    }
+
+    isAttackInvincible() {
+        return this.isInAttackMode();
     }
 
     resetLineBuffs() {
@@ -1341,13 +1404,14 @@ class Player {
         this.turnBuffs.iceReady = false;
     }
 
-    beginTurn() {
+    beginStage() {
         this.deathAnim = null;
         this.state = PlayerState.IDLE;
         this.attackPath = [];
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
         this.invalidPathTimer = 0;
         this.comboCount = 0;
         this.comboDisplayPeak = 0;
@@ -1356,6 +1420,7 @@ class Player {
         this.waterTornadoCharge = 0;
         this.drawSessionSnapshot = null;
         this.invincibleTimer = 0;
+        this.damageFlashTimer = 0;
         this.hp = this.maxHp;
         if (this.game && this.game.buffOrbs) {
             this.game.buffOrbs.drawSessionEaten = [];
@@ -1367,11 +1432,53 @@ class Player {
         this.nextTurnKiBonus = 0;
     }
 
+    finishAttackCycle() {
+        this.state = PlayerState.IDLE;
+        this.attackPath = [];
+        this.pathIndex = 0;
+        this.pathProgress = 0;
+        this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
+        this.invalidPathTimer = 0;
+        this.comboCount = 0;
+        this.comboDisplayPeak = 0;
+        this.comboDisplayTimer = 0;
+        this.comboShakeTimer = 0;
+        this.waterTornadoCharge = 0;
+        this.drawSessionSnapshot = null;
+        if (this.game && this.game.buffOrbs) {
+            this.game.buffOrbs.drawSessionEaten = [];
+        }
+        this.resetLineBuffs();
+        const turnKiMax = Math.round(this.baseKi * (1 + this.nextTurnKiBonus));
+        this.kiMax = Math.max(20, turnKiMax);
+        this.ki = Math.min(this.ki, this.kiMax);
+        this.nextTurnKiBonus = 0;
+    }
+    _canRegenKi() {
+        if (this.state !== PlayerState.IDLE || this.ki >= this.kiMax) return false;
+        if (!this.game || !this.game.combat) return false;
+        if (this.game.combat.isResolving()) return false;
+        if (!this.game.combat.roundAttackResolved) return false;
+        if (this.game.isUpgradeBlocked()) return false;
+        return true;
+    }
+
+    _updateKiRegen(realDt) {
+        if (!this._canRegenKi()) return;
+        const rate = CONFIG.PLAYER.KI_REGEN_RATE || 52;
+        this.ki = Math.min(this.kiMax, this.ki + rate * realDt);
+    }
+
     takeDamage(rawDamage) {
-        if (this.invincibleTimer > 0 || this.hp <= 0) return 0;
+        if (this.isAttackInvincible() || this.invincibleTimer > 0 || this.hp <= 0) return 0;
         const actual = Math.max(1, Math.round(rawDamage));
         this.hp = Math.max(0, this.hp - actual);
         this.invincibleTimer = CONFIG.PLAYER.INVINCIBLE_TIME || 0.45;
+        this.damageFlashTimer = CONFIG.PLAYER.DAMAGE_FLASH_TIME || 0.42;
+        if (this.game && this.game.renderer) {
+            this.game.renderer.shake(4, 0.12);
+        }
         if (this.hp <= 0 && this.game) {
             this.game._playerDied();
         }
@@ -1385,6 +1492,7 @@ class Player {
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
         this.queueMessage('路径无效');
     }
 
@@ -1398,41 +1506,16 @@ class Player {
         this.state = PlayerState.BULLET_TIME;
         if (this.game && this.game.buffOrbs) this.game.buffOrbs.beginDrawSession();
         this.invalidPathTimer = 0;
-        this.attackPath = [{ x: this.x, y: this.y }];
+        this.attackPath = [];
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
     }
 
     addPathPoint(x, y) {
         const last = this.attackPath[this.attackPath.length - 1];
-        if (!last || dist(last.x, last.y, x, y) > 2) this.attackPath.push({ x, y });
-    }
-
-    extendPathByDirection(dir, step) {
-        if (!dir || step <= 0) return false;
-        const last = this.attackPath[this.attackPath.length - 1];
-        if (!last) return false;
-        const r = this.game.renderer;
-        const playBottom = this.game.ui.getPlayAreaBottom
-            ? this.game.ui.getPlayAreaBottom(r.h, r.uiScale)
-            : r.h;
-        const margin = 16;
-        const top = 84;
-        let nx = last.x + dir.x * step;
-        let ny = last.y + dir.y * step;
-        nx = clamp(nx, margin, r.w - margin);
-        ny = clamp(ny, top, playBottom - margin);
-        const actualStep = dist(last.x, last.y, nx, ny);
-        if (actualStep < 0.5) return false;
-        if (!this.consumeKiByDistance(actualStep)) return false;
-        this.addPathPoint(nx, ny);
-        if (this.game && this.game.buffOrbs && this.attackPath.length >= 2) {
-            const from = this.attackPath[this.attackPath.length - 2];
-            const to = this.attackPath[this.attackPath.length - 1];
-            this.game.buffOrbs.checkPathSegment(from, to);
-        }
-        return true;
+        if (!last || dist(last.x, last.y, x, y) > 4) this.attackPath.push({ x, y });
     }
 
     startAttack() {
@@ -1446,6 +1529,7 @@ class Player {
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
         this.comboCount = 0;
         this.comboDisplayPeak = 0;
         this.comboDisplayTimer = 0;
@@ -1471,6 +1555,25 @@ class Player {
         return { x: this.homeX, y: this.homeY };
     }
 
+    _layoutShadowClones() {
+        const total = this.shadowClones.length;
+        if (total <= 0) return;
+
+        let idx = 0;
+        let ring = 0;
+        while (idx < total) {
+            const onRing = Math.min(4 + ring * 2, total - idx);
+            const radius = 24 + ring * 20;
+            const ringOffset = ring * 0.38;
+            for (let slot = 0; slot < onRing; slot++, idx++) {
+                const angle = ringOffset + (slot / onRing) * Math.PI * 2;
+                this.shadowClones[idx].ox = Math.cos(angle) * radius;
+                this.shadowClones[idx].oy = Math.sin(angle) * radius;
+            }
+            ring++;
+        }
+    }
+
     _syncShadowClones() {
         if (!this.shadowClones.length) return;
         const anchor = this._getShadowCloneAnchor();
@@ -1483,14 +1586,9 @@ class Player {
     addShadowClones(count) {
         if (count <= 0) return;
         for (let i = 0; i < count; i++) {
-            const idx = this.shadowClones.length;
-            const side = idx % 2 === 0 ? -1 : 1;
-            const tier = Math.floor(idx / 2);
-            this.shadowClones.push({
-                ox: side * (18 + tier * 14),
-                oy: -10 - tier * 4,
-            });
+            this.shadowClones.push({ ox: 0, oy: 0 });
         }
+        this._layoutShadowClones();
         this._syncShadowClones();
     }
 
@@ -1537,6 +1635,7 @@ class Player {
 
     update(dt, realDt) {
         if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
+        if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
         if (this.messageTimer > 0) this.messageTimer -= dt;
         if (this.invalidPathTimer > 0) {
             this.invalidPathTimer -= dt;
@@ -1553,28 +1652,9 @@ class Player {
             this.comboShakeTimer = Math.max(0, this.comboShakeTimer - dt);
         }
 
-        if (this.state === PlayerState.BULLET_TIME) this._updateDraw(realDt || dt);
-        else if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
+        if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
+        this._updateKiRegen(realDt || dt);
         this._syncShadowClones();
-    }
-
-    _updateDraw(realDt) {
-        const input = this.game && this.game.input;
-        if (!input || !input.joystick) return;
-        const dir = input.joystick.getDirection();
-        if (!dir) return;
-        const step = CONFIG.PLAYER.DRAW_SPEED * realDt;
-        const ok = this.extendPathByDirection(dir, step);
-        if (!ok && this.ki <= 0) {
-            input.isDrawing = false;
-            input.joystick.end();
-            if (this.attackPath.length >= 2) {
-                this.game.exitBulletTime(false);
-            } else {
-                this.game.exitBulletTime(true);
-                this.invalidatePath();
-            }
-        }
     }
 
     _finishAttackAtPathEnd() {
@@ -1615,6 +1695,7 @@ class Player {
                 this.pathIndex++;
                 this.pathProgress = 0;
                 this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
             } else {
                 this.pathProgress += remaining / segment;
                 this.x = lerp(from.x, to.x, this.pathProgress);
@@ -1625,6 +1706,23 @@ class Player {
         if (this.pathIndex >= this.attackPath.length - 1) {
             this._finishAttackAtPathEnd();
         }
+    }
+
+    drawTriggerZone(ctx) {
+        if (this.state === PlayerState.BULLET_TIME || this.state === PlayerState.ATTACKING) return;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(90, 110, 130, 0.42)';
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(90, 110, 130, 0.08)';
+        ctx.beginPath();
+        ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     drawPath(ctx) {
@@ -1704,16 +1802,20 @@ class Player {
             return;
         }
 
-        const blink = this.invincibleTimer > 0 && Math.floor(this.invincibleTimer * 18) % 2 === 0;
-
-        ctx.save();
-        if (blink) ctx.globalAlpha = 0.55;
+        const blink = this.invincibleTimer > 0
+            && this.damageFlashTimer <= 0
+            && Math.floor(this.invincibleTimer * 18) % 2 === 0;
+        const damageFlashOn = this.damageFlashTimer > 0
+            && Math.floor(this.damageFlashTimer * 22) % 2 === 0;
+        const px = Math.floor(this.x);
+        const py = Math.floor(this.y);
 
         const sprite = this.state === PlayerState.ATTACKING
             ? SPRITES.ninja.attack[Math.floor(Date.now() / 80) % SPRITES.ninja.attack.length]
             : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
-        drawSprite(ctx, sprite, Math.floor(this.x), Math.floor(this.y), this.spriteScale);
-        ctx.restore();
+        const alpha = blink ? 0.55 : 1;
+        const tint = damageFlashOn ? 0.72 : 0;
+        drawSprite(ctx, sprite, px, py, this.spriteScale, alpha, false, tint);
 
         this._drawHpBar(ctx);
 
@@ -1747,23 +1849,28 @@ const MonsterKind = {
     SHIELD: 'SHIELD',
     BERSERKER: 'BERSERKER',
     SPLITTER: 'SPLITTER',
+    ARCHER: 'ARCHER',
 };
 
 let nextMonsterId = 1;
 
 class Monster {
-    constructor(x, y, kind, splitTier = 0) {
+    constructor(x, y, kind, splitTier = 0, stageStatScale = null) {
         this.game = null;
         this.id = nextMonsterId++;
         this.kind = kind;
         this.splitTier = splitTier;
         this.base = CONFIG.MONSTERS[kind];
+        this.stageStatScale = stageStatScale || { hp: 1, def: 1 };
 
         const splitScale = kind === MonsterKind.SPLITTER ? Math.pow(0.72, splitTier) : 1;
-        this.maxHp = Math.max(8, Math.round(this.base.hp * (kind === MonsterKind.SPLITTER ? Math.pow(0.66, splitTier) : 1)));
+        const hpMul = (kind === MonsterKind.SPLITTER ? Math.pow(0.66, splitTier) : 1) * this.stageStatScale.hp;
+        const defMul = (kind === MonsterKind.SPLITTER ? Math.pow(0.86, splitTier) : 1) * this.stageStatScale.def;
+        this.maxHp = Math.max(8, Math.round(this.base.hp * hpMul));
         this.hp = this.maxHp;
-        this.def = Math.max(0, Math.round(this.base.def * (kind === MonsterKind.SPLITTER ? Math.pow(0.86, splitTier) : 1)));
-        this.size = Math.max(6, Math.round(this.base.size * splitScale));
+        this.def = Math.max(0, Math.round(this.base.def * defMul));
+        const unitScale = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        this.size = Math.max(6, Math.round(this.base.size * splitScale * unitScale));
         this.speed = this.base.speed * (kind === MonsterKind.SPLITTER ? 1 + splitTier * 0.08 : 1);
         this.color = this.base.color;
 
@@ -1787,6 +1894,7 @@ class Monster {
         this.spawnTimer = 0;
         this.spawnDuration = 0;
         this.failThrowTimer = 0;
+        this.pathTargetHighlight = false;
         this.attackDamage = this.base.attack || 10;
         this.attackInterval = this.base.attackInterval || 1.1;
         this.attackCooldown = randRange(0.2, this.attackInterval);
@@ -1836,8 +1944,15 @@ class Monster {
         this.moveDir = Math.atan2(dy, dx);
         this.facing = this.moveDir;
 
-        const reachDist = this.hitboxRadius + (playerTarget.effectiveRadius || 12) + 2;
-        const step = Math.min(this.speed * dt, Math.max(0, distToPlayer - reachDist));
+        let stopDist;
+        if (this.kind === MonsterKind.ARCHER) {
+            stopDist = this.base.attackRange || 165;
+            if (distToPlayer <= stopDist) return;
+        } else {
+            stopDist = this.hitboxRadius + (playerTarget.effectiveRadius || 12) + 2;
+        }
+
+        const step = Math.min(this.speed * dt, Math.max(0, distToPlayer - stopDist));
         this.x += Math.cos(this.moveDir) * step;
         this.y += Math.sin(this.moveDir) * step;
 
@@ -1852,10 +1967,38 @@ class Monster {
         }
     }
 
+    _canArcherShoot(playerTarget) {
+        if (!playerTarget || !playerTarget.player) return false;
+        const player = playerTarget.player;
+        if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME || player.isAttackInvincible?.()) return false;
+        const attackRange = this.base.attackRange || 165;
+        return dist(this.x, this.y, playerTarget.x, playerTarget.y) <= attackRange;
+    }
+
+    _shootArrow(playerTarget) {
+        if (!this.game || !this.game.projectiles) return;
+        const muzzle = this.hitboxRadius + 6;
+        this.game.projectiles.spawnArrow({
+            x: this.x + Math.cos(this.facing) * muzzle,
+            y: this.y + Math.sin(this.facing) * muzzle,
+            targetX: playerTarget.x,
+            targetY: playerTarget.y,
+            speed: this.base.arrowSpeed || CONFIG.ARROW.SPEED || 340,
+            damage: this.attackDamage,
+        });
+        if (this.game.particles) {
+            this.game.particles.spawnEffect(
+                this.x + Math.cos(this.facing) * muzzle,
+                this.y + Math.sin(this.facing) * muzzle,
+                '#c8b890'
+            );
+        }
+    }
+
     _canAttackPlayer(playerTarget) {
         if (!playerTarget || !playerTarget.player) return false;
         const player = playerTarget.player;
-        if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME) return false;
+        if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME || player.isAttackInvincible?.()) return false;
         const reach = this.hitboxRadius + player.effectiveRadius + 4;
         return dist(this.x, this.y, playerTarget.x, playerTarget.y) <= reach;
     }
@@ -1898,9 +2041,16 @@ class Monster {
 
         if (playerTarget) {
             this.attackCooldown -= dt;
-            if (this.attackCooldown <= 0 && this._canAttackPlayer(playerTarget)) {
-                this._attackPlayer(playerTarget);
-                this.attackCooldown = this.attackInterval;
+            if (this.attackCooldown <= 0) {
+                if (this.kind === MonsterKind.ARCHER) {
+                    if (this._canArcherShoot(playerTarget)) {
+                        this._shootArrow(playerTarget);
+                        this.attackCooldown = this.attackInterval;
+                    }
+                } else if (this._canAttackPlayer(playerTarget)) {
+                    this._attackPlayer(playerTarget);
+                    this.attackCooldown = this.attackInterval;
+                }
             }
         }
     }
@@ -1948,7 +2098,7 @@ class Monster {
         const spriteSet = this._getSpriteSet();
         const frameIdx = Math.floor(this.walkPhase * 0.22) % 2;
         const sprite = (spriteSet.idle || [])[frameIdx % (spriteSet.idle || [spriteSet]).length] || spriteSet;
-        const scale = clamp(Math.round(this.size / 4), 2, 4);
+        const scale = clamp(Math.round(this.size / 4), 2, 6);
         const flipX = Math.cos(this.facing) < 0;
         const tint = this.kind === MonsterKind.BERSERKER ? 0.16 : 0;
 
@@ -1966,7 +2116,28 @@ class Monster {
             ctx.arc(x, y, ringR, 0, Math.PI * 2);
             ctx.stroke();
         }
-        drawSprite(ctx, sprite, x, y, scale, alpha, flipX, tint);
+        if (this.pathTargetHighlight) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            const startX = x - (sprite[0].length * scale) / 2;
+            const startY = y - (sprite.length * scale) / 2;
+            for (let row = 0; row < sprite.length; row++) {
+                for (let col = 0; col < sprite[0].length; col++) {
+                    const color = sprite[row][flipX ? sprite[0].length - 1 - col : col];
+                    if (!color) continue;
+                    ctx.fillStyle = tintHexColor(color, 210, 210, 218, 0.78);
+                    ctx.fillRect(
+                        Math.floor(startX + col * scale),
+                        Math.floor(startY + row * scale),
+                        scale,
+                        scale
+                    );
+                }
+            }
+            ctx.restore();
+        } else {
+            drawSprite(ctx, sprite, x, y, scale, alpha, flipX, tint);
+        }
 
         const failDeath = this.game && this.game.failDeath;
         if (failDeath && failDeath.isThrowing() && this.failThrowTimer > 0) {
@@ -1995,6 +2166,14 @@ class Monster {
                 ctx.fillStyle = '#4e7c38';
                 ctx.fillRect(x - 6, y + r * 0.5, 3, 3);
             }
+        } else if (this.kind === MonsterKind.ARCHER) {
+            ctx.strokeStyle = '#8a6848';
+            ctx.lineWidth = 2;
+            const bx = x + Math.cos(this.facing) * (r + 1);
+            const by = y + Math.sin(this.facing) * (r + 1);
+            ctx.beginPath();
+            ctx.arc(bx, by, r * 0.55, this.facing - 1.1, this.facing + 1.1);
+            ctx.stroke();
         }
 
         if (this.isFrozen()) {
@@ -2026,6 +2205,7 @@ class Monster {
             case MonsterKind.SHIELD: return SPRITES.strongRanged;
             case MonsterKind.BERSERKER: return SPRITES.strongMelee;
             case MonsterKind.SPLITTER: return SPRITES.normalRanged;
+            case MonsterKind.ARCHER: return SPRITES.normalRanged;
             default: return SPRITES.normalMelee;
         }
     }
@@ -2033,8 +2213,11 @@ class Monster {
 
 
 // ---- projectile.js ----
+let nextProjectileId = 1;
+
 class ProjectileManager {
-    constructor() {
+    constructor(game) {
+        this.game = game;
         this.projectiles = [];
     }
 
@@ -2042,12 +2225,93 @@ class ProjectileManager {
         this.projectiles = [];
     }
 
-    update() {
-        // New version currently has no enemy ranged projectile system.
+    spawnArrow(opts) {
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        const speed = opts.speed || CONFIG.ARROW.SPEED || 340;
+        let vx = opts.vx;
+        let vy = opts.vy;
+        if (opts.targetX != null && opts.targetY != null) {
+            const dx = opts.targetX - opts.x;
+            const dy = opts.targetY - opts.y;
+            const len = Math.hypot(dx, dy) || 1;
+            vx = (dx / len) * speed;
+            vy = (dy / len) * speed;
+        }
+        this.projectiles.push({
+            id: nextProjectileId++,
+            type: 'arrow',
+            x: opts.x,
+            y: opts.y,
+            vx,
+            vy,
+            damage: opts.damage || 10,
+            radius: opts.radius || (CONFIG.ARROW.RADIUS || 6) * unit,
+            angle: Math.atan2(vy, vx),
+            alive: true,
+            blockable: true,
+        });
     }
 
-    draw() {
-        // intentionally empty
+    update(dt, w, h, playerTarget) {
+        const top = 84;
+        const playBottom = this.game && this.game.ui
+            ? this.game.ui.getPlayAreaBottom(h, this.game.renderer.uiScale)
+            : h;
+        const bottom = Math.max(top + 60, playBottom - 10);
+
+        for (const p of this.projectiles) {
+            if (!p.alive) continue;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.angle = Math.atan2(p.vy, p.vx);
+
+            if (p.x < -24 || p.x > w + 24 || p.y < top - 24 || p.y > bottom + 24) {
+                p.alive = false;
+                continue;
+            }
+
+            if (!playerTarget || !playerTarget.player) continue;
+            const pl = playerTarget.player;
+            if (pl.hp <= 0 || pl.isAttackInvincible?.() || pl.state === PlayerState.BULLET_TIME) continue;
+            if (!circlesCollide(p.x, p.y, p.radius, playerTarget.x, playerTarget.y, playerTarget.effectiveRadius + 2)) continue;
+
+            p.alive = false;
+            const dmg = pl.takeDamage(p.damage);
+            if (dmg > 0 && this.game) {
+                this.game.combat.spawnDamageNumber(
+                    pl.x, pl.y - pl.effectiveRadius - 8, dmg, false, '#e05840'
+                );
+                this.game.particles.hitSpark(pl.x, pl.y, false);
+                this.game.renderer.shake(CONFIG.SHAKE.NORMAL.magnitude * 0.55, CONFIG.SHAKE.NORMAL.duration * 0.75);
+            }
+        }
+
+        this.projectiles = this.projectiles.filter(p => p.alive);
+    }
+
+    draw(ctx) {
+        for (const p of this.projectiles) {
+            if (!p.alive) continue;
+            const x = Math.floor(p.x);
+            const y = Math.floor(p.y);
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(p.angle + Math.PI);
+            const shaftLen = Math.round(18 * (CONFIG.DISPLAY.UNIT_SCALE || 1));
+            const headLen = Math.round(8 * (CONFIG.DISPLAY.UNIT_SCALE || 1));
+            ctx.fillStyle = '#5a4030';
+            ctx.fillRect(-12, -1.5, shaftLen, 3);
+            ctx.fillStyle = '#c8a878';
+            ctx.beginPath();
+            ctx.moveTo(8, 0);
+            ctx.lineTo(8 + headLen * 0.75, -3);
+            ctx.lineTo(8 + headLen * 0.75, 3);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#e8dcc8';
+            ctx.fillRect(-14, -1, 4, 2);
+            ctx.restore();
+        }
     }
 }
 
@@ -2354,11 +2618,12 @@ class BuffOrbManager {
     }
 
     _spawn(type, x, y) {
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
         this.orbs.push({
             type,
             x,
             y,
-            r: CONFIG.BUFF_ORB.RADIUS,
+            r: CONFIG.BUFF_ORB.RADIUS * unit,
             pulse: randRange(0, Math.PI * 2),
             alive: true,
         });
@@ -3567,8 +3832,9 @@ class StageFailAnimator {
     update(dt) {
         if (!this.active) return;
         const cfg = CONFIG.FAIL_DEATH;
+        const speed = cfg.PLAYBACK_SPEED || 1;
         const p = this.game.player;
-        this.timer += dt;
+        this.timer += dt * speed;
 
         if (this.phase === 'windup') {
             if (this.timer >= cfg.WINDUP) {
@@ -4014,7 +4280,7 @@ class LevelManager {
             ctx.translate(vp.cx, cy);
             ctx.scale(pop, pop);
             ctx.translate(-vp.cx, -cy);
-            drawPixelText(ctx, '回合耗尽', vp.cx, cy, Math.round(20 * s), '#ff9c84');
+            drawPixelText(ctx, '体力耗尽', vp.cx, cy, Math.round(20 * s), '#ff9c84');
             drawPixelText(ctx, '点击屏幕重新挑战', vp.cx, cy + 28 * s, Math.round(13 * s), '#f4e8da');
             ctx.restore();
         }
@@ -4133,6 +4399,7 @@ class ExperienceManager {
         const game = this.game;
         if (game.input) game.input.cancelActivePointer();
         game.state = 'LEVEL_UP';
+        game._pauseForUpgrade();
         game.upgrades.generateChoices();
         game._lockOverlayInput();
         game.audio.playLevelUp();
@@ -4322,7 +4589,6 @@ class UI {
         this._lastHudLayout = layout;
         this.drawTopKiBar(ctx, game.player, layout, s);
         this.drawTurnBuffIcons(ctx, game.player, layout, s);
-        this.drawTurns(ctx, game, layout, s);
         this.drawComboBanner(ctx, game.player, vp, layout, s);
         this.drawMessage(ctx, game.player, vp, s);
         this.drawBuffNotice(ctx, game.buffOrbs, vp, s);
@@ -4561,25 +4827,6 @@ class UI {
         return dx + (pommelCols + gripCols) * px;
     }
 
-    drawTurns(ctx, game, layout, s) {
-        const turns = game.turnsLeft;
-        const urgent = turns <= 1;
-        const boxW = 80 * s;
-        const boxH = 52 * s;
-        const x = layout.kiX + layout.kiW - boxW;
-        const y = layout.secondRowY;
-        const cx = x + boxW / 2;
-
-        const pulse = urgent && Math.floor(Date.now() / 320) % 2 === 0;
-        const fill = urgent ? (pulse ? '#5a1810' : '#3a1008') : '#242838';
-        const border = urgent ? '#ff6848' : '#e8c050';
-        drawPixelPanel(ctx, x, y, boxW, boxH, fill, border, 2);
-
-        const numColor = urgent ? '#ffe0d0' : '#fff8e0';
-        drawPixelText(ctx, String(turns), cx, y + boxH * 0.38, Math.round(22 * s), numColor);
-        drawPixelText(ctx, '回合', cx, y + boxH * 0.76, Math.round(10 * s), urgent ? '#ffb0a0' : '#ffd890');
-    }
-
     drawComboBanner(ctx, player, vp, layout, s) {
         const combo = player.comboDisplayPeak;
         if (combo < 2 || player.comboDisplayTimer <= 0) return;
@@ -4739,7 +4986,7 @@ class CombatManager {
     _shouldSpawnSplitChildren(deadMonster) {
         const others = this.game.spawner.getActiveMonsters().filter(m => m !== deadMonster);
         if (others.length > 0) return true;
-        return this.game.turnsLeft > 1;
+        return true;
     }
 
     recordFinalPathSegment() {
@@ -4782,22 +5029,74 @@ class CombatManager {
         });
     }
 
-    _recordPathHits(pathFrom, pathTo, segmentIndex) {
+    _recordPathProjectileHits(pathFrom, pathTo, segmentIndex) {
         const p = this.game.player;
-        const monsters = this.game.spawner.getActiveMonsters();
+        const projs = this.game.projectiles && this.game.projectiles.projectiles;
+        if (!p || !projs || !projs.length) return;
+
         const segLen = dist(pathFrom.x, pathFrom.y, pathTo.x, pathTo.y);
-        for (const m of monsters) {
-            const key = `${m.id}:${segmentIndex}`;
-            if (p.hitMonstersInSegment.has(key)) continue;
+        if (segLen < 0.001) return;
+
+        for (const proj of projs) {
+            if (!proj.alive || !proj.blockable) continue;
+            const key = `${proj.id}:${segmentIndex}`;
+            if (p.hitProjectilesInSegment.has(key)) continue;
 
             const vx = pathTo.x - pathFrom.x;
             const vy = pathTo.y - pathFrom.y;
-            const ux = m.x - pathFrom.x;
-            const uy = m.y - pathFrom.y;
+            const ux = proj.x - pathFrom.x;
+            const uy = proj.y - pathFrom.y;
             const t = clamp((ux * vx + uy * vy) / Math.max(1e-6, segLen * segLen), 0, 1);
             const px = pathFrom.x + vx * t;
             const py = pathFrom.y + vy * t;
-            if (dist(px, py, m.x, m.y) > m.hitboxRadius + p.effectiveRadius * 0.42) continue;
+            const hitDist = proj.radius + p.effectiveRadius * 0.38;
+            if (dist(px, py, proj.x, proj.y) > hitDist) continue;
+
+            p.hitProjectilesInSegment.add(key);
+            proj.alive = false;
+            this.game.particles.hitSpark(proj.x, proj.y, false);
+            this.game.particles.slashTrail(proj.x, proj.y, angle(pathFrom.x, pathFrom.y, pathTo.x, pathTo.y));
+        }
+    }
+
+    _pathSegmentHitsMonster(pathFrom, pathTo, monster, hitPad) {
+        const segLen = dist(pathFrom.x, pathFrom.y, pathTo.x, pathTo.y);
+        if (segLen < 0.001) return false;
+
+        const vx = pathTo.x - pathFrom.x;
+        const vy = pathTo.y - pathFrom.y;
+        const ux = monster.x - pathFrom.x;
+        const uy = monster.y - pathFrom.y;
+        const t = clamp((ux * vx + uy * vy) / Math.max(1e-6, segLen * segLen), 0, 1);
+        const px = pathFrom.x + vx * t;
+        const py = pathFrom.y + vy * t;
+        return dist(px, py, monster.x, monster.y) <= monster.hitboxRadius + hitPad;
+    }
+
+    getPathPreviewTargetIds(path, player) {
+        const ids = new Set();
+        if (!path || path.length < 2 || !player) return ids;
+
+        const hitPad = player.effectiveRadius * 0.42;
+        const monsters = this.game.spawner.getActiveMonsters();
+        for (let i = 0; i < path.length - 1; i++) {
+            const from = path[i];
+            const to = path[i + 1];
+            for (const m of monsters) {
+                if (this._pathSegmentHitsMonster(from, to, m, hitPad)) ids.add(m.id);
+            }
+        }
+        return ids;
+    }
+
+    _recordPathHits(pathFrom, pathTo, segmentIndex) {
+        const p = this.game.player;
+        const monsters = this.game.spawner.getActiveMonsters();
+        const hitPad = p.effectiveRadius * 0.42;
+        for (const m of monsters) {
+            const key = `${m.id}:${segmentIndex}`;
+            if (p.hitMonstersInSegment.has(key)) continue;
+            if (!this._pathSegmentHitsMonster(pathFrom, pathTo, m, hitPad)) continue;
 
             p.hitMonstersInSegment.add(key);
             this.pendingHits.push({
@@ -4905,6 +5204,7 @@ class CombatManager {
             const from = p.attackPath[p.pathIndex];
             const to = p.attackPath[p.pathIndex + 1];
             this._recordPathHits(from, to, p.pathIndex);
+            this._recordPathProjectileHits(from, to, p.pathIndex);
         }
 
         for (let i = this.afterimages.length - 1; i >= 0; i--) {
@@ -4964,29 +5264,131 @@ class MonsterSpawner {
     constructor(game) {
         this.game = game;
         this.monsters = [];
+        this.spawnClusters = [];
     }
 
     reset() {
         this.monsters = [];
+        this.spawnClusters = [];
     }
 
-    _pickSpawnPos(w, h, playBottom, safeZone) {
+    _getSpawnBounds(w, playBottom) {
         const edgePad = 26;
         const top = 88;
         const bottom = Math.max(top + 80, playBottom - 26);
-        for (let i = 0; i < 100; i++) {
-            const x = randRange(edgePad, w - edgePad);
-            const y = randRange(top, bottom);
-            if (!safeZone) return { x, y };
-            if (dist(x, y, safeZone.x, safeZone.y) > safeZone.r + 24) return { x, y };
-        }
-        return { x: w * 0.5, y: (top + bottom) * 0.5 };
+        return { edgePad, top, bottom };
     }
 
-    _spawnBatch(kind, count, w, h, playBottom, safeZone, splitTier = 0, withSpawnAnim = false) {
+    _minDistFromPlayer(safeZone) {
+        const pad = CONFIG.SPAWN.MIN_DIST_FROM_PLAYER || 100;
+        return (safeZone?.r || 40) + pad;
+    }
+
+    _initSpawnClusters(w, h, playBottom, safeZone) {
+        this.spawnClusters = [];
+        const { edgePad, top, bottom } = this._getSpawnBounds(w, playBottom);
+        const minPlayerDist = this._minDistFromPlayer(safeZone);
+        const cfg = CONFIG.SPAWN;
+        const clusterCount = Math.floor(randRange(cfg.CLUSTER_COUNT_MIN || 5, (cfg.CLUSTER_COUNT_MAX || 9) + 0.999));
+
+        for (let i = 0; i < clusterCount; i++) {
+            for (let attempt = 0; attempt < 80; attempt++) {
+                const x = randRange(edgePad, w - edgePad);
+                const y = randRange(top, bottom);
+                if (safeZone && dist(x, y, safeZone.x, safeZone.y) < minPlayerDist) continue;
+
+                let tooClose = false;
+                for (const c of this.spawnClusters) {
+                    if (dist(x, y, c.x, c.y) < 72) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                if (tooClose) continue;
+
+                const density = randRange(0.3, 1);
+                this.spawnClusters.push({
+                    x,
+                    y,
+                    radius: lerp(48, 92, density),
+                    weight: 0.25 + density * density * 1.4,
+                });
+                break;
+            }
+        }
+
+        if (!this.spawnClusters.length) {
+            const fallbackX = safeZone
+                ? clamp(safeZone.x + minPlayerDist * 1.1, edgePad, w - edgePad)
+                : w * 0.72;
+            const fallbackY = clamp(safeZone ? safeZone.y : (top + bottom) * 0.5, top, bottom);
+            this.spawnClusters.push({ x: fallbackX, y: fallbackY, radius: 80, weight: 1 });
+        }
+    }
+
+    _pickWeightedCluster() {
+        if (!this.spawnClusters.length) return null;
+        const total = this.spawnClusters.reduce((sum, c) => sum + c.weight, 0);
+        let roll = Math.random() * total;
+        for (const c of this.spawnClusters) {
+            roll -= c.weight;
+            if (roll <= 0) return c;
+        }
+        return this.spawnClusters[this.spawnClusters.length - 1];
+    }
+
+    _tooCloseToExisting(x, y, minDist) {
+        for (const m of this.monsters) {
+            if (!m.alive) continue;
+            if (dist(x, y, m.x, m.y) < minDist) return true;
+        }
+        return false;
+    }
+
+    _pickSpawnPos(w, h, playBottom, safeZone) {
+        const { edgePad, top, bottom } = this._getSpawnBounds(w, playBottom);
+        const minPlayerDist = this._minDistFromPlayer(safeZone);
+        const minSpacing = CONFIG.SPAWN.MIN_MONSTER_SPACING || 20;
+        const clusterChance = CONFIG.SPAWN.CLUSTER_PICK_CHANCE || 0.74;
+
+        for (let i = 0; i < 140; i++) {
+            let x;
+            let y;
+            if (Math.random() < clusterChance && this.spawnClusters.length) {
+                const cluster = this._pickWeightedCluster();
+                const ang = randRange(0, Math.PI * 2);
+                const rad = cluster.radius * Math.sqrt(Math.random());
+                x = cluster.x + Math.cos(ang) * rad;
+                y = cluster.y + Math.sin(ang) * rad;
+            } else {
+                x = randRange(edgePad, w - edgePad);
+                y = randRange(top, bottom);
+            }
+
+            x = clamp(x, edgePad, w - edgePad);
+            y = clamp(y, top, bottom);
+            if (safeZone && dist(x, y, safeZone.x, safeZone.y) < minPlayerDist) continue;
+            if (this._tooCloseToExisting(x, y, minSpacing)) continue;
+            return { x, y };
+        }
+
+        for (let i = 0; i < 80; i++) {
+            const x = randRange(edgePad, w - edgePad);
+            const y = randRange(top, bottom);
+            if (safeZone && dist(x, y, safeZone.x, safeZone.y) < minPlayerDist * 0.85) continue;
+            return { x, y };
+        }
+
+        return {
+            x: clamp((safeZone?.x || w * 0.5) + minPlayerDist, edgePad, w - edgePad),
+            y: clamp(safeZone?.y || (top + bottom) * 0.5, top, bottom),
+        };
+    }
+
+    _spawnBatch(kind, count, w, h, playBottom, safeZone, splitTier = 0, withSpawnAnim = false, stageStatScale = null) {
         for (let i = 0; i < count; i++) {
             const pos = this._pickSpawnPos(w, h, playBottom, safeZone);
-            const m = new Monster(pos.x, pos.y, kind, splitTier);
+            const m = new Monster(pos.x, pos.y, kind, splitTier, stageStatScale);
             m.game = this.game;
             if (withSpawnAnim) m.beginSpawn(CONFIG.MONSTER_SPAWN_ANIM + randRange(0, 0.12));
             this.monsters.push(m);
@@ -5000,13 +5402,16 @@ class MonsterSpawner {
 
     spawnStage(stageIndex, w, h, playBottom, safeZone, withSpawnAnim = false) {
         this.monsters = [];
+        this._initSpawnClusters(w, h, playBottom, safeZone);
         const cfg = CONFIG.STAGES[clamp(stageIndex, 0, CONFIG.STAGES.length - 1)];
         if (!cfg) return;
-        this._spawnBatch(MonsterKind.NORMAL, this._scaledCount(cfg.normal), w, h, playBottom, safeZone, 0, withSpawnAnim);
-        this._spawnBatch(MonsterKind.ELITE, this._scaledCount(cfg.elite), w, h, playBottom, safeZone, 0, withSpawnAnim);
-        this._spawnBatch(MonsterKind.SHIELD, this._scaledCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim);
-        this._spawnBatch(MonsterKind.BERSERKER, this._scaledCount(cfg.berserker), w, h, playBottom, safeZone, 0, withSpawnAnim);
-        this._spawnBatch(MonsterKind.SPLITTER, this._scaledCount(cfg.splitter), w, h, playBottom, safeZone, 0, withSpawnAnim);
+        const stageStatScale = getStageStatScale(stageIndex);
+        this._spawnBatch(MonsterKind.NORMAL, this._scaledCount(cfg.normal), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        this._spawnBatch(MonsterKind.ELITE, this._scaledCount(cfg.elite), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        this._spawnBatch(MonsterKind.SHIELD, this._scaledCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        this._spawnBatch(MonsterKind.BERSERKER, this._scaledCount(cfg.berserker), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        this._spawnBatch(MonsterKind.SPLITTER, this._scaledCount(cfg.splitter), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        this._spawnBatch(MonsterKind.ARCHER, Math.max(this._scaledCount(cfg.archer || 0), this._scaledCount(6)), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
     }
 
     spawnSplitChildren(parent) {
@@ -5020,7 +5425,8 @@ class MonsterSpawner {
                 parent.x + Math.cos(a) * d,
                 parent.y + Math.sin(a) * d,
                 MonsterKind.SPLITTER,
-                parent.splitTier + 1
+                parent.splitTier + 1,
+                parent.stageStatScale
             );
             child.game = this.game;
             child.beginSpawn(CONFIG.MONSTER_SPAWN_ANIM * 0.85);
@@ -5030,11 +5436,11 @@ class MonsterSpawner {
         return children;
     }
 
-    update(dt, w, h, playBottom, playerZone) {
+    update(dt, w, h, playBottom, playerTarget) {
         const resolving = this.game && this.game.combat && this.game.combat.isResolving();
         for (const m of this.monsters) {
             if (resolving && !m.dying) continue;
-            m.update(dt, w, h, playBottom, playerZone);
+            m.update(dt, w, h, playBottom, playerTarget);
         }
         this.monsters = this.monsters.filter(m => m.alive);
     }
@@ -5050,119 +5456,11 @@ class MonsterSpawner {
 
 
 // ---- input.js ----
-class VirtualJoystick {
-    constructor(game) {
-        this.game = game;
-        this.active = false;
-        this.baseX = 0;
-        this.baseY = 0;
-        this.stickOffsetX = 0;
-        this.stickOffsetY = 0;
-        this._syncDefaultBase();
-    }
-
-    _syncDefaultBase() {
-        const r = this.game.renderer;
-        const ui = this.game.ui;
-        const playBottom = ui.getPlayAreaBottom
-            ? ui.getPlayAreaBottom(r.h, r.uiScale)
-            : r.h;
-        const offset = (CONFIG.JOYSTICK.DEFAULT_BOTTOM_OFFSET || 72) * r.uiScale;
-        this.defaultX = r.w / 2;
-        this.defaultY = playBottom - offset;
-        if (!this.active) {
-            this.baseX = this.defaultX;
-            this.baseY = this.defaultY;
-        }
-    }
-
-    resetToDefault() {
-        this.active = false;
-        this.stickOffsetX = 0;
-        this.stickOffsetY = 0;
-        this._syncDefaultBase();
-    }
-
-    beginAt(clientX, clientY) {
-        this._syncDefaultBase();
-        const pos = this.game.renderer.screenToGame(clientX, clientY);
-        this.baseX = pos.x;
-        this.baseY = pos.y;
-        this.active = true;
-        this._updateStick(clientX, clientY);
-    }
-
-    move(clientX, clientY) {
-        if (!this.active) return;
-        this._updateStick(clientX, clientY);
-    }
-
-    end() {
-        this.resetToDefault();
-    }
-
-    _updateStick(clientX, clientY) {
-        const pos = this.game.renderer.screenToGame(clientX, clientY);
-        let dx = pos.x - this.baseX;
-        let dy = pos.y - this.baseY;
-        const max = CONFIG.JOYSTICK.MAX_OFFSET || 46;
-        const len = Math.hypot(dx, dy);
-        if (len > max) {
-            dx = (dx / len) * max;
-            dy = (dy / len) * max;
-        }
-        this.stickOffsetX = dx;
-        this.stickOffsetY = dy;
-    }
-
-    getDirection() {
-        const len = Math.hypot(this.stickOffsetX, this.stickOffsetY);
-        const dead = CONFIG.JOYSTICK.DEAD_ZONE || 10;
-        if (len < dead) return null;
-        return { x: this.stickOffsetX / len, y: this.stickOffsetY / len };
-    }
-
-    draw(ctx) {
-        this._syncDefaultBase();
-        const cfg = CONFIG.JOYSTICK;
-        const baseR = cfg.BASE_RADIUS || 52;
-        const stickR = cfg.STICK_RADIUS || 22;
-        const alpha = this.active ? 0.92 : 0.55;
-        const stickX = this.baseX + this.stickOffsetX;
-        const stickY = this.baseY + this.stickOffsetY;
-
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.35;
-        ctx.fillStyle = '#1a2430';
-        ctx.beginPath();
-        ctx.arc(this.baseX, this.baseY, baseR, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.globalAlpha = alpha * 0.55;
-        ctx.strokeStyle = '#8aa0b8';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(this.baseX, this.baseY, baseR, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = '#d8e4f0';
-        ctx.beginPath();
-        ctx.arc(stickX, stickY, stickR, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#5a7088';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.restore();
-    }
-}
-
 class InputManager {
     constructor(canvas, game) {
         this.canvas = canvas;
         this.game = game;
         this.isDrawing = false;
-        this.joystick = new VirtualJoystick(game);
 
         canvas.addEventListener('touchstart', (e) => this.onStart(e), { passive: false });
         canvas.addEventListener('touchmove', (e) => this.onMove(e), { passive: false });
@@ -5180,18 +5478,36 @@ class InputManager {
         return { clientX: e.clientX, clientY: e.clientY };
     }
 
+    getPos(e) {
+        const { clientX, clientY } = this._getClientPos(e);
+        return this.game.renderer.screenToGame(clientX, clientY);
+    }
+
     onStart(e) {
         if (this.game.state !== 'PLAYING') return;
         e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.IDLE) return;
+
+        const pos = this.getPos(e);
+        if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
+        if (dist(pos.x, pos.y, player.homeX, player.homeY) > player.triggerRadius) return;
         if (player.ki <= 0 || player.hp <= 0) return;
 
-        const { clientX, clientY } = this._getClientPos(e);
         this.isDrawing = true;
-        this.joystick.beginAt(clientX, clientY);
         this.game.enterBulletTime();
         player.startBulletTime();
+        player.addPathPoint(player.homeX, player.homeY);
+        player.addPathPoint(pos.x, pos.y);
+        this._checkPathOrbs(player);
+    }
+
+    _checkPathOrbs(player) {
+        const path = player.attackPath;
+        if (path.length < 2) return;
+        const from = path[path.length - 2];
+        const to = path[path.length - 1];
+        this.game.buffOrbs.checkPathSegment(from, to);
     }
 
     onMove(e) {
@@ -5199,15 +5515,26 @@ class InputManager {
         e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
-        const { clientX, clientY } = this._getClientPos(e);
-        this.joystick.move(clientX, clientY);
+        const pos = this.getPos(e);
+        if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
+        const last = player.attackPath[player.attackPath.length - 1];
+        if (!last) return;
+        const step = dist(last.x, last.y, pos.x, pos.y);
+        if (step < 2) return;
+
+        if (!player.consumeKiByDistance(step)) {
+            this.isDrawing = false;
+            this.game.exitBulletTime(false);
+            return;
+        }
+        player.addPathPoint(pos.x, pos.y);
+        this._checkPathOrbs(player);
     }
 
     onEnd(e) {
         if (!this.isDrawing) return;
         if (e) e.preventDefault();
         this.isDrawing = false;
-        this.joystick.end();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
         if (player.attackPath.length < 2) {
@@ -5220,7 +5547,6 @@ class InputManager {
 
     cancelActivePointer() {
         this.isDrawing = false;
-        this.joystick.resetToDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
         this.game.timeScale = CONFIG.NORMAL_TIME_SCALE;
@@ -5244,7 +5570,7 @@ class Game {
 
         this.player = null;
         this.spawner = new MonsterSpawner(this);
-        this.projectiles = new ProjectileManager();
+        this.projectiles = new ProjectileManager(this);
         this.particles = new ParticleSystem(650);
         this.combat = new CombatManager(this);
         this.upgrades = new UpgradeManager();
@@ -5260,7 +5586,6 @@ class Game {
         this.buffOrbs = new BuffOrbManager(this);
         this.input = null;
 
-        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
         this.awaitingUpgrade = false;
         this.pendingStageClear = false;
 
@@ -5306,7 +5631,6 @@ class Game {
                 ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
                 : this.renderer.h;
             this.grass.init(this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
-            if (this.input && this.input.joystick) this.input.joystick._syncDefaultBase();
         };
         window.addEventListener('resize', onViewport);
         window.addEventListener('orientationchange', onViewport);
@@ -5322,6 +5646,11 @@ class Game {
         this._overlayGestureActive = false;
         this._overlayDismissPending = this._pointerDown;
         if (this.input) this.input.cancelActivePointer();
+    }
+
+    _pauseForUpgrade() {
+        if (this.renderer) this.renderer.clearShake();
+        if (this.player) this.player.comboShakeTimer = 0;
     }
 
     _onOverlayPointerDown(e) {
@@ -5389,10 +5718,37 @@ class Game {
         return false;
     }
 
+    _isWorldFrozen() {
+        const p = this.player;
+        if (!p) return false;
+        if (p.state === PlayerState.BULLET_TIME) return true;
+        if (this.combat && !this.combat.roundAttackResolved) return true;
+        return false;
+    }
+
+    _canAdvanceStage() {
+        if (this.state !== 'PLAYING') return false;
+        if (!this.spawner.allClear()) return false;
+        if (this.combat.isResolving()) return false;
+        if (this.isUpgradeBlocked()) return false;
+        const p = this.player;
+        if (!p || p.state !== PlayerState.IDLE) return false;
+        return true;
+    }
+
+    _syncPendingStageClear() {
+        if (this.pendingStageClear || !this._canAdvanceStage()) return;
+        if (!this.combat.roundAttackResolved) {
+            this.combat.consumeRoundAttack();
+            this.player.finishAttackCycle();
+        }
+        this.pendingStageClear = true;
+    }
+
     _tryFinishStageClear() {
         if (!this.pendingStageClear || this.state !== 'PLAYING') return;
         if (this.isUpgradeBlocked() || this.combat.isResolving()) return;
-        if (this.isCombatPresentationActive()) return;
+        if (!this.spawner.allClear()) return;
         this.pendingStageClear = false;
         this._stageCleared();
     }
@@ -5402,8 +5758,7 @@ class Game {
         const playBottom = this.ui.getPlayAreaBottom
             ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
             : this.renderer.h;
-        const freezeWorld = this.player && this.player.state === PlayerState.BULLET_TIME;
-        const worldDt = freezeWorld ? 0 : dt;
+        const worldDt = this._isWorldFrozen() ? 0 : dt;
         const playerTarget = this.player ? {
             x: this.player.x,
             y: this.player.y,
@@ -5411,7 +5766,7 @@ class Game {
             player: this.player,
         } : null;
         this.spawner.update(worldDt, this.renderer.w, this.renderer.h, playBottom, playerTarget);
-        this.projectiles.update(worldDt, this.renderer.w, this.renderer.h);
+        this.projectiles.update(worldDt, this.renderer.w, this.renderer.h, playerTarget);
         this.combat.update(dt);
         this.buffOrbs.update(realDt);
         this.sakura.update(realDt, this.renderer.w, this.renderer.h);
@@ -5421,9 +5776,12 @@ class Game {
     }
 
     _getSafeZone() {
-        const x = this.player ? this.player.x : this.renderer.w / 2;
-        const y = this.player ? this.player.y : this.renderer.h / 2;
-        return { x, y, r: CONFIG.PLAYER.SPAWN_SAFE_RADIUS || 40 };
+        const x = this.player ? this.player.homeX : this.renderer.w / 2;
+        const y = this.player ? this.player.homeY : this.renderer.h / 2;
+        const r = this.player
+            ? this.player.triggerRadius
+            : Math.max(CONFIG.PLAYER.TRIGGER_RADIUS_MIN || 30, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * CONFIG.DISPLAY.LOGICAL_WIDTH);
+        return { x, y, r };
     }
 
     _playerDied() {
@@ -5442,6 +5800,7 @@ class Game {
             this.player.pathIndex = 0;
             this.player.pathProgress = 0;
             this.player.hitMonstersInSegment.clear();
+            this.player.hitProjectilesInSegment.clear();
             this.player.invalidPathTimer = 0;
             this.player.comboCount = 0;
             this.player.comboDisplayPeak = 0;
@@ -5466,14 +5825,7 @@ class Game {
 
     _prepareStage(levelIndex, withSpawnAnim = false) {
         this.levelManager.level = levelIndex;
-        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
-        this.player.beginTurn();
-        const cx = this.renderer.w / 2;
-        const cy = this.renderer.h / 2;
-        this.player.homeX = cx;
-        this.player.homeY = cy;
-        this.player.x = cx;
-        this.player.y = cy;
+        this.player.beginStage();
         const playBottom = this.ui.getPlayAreaBottom ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale) : this.renderer.h;
         const safe = this._getSafeZone();
         this.spawner.spawnStage(levelIndex, this.renderer.w, this.renderer.h, playBottom, safe, withSpawnAnim);
@@ -5484,8 +5836,7 @@ class Game {
     _setupStageBeforeIntro(levelIndex) {
         this._clearCombatResiduals();
         this.levelManager.level = levelIndex;
-        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
-        this.player.beginTurn();
+        this.player.beginStage();
         this.spawner.monsters = [];
         this.combat.roundAttackResolved = true;
     }
@@ -5551,7 +5902,7 @@ class Game {
         this.player.game = this;
         this.failDeath = new StageFailAnimator(this);
         this.spawner = new MonsterSpawner(this);
-        this.projectiles = new ProjectileManager();
+        this.projectiles = new ProjectileManager(this);
         this.particles = new ParticleSystem(650);
         this.combat = new CombatManager(this);
         this.upgrades = new UpgradeManager();
@@ -5604,17 +5955,12 @@ class Game {
 
     _onAttackFinished() {
         if (this.combat.consumeRoundAttack()) {
-            this.turnsLeft = Math.max(0, this.turnsLeft - 1);
             const cleared = this.spawner.allClear();
-            if (this.turnsLeft <= 0 && !cleared) {
-                this._stageFailed();
-                return;
-            }
             if (cleared) {
                 this.pendingStageClear = true;
                 return;
             }
-            this.player.beginTurn();
+            this.player.finishAttackCycle();
         }
     }
 
@@ -5630,7 +5976,8 @@ class Game {
     update(dt, realDt) {
         if (this.state === 'MENU' || this.state === 'COMPLETE') return;
         if (this.state === 'FAIL' && !this.levelManager.isFailIntroActive()) return;
-        this.renderer.updateShake(realDt);
+        this.renderer.updateShake(this.state === 'LEVEL_UP' ? 0 : realDt);
+        if (this.state === 'LEVEL_UP') this.renderer.clearShake();
         this.levelManager.update(realDt);
 
         if (this.state === 'STAGE_INTRO' || this.state === 'STAGE_CLEAR') {
@@ -5651,6 +5998,7 @@ class Game {
         if (this.state === 'STAGE_CLEAR') return;
         if (this.state === 'LEVEL_UP') {
             this.upgrades.update(realDt);
+            return;
         }
 
         if (this._isBattleScene()) {
@@ -5665,6 +6013,7 @@ class Game {
                     && !this.isUpgradeBlocked()) {
                     this._onAttackFinished();
                 }
+                this._syncPendingStageClear();
                 this._tryFinishStageClear();
             }
         }
@@ -5701,41 +6050,50 @@ class Game {
         this.bloodStains.draw(ctx);
         this._drawBulletTimeDim(ctx);
         const battleScene = this._isBattleScene();
+        const showCombatFx = battleScene && this.state !== 'LEVEL_UP';
         const showBattlefield = battleScene || this._isFailBattlefield();
         if (showBattlefield) {
             if (battleScene) this.buffOrbs.draw(ctx);
-            for (const m of this.spawner.monsters) m.draw(ctx);
+            const previewTargets = (battleScene
+                && this.player
+                && this.player.state === PlayerState.BULLET_TIME
+                && this.player.attackPath.length >= 2)
+                ? this.combat.getPathPreviewTargetIds(this.player.attackPath, this.player)
+                : null;
+            for (const m of this.spawner.monsters) {
+                m.pathTargetHighlight = previewTargets ? previewTargets.has(m.id) : false;
+                m.draw(ctx);
+            }
+            if (battleScene) this.projectiles.draw(ctx);
         }
 
-        if (battleScene) {
+        if (showCombatFx) {
             this.abilities.drawBehind(ctx);
         }
         if (this.player) {
+            if (!this._isFailBattlefield()) this.player.drawTriggerZone(ctx);
             if (battleScene || this.player.state === PlayerState.BULLET_TIME) {
                 this.player.drawPath(ctx);
             }
             this.player.draw(ctx);
         }
-        if (battleScene) {
+        if (showCombatFx) {
             this.combat.drawAfterimages(ctx);
         }
-        if (battleScene && this.abilities.hasActiveFx()) {
+        if (showCombatFx && this.abilities.hasActiveFx()) {
             this.abilities.drawFront(ctx);
         }
         if (this.state === 'FAIL_DEATH' && this.failDeath.isActive()) {
             this.failDeath.drawSpears(ctx);
         }
-        if (battleScene) {
+        if (showCombatFx) {
             this.buffOrbs.drawPickupEffects(ctx);
         }
-        if (battleScene || this.state === 'FAIL_DEATH') {
+        if (showCombatFx || this.state === 'FAIL_DEATH') {
             this.particles.draw(ctx);
         }
-        if (battleScene && this.combat.damageNumbers.length > 0) {
+        if (showCombatFx && this.combat.damageNumbers.length > 0) {
             this.combat.drawDamageNumbers(ctx);
-        }
-        if (this.input && this.input.joystick && battleScene && !this._isFailBattlefield()) {
-            this.input.joystick.draw(ctx);
         }
 
         this.renderer.endClippedGameDraw();

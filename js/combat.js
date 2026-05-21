@@ -66,7 +66,7 @@ class CombatManager {
     _shouldSpawnSplitChildren(deadMonster) {
         const others = this.game.spawner.getActiveMonsters().filter(m => m !== deadMonster);
         if (others.length > 0) return true;
-        return this.game.turnsLeft > 1;
+        return true;
     }
 
     recordFinalPathSegment() {
@@ -109,22 +109,74 @@ class CombatManager {
         });
     }
 
-    _recordPathHits(pathFrom, pathTo, segmentIndex) {
+    _recordPathProjectileHits(pathFrom, pathTo, segmentIndex) {
         const p = this.game.player;
-        const monsters = this.game.spawner.getActiveMonsters();
+        const projs = this.game.projectiles && this.game.projectiles.projectiles;
+        if (!p || !projs || !projs.length) return;
+
         const segLen = dist(pathFrom.x, pathFrom.y, pathTo.x, pathTo.y);
-        for (const m of monsters) {
-            const key = `${m.id}:${segmentIndex}`;
-            if (p.hitMonstersInSegment.has(key)) continue;
+        if (segLen < 0.001) return;
+
+        for (const proj of projs) {
+            if (!proj.alive || !proj.blockable) continue;
+            const key = `${proj.id}:${segmentIndex}`;
+            if (p.hitProjectilesInSegment.has(key)) continue;
 
             const vx = pathTo.x - pathFrom.x;
             const vy = pathTo.y - pathFrom.y;
-            const ux = m.x - pathFrom.x;
-            const uy = m.y - pathFrom.y;
+            const ux = proj.x - pathFrom.x;
+            const uy = proj.y - pathFrom.y;
             const t = clamp((ux * vx + uy * vy) / Math.max(1e-6, segLen * segLen), 0, 1);
             const px = pathFrom.x + vx * t;
             const py = pathFrom.y + vy * t;
-            if (dist(px, py, m.x, m.y) > m.hitboxRadius + p.effectiveRadius * 0.42) continue;
+            const hitDist = proj.radius + p.effectiveRadius * 0.38;
+            if (dist(px, py, proj.x, proj.y) > hitDist) continue;
+
+            p.hitProjectilesInSegment.add(key);
+            proj.alive = false;
+            this.game.particles.hitSpark(proj.x, proj.y, false);
+            this.game.particles.slashTrail(proj.x, proj.y, angle(pathFrom.x, pathFrom.y, pathTo.x, pathTo.y));
+        }
+    }
+
+    _pathSegmentHitsMonster(pathFrom, pathTo, monster, hitPad) {
+        const segLen = dist(pathFrom.x, pathFrom.y, pathTo.x, pathTo.y);
+        if (segLen < 0.001) return false;
+
+        const vx = pathTo.x - pathFrom.x;
+        const vy = pathTo.y - pathFrom.y;
+        const ux = monster.x - pathFrom.x;
+        const uy = monster.y - pathFrom.y;
+        const t = clamp((ux * vx + uy * vy) / Math.max(1e-6, segLen * segLen), 0, 1);
+        const px = pathFrom.x + vx * t;
+        const py = pathFrom.y + vy * t;
+        return dist(px, py, monster.x, monster.y) <= monster.hitboxRadius + hitPad;
+    }
+
+    getPathPreviewTargetIds(path, player) {
+        const ids = new Set();
+        if (!path || path.length < 2 || !player) return ids;
+
+        const hitPad = player.effectiveRadius * 0.42;
+        const monsters = this.game.spawner.getActiveMonsters();
+        for (let i = 0; i < path.length - 1; i++) {
+            const from = path[i];
+            const to = path[i + 1];
+            for (const m of monsters) {
+                if (this._pathSegmentHitsMonster(from, to, m, hitPad)) ids.add(m.id);
+            }
+        }
+        return ids;
+    }
+
+    _recordPathHits(pathFrom, pathTo, segmentIndex) {
+        const p = this.game.player;
+        const monsters = this.game.spawner.getActiveMonsters();
+        const hitPad = p.effectiveRadius * 0.42;
+        for (const m of monsters) {
+            const key = `${m.id}:${segmentIndex}`;
+            if (p.hitMonstersInSegment.has(key)) continue;
+            if (!this._pathSegmentHitsMonster(pathFrom, pathTo, m, hitPad)) continue;
 
             p.hitMonstersInSegment.add(key);
             this.pendingHits.push({
@@ -232,6 +284,7 @@ class CombatManager {
             const from = p.attackPath[p.pathIndex];
             const to = p.attackPath[p.pathIndex + 1];
             this._recordPathHits(from, to, p.pathIndex);
+            this._recordPathProjectileHits(from, to, p.pathIndex);
         }
 
         for (let i = this.afterimages.length - 1; i >= 0; i--) {

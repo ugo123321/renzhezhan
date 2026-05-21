@@ -4,23 +4,28 @@ const MonsterKind = {
     SHIELD: 'SHIELD',
     BERSERKER: 'BERSERKER',
     SPLITTER: 'SPLITTER',
+    ARCHER: 'ARCHER',
 };
 
 let nextMonsterId = 1;
 
 class Monster {
-    constructor(x, y, kind, splitTier = 0) {
+    constructor(x, y, kind, splitTier = 0, stageStatScale = null) {
         this.game = null;
         this.id = nextMonsterId++;
         this.kind = kind;
         this.splitTier = splitTier;
         this.base = CONFIG.MONSTERS[kind];
+        this.stageStatScale = stageStatScale || { hp: 1, def: 1 };
 
         const splitScale = kind === MonsterKind.SPLITTER ? Math.pow(0.72, splitTier) : 1;
-        this.maxHp = Math.max(8, Math.round(this.base.hp * (kind === MonsterKind.SPLITTER ? Math.pow(0.66, splitTier) : 1)));
+        const hpMul = (kind === MonsterKind.SPLITTER ? Math.pow(0.66, splitTier) : 1) * this.stageStatScale.hp;
+        const defMul = (kind === MonsterKind.SPLITTER ? Math.pow(0.86, splitTier) : 1) * this.stageStatScale.def;
+        this.maxHp = Math.max(8, Math.round(this.base.hp * hpMul));
         this.hp = this.maxHp;
-        this.def = Math.max(0, Math.round(this.base.def * (kind === MonsterKind.SPLITTER ? Math.pow(0.86, splitTier) : 1)));
-        this.size = Math.max(6, Math.round(this.base.size * splitScale));
+        this.def = Math.max(0, Math.round(this.base.def * defMul));
+        const unitScale = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        this.size = Math.max(6, Math.round(this.base.size * splitScale * unitScale));
         this.speed = this.base.speed * (kind === MonsterKind.SPLITTER ? 1 + splitTier * 0.08 : 1);
         this.color = this.base.color;
 
@@ -44,6 +49,7 @@ class Monster {
         this.spawnTimer = 0;
         this.spawnDuration = 0;
         this.failThrowTimer = 0;
+        this.pathTargetHighlight = false;
         this.attackDamage = this.base.attack || 10;
         this.attackInterval = this.base.attackInterval || 1.1;
         this.attackCooldown = randRange(0.2, this.attackInterval);
@@ -93,8 +99,15 @@ class Monster {
         this.moveDir = Math.atan2(dy, dx);
         this.facing = this.moveDir;
 
-        const reachDist = this.hitboxRadius + (playerTarget.effectiveRadius || 12) + 2;
-        const step = Math.min(this.speed * dt, Math.max(0, distToPlayer - reachDist));
+        let stopDist;
+        if (this.kind === MonsterKind.ARCHER) {
+            stopDist = this.base.attackRange || 165;
+            if (distToPlayer <= stopDist) return;
+        } else {
+            stopDist = this.hitboxRadius + (playerTarget.effectiveRadius || 12) + 2;
+        }
+
+        const step = Math.min(this.speed * dt, Math.max(0, distToPlayer - stopDist));
         this.x += Math.cos(this.moveDir) * step;
         this.y += Math.sin(this.moveDir) * step;
 
@@ -109,10 +122,38 @@ class Monster {
         }
     }
 
+    _canArcherShoot(playerTarget) {
+        if (!playerTarget || !playerTarget.player) return false;
+        const player = playerTarget.player;
+        if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME || player.isAttackInvincible?.()) return false;
+        const attackRange = this.base.attackRange || 165;
+        return dist(this.x, this.y, playerTarget.x, playerTarget.y) <= attackRange;
+    }
+
+    _shootArrow(playerTarget) {
+        if (!this.game || !this.game.projectiles) return;
+        const muzzle = this.hitboxRadius + 6;
+        this.game.projectiles.spawnArrow({
+            x: this.x + Math.cos(this.facing) * muzzle,
+            y: this.y + Math.sin(this.facing) * muzzle,
+            targetX: playerTarget.x,
+            targetY: playerTarget.y,
+            speed: this.base.arrowSpeed || CONFIG.ARROW.SPEED || 340,
+            damage: this.attackDamage,
+        });
+        if (this.game.particles) {
+            this.game.particles.spawnEffect(
+                this.x + Math.cos(this.facing) * muzzle,
+                this.y + Math.sin(this.facing) * muzzle,
+                '#c8b890'
+            );
+        }
+    }
+
     _canAttackPlayer(playerTarget) {
         if (!playerTarget || !playerTarget.player) return false;
         const player = playerTarget.player;
-        if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME) return false;
+        if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME || player.isAttackInvincible?.()) return false;
         const reach = this.hitboxRadius + player.effectiveRadius + 4;
         return dist(this.x, this.y, playerTarget.x, playerTarget.y) <= reach;
     }
@@ -155,9 +196,16 @@ class Monster {
 
         if (playerTarget) {
             this.attackCooldown -= dt;
-            if (this.attackCooldown <= 0 && this._canAttackPlayer(playerTarget)) {
-                this._attackPlayer(playerTarget);
-                this.attackCooldown = this.attackInterval;
+            if (this.attackCooldown <= 0) {
+                if (this.kind === MonsterKind.ARCHER) {
+                    if (this._canArcherShoot(playerTarget)) {
+                        this._shootArrow(playerTarget);
+                        this.attackCooldown = this.attackInterval;
+                    }
+                } else if (this._canAttackPlayer(playerTarget)) {
+                    this._attackPlayer(playerTarget);
+                    this.attackCooldown = this.attackInterval;
+                }
             }
         }
     }
@@ -205,7 +253,7 @@ class Monster {
         const spriteSet = this._getSpriteSet();
         const frameIdx = Math.floor(this.walkPhase * 0.22) % 2;
         const sprite = (spriteSet.idle || [])[frameIdx % (spriteSet.idle || [spriteSet]).length] || spriteSet;
-        const scale = clamp(Math.round(this.size / 4), 2, 4);
+        const scale = clamp(Math.round(this.size / 4), 2, 6);
         const flipX = Math.cos(this.facing) < 0;
         const tint = this.kind === MonsterKind.BERSERKER ? 0.16 : 0;
 
@@ -223,7 +271,28 @@ class Monster {
             ctx.arc(x, y, ringR, 0, Math.PI * 2);
             ctx.stroke();
         }
-        drawSprite(ctx, sprite, x, y, scale, alpha, flipX, tint);
+        if (this.pathTargetHighlight) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            const startX = x - (sprite[0].length * scale) / 2;
+            const startY = y - (sprite.length * scale) / 2;
+            for (let row = 0; row < sprite.length; row++) {
+                for (let col = 0; col < sprite[0].length; col++) {
+                    const color = sprite[row][flipX ? sprite[0].length - 1 - col : col];
+                    if (!color) continue;
+                    ctx.fillStyle = tintHexColor(color, 210, 210, 218, 0.78);
+                    ctx.fillRect(
+                        Math.floor(startX + col * scale),
+                        Math.floor(startY + row * scale),
+                        scale,
+                        scale
+                    );
+                }
+            }
+            ctx.restore();
+        } else {
+            drawSprite(ctx, sprite, x, y, scale, alpha, flipX, tint);
+        }
 
         const failDeath = this.game && this.game.failDeath;
         if (failDeath && failDeath.isThrowing() && this.failThrowTimer > 0) {
@@ -252,6 +321,14 @@ class Monster {
                 ctx.fillStyle = '#4e7c38';
                 ctx.fillRect(x - 6, y + r * 0.5, 3, 3);
             }
+        } else if (this.kind === MonsterKind.ARCHER) {
+            ctx.strokeStyle = '#8a6848';
+            ctx.lineWidth = 2;
+            const bx = x + Math.cos(this.facing) * (r + 1);
+            const by = y + Math.sin(this.facing) * (r + 1);
+            ctx.beginPath();
+            ctx.arc(bx, by, r * 0.55, this.facing - 1.1, this.facing + 1.1);
+            ctx.stroke();
         }
 
         if (this.isFrozen()) {
@@ -283,6 +360,7 @@ class Monster {
             case MonsterKind.SHIELD: return SPRITES.strongRanged;
             case MonsterKind.BERSERKER: return SPRITES.strongMelee;
             case MonsterKind.SPLITTER: return SPRITES.normalRanged;
+            case MonsterKind.ARCHER: return SPRITES.normalRanged;
             default: return SPRITES.normalMelee;
         }
     }

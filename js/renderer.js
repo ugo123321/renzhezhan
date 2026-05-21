@@ -130,17 +130,25 @@ class Renderer {
     }
 
     updateShake(dt) {
-        if (this.shakeTimer > 0) {
-            this.shakeTimer -= dt;
-            const intensity = this.shakeTimer / this.shakeDur;
-            this.shakeX = (Math.random() - 0.5) * 2 * this.shakeMag * intensity;
-            this.shakeY = (Math.random() - 0.5) * 2 * this.shakeMag * intensity;
-            if (this.shakeTimer <= 0) {
-                this.shakeX = 0;
-                this.shakeY = 0;
-                this.shakeMag = 0;
-            }
+        if (this.shakeTimer <= 0) return;
+        if (dt <= 0) return;
+        this.shakeTimer -= dt;
+        const intensity = this.shakeTimer / this.shakeDur;
+        this.shakeX = (Math.random() - 0.5) * 2 * this.shakeMag * intensity;
+        this.shakeY = (Math.random() - 0.5) * 2 * this.shakeMag * intensity;
+        if (this.shakeTimer <= 0) {
+            this.shakeX = 0;
+            this.shakeY = 0;
+            this.shakeMag = 0;
         }
+    }
+
+    clearShake() {
+        this.shakeX = 0;
+        this.shakeY = 0;
+        this.shakeMag = 0;
+        this.shakeDur = 0;
+        this.shakeTimer = 0;
     }
 
     clear() {

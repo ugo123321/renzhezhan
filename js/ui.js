@@ -83,7 +83,6 @@ class UI {
         this._lastHudLayout = layout;
         this.drawTopKiBar(ctx, game.player, layout, s);
         this.drawTurnBuffIcons(ctx, game.player, layout, s);
-        this.drawTurns(ctx, game, layout, s);
         this.drawComboBanner(ctx, game.player, vp, layout, s);
         this.drawMessage(ctx, game.player, vp, s);
         this.drawBuffNotice(ctx, game.buffOrbs, vp, s);
@@ -320,25 +319,6 @@ class UI {
         }
 
         return dx + (pommelCols + gripCols) * px;
-    }
-
-    drawTurns(ctx, game, layout, s) {
-        const turns = game.turnsLeft;
-        const urgent = turns <= 1;
-        const boxW = 80 * s;
-        const boxH = 52 * s;
-        const x = layout.kiX + layout.kiW - boxW;
-        const y = layout.secondRowY;
-        const cx = x + boxW / 2;
-
-        const pulse = urgent && Math.floor(Date.now() / 320) % 2 === 0;
-        const fill = urgent ? (pulse ? '#5a1810' : '#3a1008') : '#242838';
-        const border = urgent ? '#ff6848' : '#e8c050';
-        drawPixelPanel(ctx, x, y, boxW, boxH, fill, border, 2);
-
-        const numColor = urgent ? '#ffe0d0' : '#fff8e0';
-        drawPixelText(ctx, String(turns), cx, y + boxH * 0.38, Math.round(22 * s), numColor);
-        drawPixelText(ctx, '回合', cx, y + boxH * 0.76, Math.round(10 * s), urgent ? '#ffb0a0' : '#ffd890');
     }
 
     drawComboBanner(ctx, player, vp, layout, s) {

@@ -40,8 +40,10 @@ class Player {
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment = new Set();
+        this.hitProjectilesInSegment = new Set();
         this.invalidPathTimer = 0;
         this.kiAtDrawStart = this.ki;
+        this.damageFlashTimer = 0;
 
         this.turnBuffs = {
             attackMult: 1,
@@ -58,15 +60,29 @@ class Player {
     }
 
     get effectiveRadius() {
-        return CONFIG.PLAYER.HITBOX_RADIUS * this.sizeScale;
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        return CONFIG.PLAYER.HITBOX_RADIUS * this.sizeScale * unit;
+    }
+
+    get triggerRadius() {
+        const refW = CONFIG.DISPLAY.LOGICAL_WIDTH;
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        const minR = CONFIG.PLAYER.TRIGGER_RADIUS_MIN || 30;
+        const base = Math.max(minR, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
+        return base * this.sizeScale * unit;
     }
 
     get spriteScale() {
-        return CONFIG.DISPLAY.NINJA_SPRITE_SCALE * this.sizeScale;
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
+        return CONFIG.DISPLAY.NINJA_SPRITE_SCALE * this.sizeScale * unit;
     }
 
     isInAttackMode() {
         return this.state === PlayerState.ATTACKING;
+    }
+
+    isAttackInvincible() {
+        return this.isInAttackMode();
     }
 
     resetLineBuffs() {
@@ -76,13 +92,14 @@ class Player {
         this.turnBuffs.iceReady = false;
     }
 
-    beginTurn() {
+    beginStage() {
         this.deathAnim = null;
         this.state = PlayerState.IDLE;
         this.attackPath = [];
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
         this.invalidPathTimer = 0;
         this.comboCount = 0;
         this.comboDisplayPeak = 0;
@@ -91,6 +108,7 @@ class Player {
         this.waterTornadoCharge = 0;
         this.drawSessionSnapshot = null;
         this.invincibleTimer = 0;
+        this.damageFlashTimer = 0;
         this.hp = this.maxHp;
         if (this.game && this.game.buffOrbs) {
             this.game.buffOrbs.drawSessionEaten = [];
@@ -102,11 +120,53 @@ class Player {
         this.nextTurnKiBonus = 0;
     }
 
+    finishAttackCycle() {
+        this.state = PlayerState.IDLE;
+        this.attackPath = [];
+        this.pathIndex = 0;
+        this.pathProgress = 0;
+        this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
+        this.invalidPathTimer = 0;
+        this.comboCount = 0;
+        this.comboDisplayPeak = 0;
+        this.comboDisplayTimer = 0;
+        this.comboShakeTimer = 0;
+        this.waterTornadoCharge = 0;
+        this.drawSessionSnapshot = null;
+        if (this.game && this.game.buffOrbs) {
+            this.game.buffOrbs.drawSessionEaten = [];
+        }
+        this.resetLineBuffs();
+        const turnKiMax = Math.round(this.baseKi * (1 + this.nextTurnKiBonus));
+        this.kiMax = Math.max(20, turnKiMax);
+        this.ki = Math.min(this.ki, this.kiMax);
+        this.nextTurnKiBonus = 0;
+    }
+    _canRegenKi() {
+        if (this.state !== PlayerState.IDLE || this.ki >= this.kiMax) return false;
+        if (!this.game || !this.game.combat) return false;
+        if (this.game.combat.isResolving()) return false;
+        if (!this.game.combat.roundAttackResolved) return false;
+        if (this.game.isUpgradeBlocked()) return false;
+        return true;
+    }
+
+    _updateKiRegen(realDt) {
+        if (!this._canRegenKi()) return;
+        const rate = CONFIG.PLAYER.KI_REGEN_RATE || 52;
+        this.ki = Math.min(this.kiMax, this.ki + rate * realDt);
+    }
+
     takeDamage(rawDamage) {
-        if (this.invincibleTimer > 0 || this.hp <= 0) return 0;
+        if (this.isAttackInvincible() || this.invincibleTimer > 0 || this.hp <= 0) return 0;
         const actual = Math.max(1, Math.round(rawDamage));
         this.hp = Math.max(0, this.hp - actual);
         this.invincibleTimer = CONFIG.PLAYER.INVINCIBLE_TIME || 0.45;
+        this.damageFlashTimer = CONFIG.PLAYER.DAMAGE_FLASH_TIME || 0.42;
+        if (this.game && this.game.renderer) {
+            this.game.renderer.shake(4, 0.12);
+        }
         if (this.hp <= 0 && this.game) {
             this.game._playerDied();
         }
@@ -120,6 +180,7 @@ class Player {
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
         this.queueMessage('路径无效');
     }
 
@@ -133,41 +194,16 @@ class Player {
         this.state = PlayerState.BULLET_TIME;
         if (this.game && this.game.buffOrbs) this.game.buffOrbs.beginDrawSession();
         this.invalidPathTimer = 0;
-        this.attackPath = [{ x: this.x, y: this.y }];
+        this.attackPath = [];
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
     }
 
     addPathPoint(x, y) {
         const last = this.attackPath[this.attackPath.length - 1];
-        if (!last || dist(last.x, last.y, x, y) > 2) this.attackPath.push({ x, y });
-    }
-
-    extendPathByDirection(dir, step) {
-        if (!dir || step <= 0) return false;
-        const last = this.attackPath[this.attackPath.length - 1];
-        if (!last) return false;
-        const r = this.game.renderer;
-        const playBottom = this.game.ui.getPlayAreaBottom
-            ? this.game.ui.getPlayAreaBottom(r.h, r.uiScale)
-            : r.h;
-        const margin = 16;
-        const top = 84;
-        let nx = last.x + dir.x * step;
-        let ny = last.y + dir.y * step;
-        nx = clamp(nx, margin, r.w - margin);
-        ny = clamp(ny, top, playBottom - margin);
-        const actualStep = dist(last.x, last.y, nx, ny);
-        if (actualStep < 0.5) return false;
-        if (!this.consumeKiByDistance(actualStep)) return false;
-        this.addPathPoint(nx, ny);
-        if (this.game && this.game.buffOrbs && this.attackPath.length >= 2) {
-            const from = this.attackPath[this.attackPath.length - 2];
-            const to = this.attackPath[this.attackPath.length - 1];
-            this.game.buffOrbs.checkPathSegment(from, to);
-        }
-        return true;
+        if (!last || dist(last.x, last.y, x, y) > 4) this.attackPath.push({ x, y });
     }
 
     startAttack() {
@@ -181,6 +217,7 @@ class Player {
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
         this.comboCount = 0;
         this.comboDisplayPeak = 0;
         this.comboDisplayTimer = 0;
@@ -206,6 +243,25 @@ class Player {
         return { x: this.homeX, y: this.homeY };
     }
 
+    _layoutShadowClones() {
+        const total = this.shadowClones.length;
+        if (total <= 0) return;
+
+        let idx = 0;
+        let ring = 0;
+        while (idx < total) {
+            const onRing = Math.min(4 + ring * 2, total - idx);
+            const radius = 24 + ring * 20;
+            const ringOffset = ring * 0.38;
+            for (let slot = 0; slot < onRing; slot++, idx++) {
+                const angle = ringOffset + (slot / onRing) * Math.PI * 2;
+                this.shadowClones[idx].ox = Math.cos(angle) * radius;
+                this.shadowClones[idx].oy = Math.sin(angle) * radius;
+            }
+            ring++;
+        }
+    }
+
     _syncShadowClones() {
         if (!this.shadowClones.length) return;
         const anchor = this._getShadowCloneAnchor();
@@ -218,14 +274,9 @@ class Player {
     addShadowClones(count) {
         if (count <= 0) return;
         for (let i = 0; i < count; i++) {
-            const idx = this.shadowClones.length;
-            const side = idx % 2 === 0 ? -1 : 1;
-            const tier = Math.floor(idx / 2);
-            this.shadowClones.push({
-                ox: side * (18 + tier * 14),
-                oy: -10 - tier * 4,
-            });
+            this.shadowClones.push({ ox: 0, oy: 0 });
         }
+        this._layoutShadowClones();
         this._syncShadowClones();
     }
 
@@ -272,6 +323,7 @@ class Player {
 
     update(dt, realDt) {
         if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
+        if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
         if (this.messageTimer > 0) this.messageTimer -= dt;
         if (this.invalidPathTimer > 0) {
             this.invalidPathTimer -= dt;
@@ -288,28 +340,9 @@ class Player {
             this.comboShakeTimer = Math.max(0, this.comboShakeTimer - dt);
         }
 
-        if (this.state === PlayerState.BULLET_TIME) this._updateDraw(realDt || dt);
-        else if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
+        if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
+        this._updateKiRegen(realDt || dt);
         this._syncShadowClones();
-    }
-
-    _updateDraw(realDt) {
-        const input = this.game && this.game.input;
-        if (!input || !input.joystick) return;
-        const dir = input.joystick.getDirection();
-        if (!dir) return;
-        const step = CONFIG.PLAYER.DRAW_SPEED * realDt;
-        const ok = this.extendPathByDirection(dir, step);
-        if (!ok && this.ki <= 0) {
-            input.isDrawing = false;
-            input.joystick.end();
-            if (this.attackPath.length >= 2) {
-                this.game.exitBulletTime(false);
-            } else {
-                this.game.exitBulletTime(true);
-                this.invalidatePath();
-            }
-        }
     }
 
     _finishAttackAtPathEnd() {
@@ -350,6 +383,7 @@ class Player {
                 this.pathIndex++;
                 this.pathProgress = 0;
                 this.hitMonstersInSegment.clear();
+        this.hitProjectilesInSegment.clear();
             } else {
                 this.pathProgress += remaining / segment;
                 this.x = lerp(from.x, to.x, this.pathProgress);
@@ -360,6 +394,23 @@ class Player {
         if (this.pathIndex >= this.attackPath.length - 1) {
             this._finishAttackAtPathEnd();
         }
+    }
+
+    drawTriggerZone(ctx) {
+        if (this.state === PlayerState.BULLET_TIME || this.state === PlayerState.ATTACKING) return;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(90, 110, 130, 0.42)';
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(90, 110, 130, 0.08)';
+        ctx.beginPath();
+        ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     drawPath(ctx) {
@@ -439,16 +490,20 @@ class Player {
             return;
         }
 
-        const blink = this.invincibleTimer > 0 && Math.floor(this.invincibleTimer * 18) % 2 === 0;
-
-        ctx.save();
-        if (blink) ctx.globalAlpha = 0.55;
+        const blink = this.invincibleTimer > 0
+            && this.damageFlashTimer <= 0
+            && Math.floor(this.invincibleTimer * 18) % 2 === 0;
+        const damageFlashOn = this.damageFlashTimer > 0
+            && Math.floor(this.damageFlashTimer * 22) % 2 === 0;
+        const px = Math.floor(this.x);
+        const py = Math.floor(this.y);
 
         const sprite = this.state === PlayerState.ATTACKING
             ? SPRITES.ninja.attack[Math.floor(Date.now() / 80) % SPRITES.ninja.attack.length]
             : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
-        drawSprite(ctx, sprite, Math.floor(this.x), Math.floor(this.y), this.spriteScale);
-        ctx.restore();
+        const alpha = blink ? 0.55 : 1;
+        const tint = damageFlashOn ? 0.72 : 0;
+        drawSprite(ctx, sprite, px, py, this.spriteScale, alpha, false, tint);
 
         this._drawHpBar(ctx);
 

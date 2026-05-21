@@ -69,3 +69,12 @@ function shuffleArray(arr) {
     }
     return a;
 }
+
+function getStageStatScale(stageIndex) {
+    const cfg = CONFIG.STAGE_STAT_SCALE || {};
+    const idx = Math.max(0, stageIndex | 0);
+    return {
+        hp: Math.pow(cfg.HP_GROWTH || 1.1, idx),
+        def: Math.pow(cfg.DEF_GROWTH || 1.08, idx),
+    };
+}

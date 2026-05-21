@@ -11,7 +11,7 @@ class Game {
 
         this.player = null;
         this.spawner = new MonsterSpawner(this);
-        this.projectiles = new ProjectileManager();
+        this.projectiles = new ProjectileManager(this);
         this.particles = new ParticleSystem(650);
         this.combat = new CombatManager(this);
         this.upgrades = new UpgradeManager();
@@ -27,7 +27,6 @@ class Game {
         this.buffOrbs = new BuffOrbManager(this);
         this.input = null;
 
-        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
         this.awaitingUpgrade = false;
         this.pendingStageClear = false;
 
@@ -73,7 +72,6 @@ class Game {
                 ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
                 : this.renderer.h;
             this.grass.init(this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
-            if (this.input && this.input.joystick) this.input.joystick._syncDefaultBase();
         };
         window.addEventListener('resize', onViewport);
         window.addEventListener('orientationchange', onViewport);
@@ -89,6 +87,11 @@ class Game {
         this._overlayGestureActive = false;
         this._overlayDismissPending = this._pointerDown;
         if (this.input) this.input.cancelActivePointer();
+    }
+
+    _pauseForUpgrade() {
+        if (this.renderer) this.renderer.clearShake();
+        if (this.player) this.player.comboShakeTimer = 0;
     }
 
     _onOverlayPointerDown(e) {
@@ -156,10 +159,37 @@ class Game {
         return false;
     }
 
+    _isWorldFrozen() {
+        const p = this.player;
+        if (!p) return false;
+        if (p.state === PlayerState.BULLET_TIME) return true;
+        if (this.combat && !this.combat.roundAttackResolved) return true;
+        return false;
+    }
+
+    _canAdvanceStage() {
+        if (this.state !== 'PLAYING') return false;
+        if (!this.spawner.allClear()) return false;
+        if (this.combat.isResolving()) return false;
+        if (this.isUpgradeBlocked()) return false;
+        const p = this.player;
+        if (!p || p.state !== PlayerState.IDLE) return false;
+        return true;
+    }
+
+    _syncPendingStageClear() {
+        if (this.pendingStageClear || !this._canAdvanceStage()) return;
+        if (!this.combat.roundAttackResolved) {
+            this.combat.consumeRoundAttack();
+            this.player.finishAttackCycle();
+        }
+        this.pendingStageClear = true;
+    }
+
     _tryFinishStageClear() {
         if (!this.pendingStageClear || this.state !== 'PLAYING') return;
         if (this.isUpgradeBlocked() || this.combat.isResolving()) return;
-        if (this.isCombatPresentationActive()) return;
+        if (!this.spawner.allClear()) return;
         this.pendingStageClear = false;
         this._stageCleared();
     }
@@ -169,8 +199,7 @@ class Game {
         const playBottom = this.ui.getPlayAreaBottom
             ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
             : this.renderer.h;
-        const freezeWorld = this.player && this.player.state === PlayerState.BULLET_TIME;
-        const worldDt = freezeWorld ? 0 : dt;
+        const worldDt = this._isWorldFrozen() ? 0 : dt;
         const playerTarget = this.player ? {
             x: this.player.x,
             y: this.player.y,
@@ -178,7 +207,7 @@ class Game {
             player: this.player,
         } : null;
         this.spawner.update(worldDt, this.renderer.w, this.renderer.h, playBottom, playerTarget);
-        this.projectiles.update(worldDt, this.renderer.w, this.renderer.h);
+        this.projectiles.update(worldDt, this.renderer.w, this.renderer.h, playerTarget);
         this.combat.update(dt);
         this.buffOrbs.update(realDt);
         this.sakura.update(realDt, this.renderer.w, this.renderer.h);
@@ -188,9 +217,12 @@ class Game {
     }
 
     _getSafeZone() {
-        const x = this.player ? this.player.x : this.renderer.w / 2;
-        const y = this.player ? this.player.y : this.renderer.h / 2;
-        return { x, y, r: CONFIG.PLAYER.SPAWN_SAFE_RADIUS || 40 };
+        const x = this.player ? this.player.homeX : this.renderer.w / 2;
+        const y = this.player ? this.player.homeY : this.renderer.h / 2;
+        const r = this.player
+            ? this.player.triggerRadius
+            : Math.max(CONFIG.PLAYER.TRIGGER_RADIUS_MIN || 30, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * CONFIG.DISPLAY.LOGICAL_WIDTH);
+        return { x, y, r };
     }
 
     _playerDied() {
@@ -209,6 +241,7 @@ class Game {
             this.player.pathIndex = 0;
             this.player.pathProgress = 0;
             this.player.hitMonstersInSegment.clear();
+            this.player.hitProjectilesInSegment.clear();
             this.player.invalidPathTimer = 0;
             this.player.comboCount = 0;
             this.player.comboDisplayPeak = 0;
@@ -233,14 +266,7 @@ class Game {
 
     _prepareStage(levelIndex, withSpawnAnim = false) {
         this.levelManager.level = levelIndex;
-        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
-        this.player.beginTurn();
-        const cx = this.renderer.w / 2;
-        const cy = this.renderer.h / 2;
-        this.player.homeX = cx;
-        this.player.homeY = cy;
-        this.player.x = cx;
-        this.player.y = cy;
+        this.player.beginStage();
         const playBottom = this.ui.getPlayAreaBottom ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale) : this.renderer.h;
         const safe = this._getSafeZone();
         this.spawner.spawnStage(levelIndex, this.renderer.w, this.renderer.h, playBottom, safe, withSpawnAnim);
@@ -251,8 +277,7 @@ class Game {
     _setupStageBeforeIntro(levelIndex) {
         this._clearCombatResiduals();
         this.levelManager.level = levelIndex;
-        this.turnsLeft = CONFIG.TURN.BASE_TURNS;
-        this.player.beginTurn();
+        this.player.beginStage();
         this.spawner.monsters = [];
         this.combat.roundAttackResolved = true;
     }
@@ -318,7 +343,7 @@ class Game {
         this.player.game = this;
         this.failDeath = new StageFailAnimator(this);
         this.spawner = new MonsterSpawner(this);
-        this.projectiles = new ProjectileManager();
+        this.projectiles = new ProjectileManager(this);
         this.particles = new ParticleSystem(650);
         this.combat = new CombatManager(this);
         this.upgrades = new UpgradeManager();
@@ -371,17 +396,12 @@ class Game {
 
     _onAttackFinished() {
         if (this.combat.consumeRoundAttack()) {
-            this.turnsLeft = Math.max(0, this.turnsLeft - 1);
             const cleared = this.spawner.allClear();
-            if (this.turnsLeft <= 0 && !cleared) {
-                this._stageFailed();
-                return;
-            }
             if (cleared) {
                 this.pendingStageClear = true;
                 return;
             }
-            this.player.beginTurn();
+            this.player.finishAttackCycle();
         }
     }
 
@@ -397,7 +417,8 @@ class Game {
     update(dt, realDt) {
         if (this.state === 'MENU' || this.state === 'COMPLETE') return;
         if (this.state === 'FAIL' && !this.levelManager.isFailIntroActive()) return;
-        this.renderer.updateShake(realDt);
+        this.renderer.updateShake(this.state === 'LEVEL_UP' ? 0 : realDt);
+        if (this.state === 'LEVEL_UP') this.renderer.clearShake();
         this.levelManager.update(realDt);
 
         if (this.state === 'STAGE_INTRO' || this.state === 'STAGE_CLEAR') {
@@ -418,6 +439,7 @@ class Game {
         if (this.state === 'STAGE_CLEAR') return;
         if (this.state === 'LEVEL_UP') {
             this.upgrades.update(realDt);
+            return;
         }
 
         if (this._isBattleScene()) {
@@ -432,6 +454,7 @@ class Game {
                     && !this.isUpgradeBlocked()) {
                     this._onAttackFinished();
                 }
+                this._syncPendingStageClear();
                 this._tryFinishStageClear();
             }
         }
@@ -468,41 +491,50 @@ class Game {
         this.bloodStains.draw(ctx);
         this._drawBulletTimeDim(ctx);
         const battleScene = this._isBattleScene();
+        const showCombatFx = battleScene && this.state !== 'LEVEL_UP';
         const showBattlefield = battleScene || this._isFailBattlefield();
         if (showBattlefield) {
             if (battleScene) this.buffOrbs.draw(ctx);
-            for (const m of this.spawner.monsters) m.draw(ctx);
+            const previewTargets = (battleScene
+                && this.player
+                && this.player.state === PlayerState.BULLET_TIME
+                && this.player.attackPath.length >= 2)
+                ? this.combat.getPathPreviewTargetIds(this.player.attackPath, this.player)
+                : null;
+            for (const m of this.spawner.monsters) {
+                m.pathTargetHighlight = previewTargets ? previewTargets.has(m.id) : false;
+                m.draw(ctx);
+            }
+            if (battleScene) this.projectiles.draw(ctx);
         }
 
-        if (battleScene) {
+        if (showCombatFx) {
             this.abilities.drawBehind(ctx);
         }
         if (this.player) {
+            if (!this._isFailBattlefield()) this.player.drawTriggerZone(ctx);
             if (battleScene || this.player.state === PlayerState.BULLET_TIME) {
                 this.player.drawPath(ctx);
             }
             this.player.draw(ctx);
         }
-        if (battleScene) {
+        if (showCombatFx) {
             this.combat.drawAfterimages(ctx);
         }
-        if (battleScene && this.abilities.hasActiveFx()) {
+        if (showCombatFx && this.abilities.hasActiveFx()) {
             this.abilities.drawFront(ctx);
         }
         if (this.state === 'FAIL_DEATH' && this.failDeath.isActive()) {
             this.failDeath.drawSpears(ctx);
         }
-        if (battleScene) {
+        if (showCombatFx) {
             this.buffOrbs.drawPickupEffects(ctx);
         }
-        if (battleScene || this.state === 'FAIL_DEATH') {
+        if (showCombatFx || this.state === 'FAIL_DEATH') {
             this.particles.draw(ctx);
         }
-        if (battleScene && this.combat.damageNumbers.length > 0) {
+        if (showCombatFx && this.combat.damageNumbers.length > 0) {
             this.combat.drawDamageNumbers(ctx);
-        }
-        if (this.input && this.input.joystick && battleScene && !this._isFailBattlefield()) {
-            this.input.joystick.draw(ctx);
         }
 
         this.renderer.endClippedGameDraw();

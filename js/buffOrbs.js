@@ -29,11 +29,12 @@ class BuffOrbManager {
     }
 
     _spawn(type, x, y) {
+        const unit = CONFIG.DISPLAY.UNIT_SCALE || 1;
         this.orbs.push({
             type,
             x,
             y,
-            r: CONFIG.BUFF_ORB.RADIUS,
+            r: CONFIG.BUFF_ORB.RADIUS * unit,
             pulse: randRange(0, Math.PI * 2),
             alive: true,
         });

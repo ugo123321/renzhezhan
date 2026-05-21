@@ -230,7 +230,7 @@ class LevelManager {
             ctx.translate(vp.cx, cy);
             ctx.scale(pop, pop);
             ctx.translate(-vp.cx, -cy);
-            drawPixelText(ctx, '回合耗尽', vp.cx, cy, Math.round(20 * s), '#ff9c84');
+            drawPixelText(ctx, '体力耗尽', vp.cx, cy, Math.round(20 * s), '#ff9c84');
             drawPixelText(ctx, '点击屏幕重新挑战', vp.cx, cy + 28 * s, Math.round(13 * s), '#f4e8da');
             ctx.restore();
         }

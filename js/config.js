@@ -15,21 +15,23 @@ const CONFIG = {
         SPEAR_SPEED: 640,
         IMPACT_PAUSE: 0.24,
         DEATH_DURATION: 0.9,
+        PLAYBACK_SPEED: 2,
     },
     NORMAL_TIME_SCALE: 1.0,
 
     COMBAT_RESOLVE: {
-        FIRST_HIT_DELAY: 0.08,
-        HIT_INTERVAL: 0.048,
-        AFTERIMAGE_LIFE: 0.14,
-        DEATH_STAGGER: 0.07,
+        FIRST_HIT_DELAY: 0.04,
+        HIT_INTERVAL: 0.012,
+        AFTERIMAGE_LIFE: 0.1,
+        DEATH_STAGGER: 0.012,
     },
 
-    MONSTER_DEATH_FADE: 0.24,
+    MONSTER_DEATH_FADE: 0.1,
 
     DISPLAY: {
         LOGICAL_WIDTH: 390,
         LOGICAL_HEIGHT: 700,
+        UNIT_SCALE: 1.3,
         NINJA_SPRITE_SCALE: 3,
         GRID_SIZE: 28,
     },
@@ -41,31 +43,21 @@ const CONFIG = {
         BASE_CRIT_RATE: 0.08,
         BASE_CRIT_DAMAGE: 1.6,
         ATTACK_SPEED: 2300,
-        DRAW_SPEED: 520,
         HITBOX_RADIUS: 12,
-        SPAWN_SAFE_RADIUS: 40,
+        TRIGGER_RADIUS_RATIO: 0.06,
+        TRIGGER_RADIUS_MIN: 30,
         KI_PER_PIXEL: 0.18,
         SIZE_SCALE: 1.0,
         INVINCIBLE_TIME: 0.45,
-        COMBO_DAMAGE_BONUS: 0.10,
+        DAMAGE_FLASH_TIME: 0.42,
+        COMBO_DAMAGE_BONUS: 0.01,
         COMBO_DISPLAY_HOLD: 0.6,
         COMBO_END_FADE: 0.4,
         COMBO_TEXT_BASE: 30,
         COMBO_TEXT_GROW: 1.4,
         COMBO_TEXT_MAX_GROW: 22,
         COMBO_SHAKE_DURATION: 0.24,
-    },
-
-    JOYSTICK: {
-        BASE_RADIUS: 52,
-        STICK_RADIUS: 22,
-        MAX_OFFSET: 46,
-        DEAD_ZONE: 10,
-        DEFAULT_BOTTOM_OFFSET: 72,
-    },
-
-    TURN: {
-        BASE_TURNS: 8,
+        KI_REGEN_RATE: 104,
     },
 
     EXP: {
@@ -73,25 +65,46 @@ const CONFIG = {
         GROWTH: 1.22,
         BAR_HEIGHT: 24,
         KILL_REWARD: {
-            NORMAL: 5,
-            ELITE: 8,
-            SHIELD: 7,
-            BERSERKER: 9,
-            SPLITTER: 6,
+            NORMAL: 2,
+            ELITE: 4,
+            SHIELD: 3,
+            BERSERKER: 4,
+            SPLITTER: 3,
+            ARCHER: 3,
         },
+    },
+
+    ARROW: {
+        RADIUS: 6,
+        SPEED: 85,
     },
 
     STAGE_MONSTER_SCALE: 1.3,
 
+    // 关卡递增：第 1 关系数 1.0，每往后一关 HP/DEF 按幂次增长
+    STAGE_STAT_SCALE: {
+        HP_GROWTH: 1.8,
+        DEF_GROWTH: 1.8,
+    },
+
+    SPAWN: {
+        MIN_DIST_FROM_PLAYER: 100,
+        MIN_MONSTER_SPACING: 20,
+        CLUSTER_COUNT_MIN: 5,
+        CLUSTER_COUNT_MAX: 9,
+        CLUSTER_PICK_CHANCE: 0.74,
+        SPARSE_PICK_CHANCE: 0.26,
+    },
+
     STAGES: [
-        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0 },
-        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0 },
-        { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0 },
-        { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0 },
-        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0 },
-        { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0 },
-        { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0 },
-        { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0 },
+        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 8 },
+        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10 },
+        { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0, archer: 12 },
+        { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0, archer: 14 },
+        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0, archer: 16 },
+        { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0, archer: 18 },
+        { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0, archer: 20 },
+        { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0, archer: 22 },
     ],
 
     MONSTERS: {
@@ -157,6 +170,21 @@ const CONFIG = {
             canMove: true,
             maxSplitTier: 3,
             splitCount: 2,
+        },
+        ARCHER: {
+            name: '射箭怪',
+            hp: 75,
+            def: 3,
+            attack: 12,
+            attackInterval: 1.35,
+            attackRange: 215,
+            arrowSpeed: 85,
+            size: 12,
+            speed: 17,
+            color: '#6a8a5a',
+            grade: 'B',
+            canMove: true,
+            ranged: true,
         },
     },
 
