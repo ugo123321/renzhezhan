@@ -127,7 +127,7 @@ const CONFIG = {
             attackInterval: 1.15,
             size: 13,
             speed: 19,
-            color: '#7a8ca2',
+            color: '#526078',
             grade: 'B',
             canMove: true,
         },
