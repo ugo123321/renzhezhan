@@ -178,6 +178,7 @@ const CONFIG = {
     },
 
     STAGE_MONSTER_SCALE: 1.3,
+    STAGE_COUNT_MUL: 2 / 3,
 
     // 关卡递增：第 1 关系数 1.0，每往后一关 HP/DEF 按幂次增长
     STAGE_STAT_SCALE: {
@@ -195,8 +196,8 @@ const CONFIG = {
     },
 
     STAGES: [
-        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 8, fireMage: 4 },
-        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10, fireMage: 5 },
+        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 0, fireMage: 0 },
+        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10, fireMage: 0 },
         { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0, archer: 12, fireMage: 6 },
         { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0, archer: 14, fireMage: 7 },
         { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0, archer: 16, fireMage: 8 },
@@ -311,6 +312,7 @@ const CONFIG = {
             ice: 0.28,
         },
         EXTRA_SPAWN_CHANCE: 0.48,
+        MIN_KI_PER_STAGE: 2,
     },
 
     UPGRADE_RARITY: {
@@ -2898,6 +2900,15 @@ class BuffOrbManager {
                 this._spawn(type, pos.x, pos.y);
             }
         }
+
+        const minKi = CONFIG.BUFF_ORB.MIN_KI_PER_STAGE || 0;
+        let kiCount = this.orbs.filter(o => o.type === 'ki').length;
+        while (kiCount < minKi) {
+            const pos = this._pickSpawnPos(w, h, playBottom, safeZone);
+            this._spawn('ki', pos.x, pos.y);
+            kiCount++;
+        }
+
         this.notice = '';
         this.noticeTimer = 0;
         this.pickupFlashes = [];
@@ -5631,7 +5642,8 @@ class MonsterSpawner {
 
     _scaledCount(n) {
         const scale = CONFIG.STAGE_MONSTER_SCALE || 1;
-        return Math.max(0, Math.round((n || 0) * scale));
+        const mul = CONFIG.STAGE_COUNT_MUL ?? 1;
+        return Math.max(0, Math.round((n || 0) * scale * mul));
     }
 
     spawnStage(stageIndex, w, h, playBottom, safeZone, withSpawnAnim = false) {
@@ -5645,8 +5657,12 @@ class MonsterSpawner {
         this._spawnBatch(MonsterKind.SHIELD, this._scaledCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.BERSERKER, this._scaledCount(cfg.berserker), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.SPLITTER, this._scaledCount(cfg.splitter), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
-        this._spawnBatch(MonsterKind.ARCHER, Math.max(this._scaledCount(cfg.archer || 0), this._scaledCount(6)), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
-        this._spawnBatch(MonsterKind.FIRE_MAGE, Math.max(this._scaledCount(cfg.fireMage || 0), this._scaledCount(4)), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        if (stageIndex >= 1) {
+            this._spawnBatch(MonsterKind.ARCHER, this._scaledCount(cfg.archer || 0), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        }
+        if (stageIndex >= 2) {
+            this._spawnBatch(MonsterKind.FIRE_MAGE, this._scaledCount(cfg.fireMage || 0), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        }
     }
 
     spawnSplitChildren(parent) {

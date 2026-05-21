@@ -75,6 +75,15 @@ class BuffOrbManager {
                 this._spawn(type, pos.x, pos.y);
             }
         }
+
+        const minKi = CONFIG.BUFF_ORB.MIN_KI_PER_STAGE || 0;
+        let kiCount = this.orbs.filter(o => o.type === 'ki').length;
+        while (kiCount < minKi) {
+            const pos = this._pickSpawnPos(w, h, playBottom, safeZone);
+            this._spawn('ki', pos.x, pos.y);
+            kiCount++;
+        }
+
         this.notice = '';
         this.noticeTimer = 0;
         this.pickupFlashes = [];

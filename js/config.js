@@ -90,6 +90,7 @@ const CONFIG = {
     },
 
     STAGE_MONSTER_SCALE: 1.3,
+    STAGE_COUNT_MUL: 2 / 3,
 
     // 关卡递增：第 1 关系数 1.0，每往后一关 HP/DEF 按幂次增长
     STAGE_STAT_SCALE: {
@@ -107,8 +108,8 @@ const CONFIG = {
     },
 
     STAGES: [
-        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 8, fireMage: 4 },
-        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10, fireMage: 5 },
+        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 0, fireMage: 0 },
+        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10, fireMage: 0 },
         { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0, archer: 12, fireMage: 6 },
         { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0, archer: 14, fireMage: 7 },
         { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0, archer: 16, fireMage: 8 },
@@ -223,6 +224,7 @@ const CONFIG = {
             ice: 0.28,
         },
         EXTRA_SPAWN_CHANCE: 0.48,
+        MIN_KI_PER_STAGE: 2,
     },
 
     UPGRADE_RARITY: {

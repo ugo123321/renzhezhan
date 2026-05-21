@@ -135,7 +135,8 @@ class MonsterSpawner {
 
     _scaledCount(n) {
         const scale = CONFIG.STAGE_MONSTER_SCALE || 1;
-        return Math.max(0, Math.round((n || 0) * scale));
+        const mul = CONFIG.STAGE_COUNT_MUL ?? 1;
+        return Math.max(0, Math.round((n || 0) * scale * mul));
     }
 
     spawnStage(stageIndex, w, h, playBottom, safeZone, withSpawnAnim = false) {
@@ -149,8 +150,12 @@ class MonsterSpawner {
         this._spawnBatch(MonsterKind.SHIELD, this._scaledCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.BERSERKER, this._scaledCount(cfg.berserker), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.SPLITTER, this._scaledCount(cfg.splitter), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
-        this._spawnBatch(MonsterKind.ARCHER, Math.max(this._scaledCount(cfg.archer || 0), this._scaledCount(6)), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
-        this._spawnBatch(MonsterKind.FIRE_MAGE, Math.max(this._scaledCount(cfg.fireMage || 0), this._scaledCount(4)), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        if (stageIndex >= 1) {
+            this._spawnBatch(MonsterKind.ARCHER, this._scaledCount(cfg.archer || 0), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        }
+        if (stageIndex >= 2) {
+            this._spawnBatch(MonsterKind.FIRE_MAGE, this._scaledCount(cfg.fireMage || 0), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        }
     }
 
     spawnSplitChildren(parent) {
