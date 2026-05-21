@@ -94,8 +94,8 @@ const CONFIG = {
 
     // 关卡递增：第 1 关系数 1.0，每往后一关 HP/DEF 按幂次增长
     STAGE_STAT_SCALE: {
-        HP_GROWTH: 1.8,
-        DEF_GROWTH: 1.8,
+        HP_GROWTH: 1.3,
+        DEF_GROWTH: 1.3,
     },
 
     SPAWN: {
