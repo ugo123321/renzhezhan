@@ -17,6 +17,7 @@ const ORDER = [
     'player.js',
     'monster.js',
     'projectile.js',
+    'groundEffects.js',
     'upgrades.js',
     'buffOrbs.js',
     'abilities.js',

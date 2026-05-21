@@ -150,6 +150,7 @@ class MonsterSpawner {
         this._spawnBatch(MonsterKind.BERSERKER, this._scaledCount(cfg.berserker), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.SPLITTER, this._scaledCount(cfg.splitter), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.ARCHER, Math.max(this._scaledCount(cfg.archer || 0), this._scaledCount(6)), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
+        this._spawnBatch(MonsterKind.FIRE_MAGE, Math.max(this._scaledCount(cfg.fireMage || 0), this._scaledCount(4)), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
     }
 
     spawnSplitChildren(parent) {

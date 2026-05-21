@@ -349,7 +349,7 @@ function tintHexColor(hex, tintR, tintG, tintB, amount) {
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
-function drawSprite(ctx, sprite, x, y, scale = 3, alpha = 1, flipX = false, tintAmount = 0) {
+function drawSprite(ctx, sprite, x, y, scale = 3, alpha = 1, flipX = false, tintAmount = 0, tintR = 255, tintG = 72, tintB = 72) {
     if (!sprite || sprite.length === 0) return;
     const rows = sprite.length;
     const cols = sprite[0].length;
@@ -364,7 +364,7 @@ function drawSprite(ctx, sprite, x, y, scale = 3, alpha = 1, flipX = false, tint
             const color = sprite[r][flipX ? cols - 1 - c : c];
             if (color) {
                 ctx.fillStyle = tintAmount > 0
-                    ? tintHexColor(color, 255, 72, 72, tintAmount)
+                    ? tintHexColor(color, tintR, tintG, tintB, tintAmount)
                     : color;
                 ctx.fillRect(
                     Math.floor(startX + c * scale),

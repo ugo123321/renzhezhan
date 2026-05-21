@@ -12,6 +12,7 @@ class Game {
         this.player = null;
         this.spawner = new MonsterSpawner(this);
         this.projectiles = new ProjectileManager(this);
+        this.groundEffects = new GroundEffectManager(this);
         this.particles = new ParticleSystem(650);
         this.combat = new CombatManager(this);
         this.upgrades = new UpgradeManager();
@@ -208,6 +209,7 @@ class Game {
         } : null;
         this.spawner.update(worldDt, this.renderer.w, this.renderer.h, playBottom, playerTarget);
         this.projectiles.update(worldDt, this.renderer.w, this.renderer.h, playerTarget);
+        this.groundEffects.update(worldDt, playerTarget);
         this.combat.update(dt);
         this.buffOrbs.update(realDt);
         this.sakura.update(realDt, this.renderer.w, this.renderer.h);
@@ -256,6 +258,7 @@ class Game {
         this.particles.clear();
         this.abilities.reset();
         this.projectiles.reset();
+        this.groundEffects.reset();
         if (this.buffOrbs) {
             this.buffOrbs.cancelDrawSession();
             this.buffOrbs.reset();
@@ -344,6 +347,7 @@ class Game {
         this.failDeath = new StageFailAnimator(this);
         this.spawner = new MonsterSpawner(this);
         this.projectiles = new ProjectileManager(this);
+        this.groundEffects = new GroundEffectManager(this);
         this.particles = new ParticleSystem(650);
         this.combat = new CombatManager(this);
         this.upgrades = new UpgradeManager();
@@ -493,6 +497,7 @@ class Game {
         const battleScene = this._isBattleScene();
         const showCombatFx = battleScene && this.state !== 'LEVEL_UP';
         const showBattlefield = battleScene || this._isFailBattlefield();
+        if (showBattlefield && this.groundEffects) this.groundEffects.draw(ctx);
         if (showBattlefield) {
             if (battleScene) this.buffOrbs.draw(ctx);
             const previewTargets = (battleScene

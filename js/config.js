@@ -71,7 +71,17 @@ const CONFIG = {
             BERSERKER: 4,
             SPLITTER: 3,
             ARCHER: 3,
+            FIRE_MAGE: 3,
         },
+    },
+
+    // 火柱半径 ≈ 黑洞基础半径(82) 的一半
+    FIRE_PILLAR: {
+        RADIUS: 60,
+        WARNING_TIME: 1.5,
+        ACTIVE_TIME: 0.5,
+        FADE_TIME: 0.3,
+        DAMAGE: 16,
     },
 
     ARROW: {
@@ -97,14 +107,14 @@ const CONFIG = {
     },
 
     STAGES: [
-        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 8 },
-        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10 },
-        { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0, archer: 12 },
-        { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0, archer: 14 },
-        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0, archer: 16 },
-        { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0, archer: 18 },
-        { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0, archer: 20 },
-        { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0, archer: 22 },
+        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 8, fireMage: 4 },
+        { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10, fireMage: 5 },
+        { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0, archer: 12, fireMage: 6 },
+        { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0, archer: 14, fireMage: 7 },
+        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0, archer: 16, fireMage: 8 },
+        { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0, archer: 18, fireMage: 9 },
+        { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0, archer: 20, fireMage: 10 },
+        { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0, archer: 22, fireMage: 11 },
     ],
 
     MONSTERS: {
@@ -182,6 +192,20 @@ const CONFIG = {
             size: 12,
             speed: 17,
             color: '#6a8a5a',
+            grade: 'B',
+            canMove: true,
+            ranged: true,
+        },
+        FIRE_MAGE: {
+            name: '火焰法师',
+            hp: 70,
+            def: 2,
+            attack: 16,
+            attackInterval: 2.4,
+            attackRange: 250,
+            size: 12,
+            speed: 15,
+            color: '#501818',
             grade: 'B',
             canMove: true,
             ranged: true,

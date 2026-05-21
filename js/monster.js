@@ -5,6 +5,7 @@ const MonsterKind = {
     BERSERKER: 'BERSERKER',
     SPLITTER: 'SPLITTER',
     ARCHER: 'ARCHER',
+    FIRE_MAGE: 'FIRE_MAGE',
 };
 
 let nextMonsterId = 1;
@@ -100,7 +101,7 @@ class Monster {
         this.facing = this.moveDir;
 
         let stopDist;
-        if (this.kind === MonsterKind.ARCHER) {
+        if (this._isRangedKind()) {
             stopDist = this.base.attackRange || 165;
             if (distToPlayer <= stopDist) return;
         } else {
@@ -122,12 +123,20 @@ class Monster {
         }
     }
 
-    _canArcherShoot(playerTarget) {
+    _isRangedKind() {
+        return this.kind === MonsterKind.ARCHER || this.kind === MonsterKind.FIRE_MAGE;
+    }
+
+    _canRangedAttack(playerTarget) {
         if (!playerTarget || !playerTarget.player) return false;
         const player = playerTarget.player;
         if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME || player.isAttackInvincible?.()) return false;
         const attackRange = this.base.attackRange || 165;
         return dist(this.x, this.y, playerTarget.x, playerTarget.y) <= attackRange;
+    }
+
+    _canArcherShoot(playerTarget) {
+        return this._canRangedAttack(playerTarget);
     }
 
     _shootArrow(playerTarget) {
@@ -147,6 +156,17 @@ class Monster {
                 this.y + Math.sin(this.facing) * muzzle,
                 '#c8b890'
             );
+        }
+    }
+
+    _castFirePillar(playerTarget) {
+        if (!this.game?.groundEffects) return;
+        this.game.groundEffects.spawnFirePillar(playerTarget.x, playerTarget.y, this.attackDamage);
+        const handX = this.x + Math.cos(this.facing) * (this.hitboxRadius + 4);
+        const handY = this.y + Math.sin(this.facing) * (this.hitboxRadius + 4);
+        if (this.game.particles) {
+            this.game.particles.spawnEffect(handX, handY, '#c03030');
+            this.game.particles.spawnEffect(handX, handY - 4, '#ff5040');
         }
     }
 
@@ -197,9 +217,13 @@ class Monster {
         if (playerTarget) {
             this.attackCooldown -= dt;
             if (this.attackCooldown <= 0) {
-                if (this.kind === MonsterKind.ARCHER) {
-                    if (this._canArcherShoot(playerTarget)) {
-                        this._shootArrow(playerTarget);
+                if (this._isRangedKind()) {
+                    if (this._canRangedAttack(playerTarget)) {
+                        if (this.kind === MonsterKind.ARCHER) {
+                            this._shootArrow(playerTarget);
+                        } else if (this.kind === MonsterKind.FIRE_MAGE) {
+                            this._castFirePillar(playerTarget);
+                        }
                         this.attackCooldown = this.attackInterval;
                     }
                 } else if (this._canAttackPlayer(playerTarget)) {
@@ -255,7 +279,18 @@ class Monster {
         const sprite = (spriteSet.idle || [])[frameIdx % (spriteSet.idle || [spriteSet]).length] || spriteSet;
         const scale = clamp(Math.round(this.size / 4), 2, 6);
         const flipX = Math.cos(this.facing) < 0;
-        const tint = this.kind === MonsterKind.BERSERKER ? 0.16 : 0;
+        let tint = 0;
+        let tintR = 255;
+        let tintG = 72;
+        let tintB = 72;
+        if (this.kind === MonsterKind.BERSERKER) {
+            tint = 0.16;
+        } else if (this.kind === MonsterKind.FIRE_MAGE) {
+            tint = 0.52;
+            tintR = 90;
+            tintG = 12;
+            tintB = 18;
+        }
 
         ctx.save();
         if (spawnVis.scale !== 1) {
@@ -291,7 +326,7 @@ class Monster {
             }
             ctx.restore();
         } else {
-            drawSprite(ctx, sprite, x, y, scale, alpha, flipX, tint);
+            drawSprite(ctx, sprite, x, y, scale, alpha, flipX, tint, tintR, tintG, tintB);
         }
 
         const failDeath = this.game && this.game.failDeath;
@@ -329,6 +364,15 @@ class Monster {
             ctx.beginPath();
             ctx.arc(bx, by, r * 0.55, this.facing - 1.1, this.facing + 1.1);
             ctx.stroke();
+        } else if (this.kind === MonsterKind.FIRE_MAGE) {
+            const sx = x + Math.cos(this.facing) * (r + 2);
+            const sy = y + Math.sin(this.facing) * (r + 2);
+            ctx.fillStyle = '#281010';
+            ctx.fillRect(Math.floor(sx - 1), Math.floor(sy - 5), 3, 8);
+            ctx.fillStyle = '#a02828';
+            ctx.fillRect(Math.floor(sx), Math.floor(sy - 7), 2, 3);
+            ctx.fillStyle = '#ff4030';
+            ctx.fillRect(Math.floor(sx), Math.floor(sy - 9), 2, 2);
         }
 
         if (this.isFrozen()) {
@@ -361,6 +405,7 @@ class Monster {
             case MonsterKind.BERSERKER: return SPRITES.strongMelee;
             case MonsterKind.SPLITTER: return SPRITES.normalRanged;
             case MonsterKind.ARCHER: return SPRITES.normalRanged;
+            case MonsterKind.FIRE_MAGE: return SPRITES.strongRanged;
             default: return SPRITES.normalMelee;
         }
     }
