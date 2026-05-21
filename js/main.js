@@ -73,12 +73,7 @@ class Game {
                 ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
                 : this.renderer.h;
             this.grass.init(this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
-            if (this.player && this.player.state === PlayerState.IDLE) {
-                this.player.homeX = this.renderer.w / 2;
-                this.player.homeY = this.renderer.h / 2;
-                this.player.x = this.player.homeX;
-                this.player.y = this.player.homeY;
-            }
+            if (this.input && this.input.joystick) this.input.joystick._syncDefaultBase();
         };
         window.addEventListener('resize', onViewport);
         window.addEventListener('orientationchange', onViewport);
@@ -170,13 +165,19 @@ class Game {
     }
 
     _updateLiveBattle(dt, realDt) {
-        this.player.update(dt);
+        this.player.update(dt, realDt);
         const playBottom = this.ui.getPlayAreaBottom
             ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
             : this.renderer.h;
         const freezeWorld = this.player && this.player.state === PlayerState.BULLET_TIME;
         const worldDt = freezeWorld ? 0 : dt;
-        this.spawner.update(worldDt, this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
+        const playerTarget = this.player ? {
+            x: this.player.x,
+            y: this.player.y,
+            effectiveRadius: this.player.effectiveRadius,
+            player: this.player,
+        } : null;
+        this.spawner.update(worldDt, this.renderer.w, this.renderer.h, playBottom, playerTarget);
         this.projectiles.update(worldDt, this.renderer.w, this.renderer.h);
         this.combat.update(dt);
         this.buffOrbs.update(realDt);
@@ -187,9 +188,15 @@ class Game {
     }
 
     _getSafeZone() {
-        const x = this.player ? this.player.homeX : this.renderer.w / 2;
-        const y = this.player ? this.player.homeY : this.renderer.h / 2;
-        return { x, y, r: Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * CONFIG.DISPLAY.LOGICAL_WIDTH) };
+        const x = this.player ? this.player.x : this.renderer.w / 2;
+        const y = this.player ? this.player.y : this.renderer.h / 2;
+        return { x, y, r: CONFIG.PLAYER.SPAWN_SAFE_RADIUS || 40 };
+    }
+
+    _playerDied() {
+        if (this.state !== 'PLAYING') return;
+        if (this.input) this.input.cancelActivePointer();
+        this._stageFailed();
     }
 
     _clearCombatResiduals() {
@@ -228,6 +235,12 @@ class Game {
         this.levelManager.level = levelIndex;
         this.turnsLeft = CONFIG.TURN.BASE_TURNS;
         this.player.beginTurn();
+        const cx = this.renderer.w / 2;
+        const cy = this.renderer.h / 2;
+        this.player.homeX = cx;
+        this.player.homeY = cy;
+        this.player.x = cx;
+        this.player.y = cy;
         const playBottom = this.ui.getPlayAreaBottom ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale) : this.renderer.h;
         const safe = this._getSafeZone();
         this.spawner.spawnStage(levelIndex, this.renderer.w, this.renderer.h, playBottom, safe, withSpawnAnim);
@@ -465,7 +478,6 @@ class Game {
             this.abilities.drawBehind(ctx);
         }
         if (this.player) {
-            if (!this._isFailBattlefield()) this.player.drawTriggerZone(ctx);
             if (battleScene || this.player.state === PlayerState.BULLET_TIME) {
                 this.player.drawPath(ctx);
             }
@@ -488,6 +500,9 @@ class Game {
         }
         if (battleScene && this.combat.damageNumbers.length > 0) {
             this.combat.drawDamageNumbers(ctx);
+        }
+        if (this.input && this.input.joystick && battleScene && !this._isFailBattlefield()) {
+            this.input.joystick.draw(ctx);
         }
 
         this.renderer.endClippedGameDraw();

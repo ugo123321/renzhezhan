@@ -2,7 +2,6 @@ const PlayerState = {
     IDLE: 'idle',
     BULLET_TIME: 'bulletTime',
     ATTACKING: 'attacking',
-    RETURNING: 'returning',
 };
 
 class Player {
@@ -18,6 +17,11 @@ class Player {
         this.critRate = CONFIG.PLAYER.BASE_CRIT_RATE;
         this.critDamage = CONFIG.PLAYER.BASE_CRIT_DAMAGE;
         this.sizeScale = CONFIG.PLAYER.SIZE_SCALE;
+
+        this.baseHp = CONFIG.PLAYER.BASE_HP;
+        this.maxHp = this.baseHp;
+        this.hp = this.maxHp;
+        this.invincibleTimer = 0;
 
         this.baseKi = CONFIG.PLAYER.BASE_KI;
         this.kiMax = this.baseKi;
@@ -57,18 +61,12 @@ class Player {
         return CONFIG.PLAYER.HITBOX_RADIUS * this.sizeScale;
     }
 
-    get triggerRadius() {
-        const refW = CONFIG.DISPLAY.LOGICAL_WIDTH;
-        const base = Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
-        return base * this.sizeScale;
-    }
-
     get spriteScale() {
         return CONFIG.DISPLAY.NINJA_SPRITE_SCALE * this.sizeScale;
     }
 
     isInAttackMode() {
-        return this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING;
+        return this.state === PlayerState.ATTACKING;
     }
 
     resetLineBuffs() {
@@ -92,6 +90,8 @@ class Player {
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
         this.drawSessionSnapshot = null;
+        this.invincibleTimer = 0;
+        this.hp = this.maxHp;
         if (this.game && this.game.buffOrbs) {
             this.game.buffOrbs.drawSessionEaten = [];
         }
@@ -100,6 +100,17 @@ class Player {
         this.kiMax = Math.max(20, turnKiMax);
         this.ki = this.kiMax;
         this.nextTurnKiBonus = 0;
+    }
+
+    takeDamage(rawDamage) {
+        if (this.invincibleTimer > 0 || this.hp <= 0) return 0;
+        const actual = Math.max(1, Math.round(rawDamage));
+        this.hp = Math.max(0, this.hp - actual);
+        this.invincibleTimer = CONFIG.PLAYER.INVINCIBLE_TIME || 0.45;
+        if (this.hp <= 0 && this.game) {
+            this.game._playerDied();
+        }
+        return actual;
     }
 
     invalidatePath() {
@@ -122,7 +133,7 @@ class Player {
         this.state = PlayerState.BULLET_TIME;
         if (this.game && this.game.buffOrbs) this.game.buffOrbs.beginDrawSession();
         this.invalidPathTimer = 0;
-        this.attackPath = [];
+        this.attackPath = [{ x: this.x, y: this.y }];
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
@@ -130,7 +141,33 @@ class Player {
 
     addPathPoint(x, y) {
         const last = this.attackPath[this.attackPath.length - 1];
-        if (!last || dist(last.x, last.y, x, y) > 4) this.attackPath.push({ x, y });
+        if (!last || dist(last.x, last.y, x, y) > 2) this.attackPath.push({ x, y });
+    }
+
+    extendPathByDirection(dir, step) {
+        if (!dir || step <= 0) return false;
+        const last = this.attackPath[this.attackPath.length - 1];
+        if (!last) return false;
+        const r = this.game.renderer;
+        const playBottom = this.game.ui.getPlayAreaBottom
+            ? this.game.ui.getPlayAreaBottom(r.h, r.uiScale)
+            : r.h;
+        const margin = 16;
+        const top = 84;
+        let nx = last.x + dir.x * step;
+        let ny = last.y + dir.y * step;
+        nx = clamp(nx, margin, r.w - margin);
+        ny = clamp(ny, top, playBottom - margin);
+        const actualStep = dist(last.x, last.y, nx, ny);
+        if (actualStep < 0.5) return false;
+        if (!this.consumeKiByDistance(actualStep)) return false;
+        this.addPathPoint(nx, ny);
+        if (this.game && this.game.buffOrbs && this.attackPath.length >= 2) {
+            const from = this.attackPath[this.attackPath.length - 2];
+            const to = this.attackPath[this.attackPath.length - 1];
+            this.game.buffOrbs.checkPathSegment(from, to);
+        }
+        return true;
     }
 
     startAttack() {
@@ -163,7 +200,7 @@ class Player {
     }
 
     _getShadowCloneAnchor() {
-        if (this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING) {
+        if (this.state === PlayerState.ATTACKING) {
             return { x: this.x, y: this.y };
         }
         return { x: this.homeX, y: this.homeY };
@@ -233,7 +270,8 @@ class Player {
         this.queueMessage(`获得强化: ${upgrade.name}`);
     }
 
-    update(dt) {
+    update(dt, realDt) {
+        if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
         if (this.messageTimer > 0) this.messageTimer -= dt;
         if (this.invalidPathTimer > 0) {
             this.invalidPathTimer -= dt;
@@ -250,14 +288,48 @@ class Player {
             this.comboShakeTimer = Math.max(0, this.comboShakeTimer - dt);
         }
 
-        if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
-        else if (this.state === PlayerState.RETURNING) this._updateReturn(dt);
+        if (this.state === PlayerState.BULLET_TIME) this._updateDraw(realDt || dt);
+        else if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
         this._syncShadowClones();
+    }
+
+    _updateDraw(realDt) {
+        const input = this.game && this.game.input;
+        if (!input || !input.joystick) return;
+        const dir = input.joystick.getDirection();
+        if (!dir) return;
+        const step = CONFIG.PLAYER.DRAW_SPEED * realDt;
+        const ok = this.extendPathByDirection(dir, step);
+        if (!ok && this.ki <= 0) {
+            input.isDrawing = false;
+            input.joystick.end();
+            if (this.attackPath.length >= 2) {
+                this.game.exitBulletTime(false);
+            } else {
+                this.game.exitBulletTime(true);
+                this.invalidatePath();
+            }
+        }
+    }
+
+    _finishAttackAtPathEnd() {
+        if (this.game && this.game.combat) {
+            this.game.combat.recordFinalPathSegment();
+        }
+        const pathSnapshot = this.attackPath.map(pt => ({ x: pt.x, y: pt.y }));
+        this.homeX = this.x;
+        this.homeY = this.y;
+        this.state = PlayerState.IDLE;
+        this.attackPath = [];
+        if (this.game) {
+            this.game.endBulletTimeDim();
+            if (this.game.combat) this.game.combat.beginResolve(pathSnapshot);
+        }
     }
 
     _updateAttack(dt) {
         if (this.pathIndex >= this.attackPath.length - 1) {
-            this.state = PlayerState.RETURNING;
+            this._finishAttackAtPathEnd();
             return;
         }
         let remaining = CONFIG.PLAYER.ATTACK_SPEED * dt;
@@ -286,48 +358,8 @@ class Player {
             }
         }
         if (this.pathIndex >= this.attackPath.length - 1) {
-            this.state = PlayerState.RETURNING;
+            this._finishAttackAtPathEnd();
         }
-    }
-
-    _updateReturn(dt) {
-        const d = dist(this.x, this.y, this.homeX, this.homeY);
-        if (d <= 3) {
-            if (this.game && this.game.combat) {
-                this.game.combat.recordFinalPathSegment();
-            }
-            const pathSnapshot = this.attackPath.map(pt => ({ x: pt.x, y: pt.y }));
-            this.x = this.homeX;
-            this.y = this.homeY;
-            this.state = PlayerState.IDLE;
-            this.attackPath = [];
-            if (this.game) {
-                this.game.endBulletTimeDim();
-                if (this.game.combat) this.game.combat.beginResolve(pathSnapshot);
-            }
-            return;
-        }
-        const n = normalize(this.homeX - this.x, this.homeY - this.y);
-        const step = Math.min(d, CONFIG.PLAYER.ATTACK_SPEED * dt);
-        this.x += n.x * step;
-        this.y += n.y * step;
-    }
-
-    drawTriggerZone(ctx) {
-        if (this.state === PlayerState.BULLET_TIME) return;
-        ctx.save();
-        ctx.strokeStyle = 'rgba(90, 110, 130, 0.42)';
-        ctx.setLineDash([6, 4]);
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(90, 110, 130, 0.08)';
-        ctx.beginPath();
-        ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
     }
 
     drawPath(ctx) {
@@ -343,7 +375,7 @@ class Player {
             : 'rgba(220, 230, 255, 0.95)';
         const pathThick = 1.25;
         const drawing = this.state === PlayerState.BULLET_TIME || invalidFlash;
-        const flying = this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING;
+        const flying = this.state === PlayerState.ATTACKING;
         const outerBase = drawing ? 12 : (flying ? 11 : 6);
         const innerBase = drawing ? 5 : (flying ? 4.5 : 3);
         const outerW = outerBase * pathThick;
@@ -361,6 +393,21 @@ class Player {
         ctx.strokeStyle = colorInner;
         ctx.lineWidth = innerW;
         ctx.stroke();
+        ctx.restore();
+    }
+
+    _drawHpBar(ctx) {
+        if (this.hp >= this.maxHp) return;
+        const w = Math.max(28, this.effectiveRadius * 2.4);
+        const h = 5;
+        const bx = Math.floor(this.x - w / 2);
+        const by = Math.floor(this.y - this.effectiveRadius - 22);
+        const ratio = clamp(this.hp / this.maxHp, 0, 1);
+        ctx.save();
+        ctx.fillStyle = '#231a14';
+        ctx.fillRect(bx, by, w, h);
+        ctx.fillStyle = ratio > 0.5 ? '#68d070' : ratio > 0.25 ? '#f0c850' : '#e05840';
+        ctx.fillRect(bx, by, w * ratio, h);
         ctx.restore();
     }
 
@@ -392,12 +439,18 @@ class Player {
             return;
         }
 
+        const blink = this.invincibleTimer > 0 && Math.floor(this.invincibleTimer * 18) % 2 === 0;
+
+        ctx.save();
+        if (blink) ctx.globalAlpha = 0.55;
+
         const sprite = this.state === PlayerState.ATTACKING
             ? SPRITES.ninja.attack[Math.floor(Date.now() / 80) % SPRITES.ninja.attack.length]
-            : this.state === PlayerState.RETURNING
-                ? SPRITES.ninja.run[Math.floor(Date.now() / 120) % SPRITES.ninja.run.length]
-                : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
+            : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
         drawSprite(ctx, sprite, Math.floor(this.x), Math.floor(this.y), this.spriteScale);
+        ctx.restore();
+
+        this._drawHpBar(ctx);
 
         if (this.getUpgradeLevel('luck') > 0) {
             const lv = this.getUpgradeLevel('luck');

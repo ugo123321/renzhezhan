@@ -41,8 +41,8 @@ class StageFailAnimator {
         }
 
         const monsters = game.spawner.getActiveMonsters();
-        const px = p.homeX;
-        const py = p.homeY;
+        const px = p.x;
+        const py = p.y;
         const sources = monsters.length > 0
             ? monsters
             : [{ x: px + randRange(90, 160), y: py - randRange(60, 120), facing: Math.PI + 0.4 }];

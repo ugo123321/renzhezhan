@@ -286,7 +286,7 @@ class BuffOrbManager {
         for (const o of this.orbs) {
             if (!o.alive) continue;
             o.pulse += dt * 4.2;
-            if (p.state === PlayerState.ATTACKING || p.state === PlayerState.RETURNING) {
+            if (p.state === PlayerState.ATTACKING) {
                 if (dist(p.x, p.y, o.x, o.y) <= p.effectiveRadius + o.r) {
                     this._collectOrb(o);
                 }

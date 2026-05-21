@@ -48,7 +48,7 @@ class CombatManager {
         m._deathHandled = true;
         const player = this.game.player;
         const hitAngle = player
-            ? angle(player.homeX, player.homeY, m.x, m.y)
+            ? angle(player.x, player.y, m.x, m.y)
             : Math.random() * Math.PI * 2;
         const intensity = m.size > 13 ? 1.35 : 1;
         this.game.bloodStains.spawn(m.x, m.y + m.hitboxRadius * 0.35, intensity, hitAngle);
@@ -145,10 +145,10 @@ class CombatManager {
         if (!p || !m) return;
 
         const hitAngle = angle(hit.pathFrom.x, hit.pathFrom.y, hit.pathTo.x, hit.pathTo.y);
-        const dashAngle = angle(p.homeX, p.homeY, m.x, m.y);
+        const dashAngle = angle(p.x, p.y, m.x, m.y);
         this._spawnAfterimage(m.x, m.y, dashAngle);
         this.game.particles.slashTrail(m.x, m.y, hitAngle);
-        this.game.particles.slashTrail(p.homeX, p.homeY, dashAngle);
+        this.game.particles.slashTrail(p.x, p.y, dashAngle);
 
         const combo = p.registerComboHit();
         this.game.abilities.onResolveHit(hit, combo);

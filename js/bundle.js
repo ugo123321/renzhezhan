@@ -115,14 +115,17 @@ const CONFIG = {
 
     PLAYER: {
         BASE_ATTACK: 95,
+        BASE_HP: 100,
         BASE_KI: 234,
         BASE_CRIT_RATE: 0.08,
         BASE_CRIT_DAMAGE: 1.6,
         ATTACK_SPEED: 2300,
+        DRAW_SPEED: 520,
         HITBOX_RADIUS: 12,
-        TRIGGER_RADIUS_RATIO: 0.11,
+        SPAWN_SAFE_RADIUS: 40,
         KI_PER_PIXEL: 0.18,
         SIZE_SCALE: 1.0,
+        INVINCIBLE_TIME: 0.45,
         COMBO_DAMAGE_BONUS: 0.10,
         COMBO_DISPLAY_HOLD: 0.6,
         COMBO_END_FADE: 0.4,
@@ -130,6 +133,14 @@ const CONFIG = {
         COMBO_TEXT_GROW: 1.4,
         COMBO_TEXT_MAX_GROW: 22,
         COMBO_SHAKE_DURATION: 0.24,
+    },
+
+    JOYSTICK: {
+        BASE_RADIUS: 52,
+        STICK_RADIUS: 22,
+        MAX_OFFSET: 46,
+        DEAD_ZONE: 10,
+        DEFAULT_BOTTOM_OFFSET: 72,
     },
 
     TURN: {
@@ -167,6 +178,8 @@ const CONFIG = {
             name: '普通怪',
             hp: 80,
             def: 4,
+            attack: 10,
+            attackInterval: 1.15,
             size: 13,
             speed: 19,
             color: '#7a8ca2',
@@ -177,6 +190,8 @@ const CONFIG = {
             name: '高级怪',
             hp: 110,
             def: 6,
+            attack: 14,
+            attackInterval: 1.05,
             size: 14,
             speed: 21,
             color: '#8a6aa8',
@@ -187,6 +202,8 @@ const CONFIG = {
             name: '盾牌怪',
             hp: 120,
             def: 5,
+            attack: 12,
+            attackInterval: 1.25,
             size: 15,
             speed: 16,
             color: '#5f7a88',
@@ -197,6 +214,8 @@ const CONFIG = {
             name: '狂战士',
             hp: 90,
             def: 2,
+            attack: 18,
+            attackInterval: 0.85,
             size: 14,
             speed: 26,
             color: '#b85a4a',
@@ -208,6 +227,8 @@ const CONFIG = {
             name: '分裂怪',
             hp: 70,
             def: 2,
+            attack: 8,
+            attackInterval: 1.2,
             size: 18,
             speed: 14,
             color: '#7b9f5a',
@@ -1246,7 +1267,6 @@ const PlayerState = {
     IDLE: 'idle',
     BULLET_TIME: 'bulletTime',
     ATTACKING: 'attacking',
-    RETURNING: 'returning',
 };
 
 class Player {
@@ -1262,6 +1282,11 @@ class Player {
         this.critRate = CONFIG.PLAYER.BASE_CRIT_RATE;
         this.critDamage = CONFIG.PLAYER.BASE_CRIT_DAMAGE;
         this.sizeScale = CONFIG.PLAYER.SIZE_SCALE;
+
+        this.baseHp = CONFIG.PLAYER.BASE_HP;
+        this.maxHp = this.baseHp;
+        this.hp = this.maxHp;
+        this.invincibleTimer = 0;
 
         this.baseKi = CONFIG.PLAYER.BASE_KI;
         this.kiMax = this.baseKi;
@@ -1301,18 +1326,12 @@ class Player {
         return CONFIG.PLAYER.HITBOX_RADIUS * this.sizeScale;
     }
 
-    get triggerRadius() {
-        const refW = CONFIG.DISPLAY.LOGICAL_WIDTH;
-        const base = Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * refW);
-        return base * this.sizeScale;
-    }
-
     get spriteScale() {
         return CONFIG.DISPLAY.NINJA_SPRITE_SCALE * this.sizeScale;
     }
 
     isInAttackMode() {
-        return this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING;
+        return this.state === PlayerState.ATTACKING;
     }
 
     resetLineBuffs() {
@@ -1336,6 +1355,8 @@ class Player {
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
         this.drawSessionSnapshot = null;
+        this.invincibleTimer = 0;
+        this.hp = this.maxHp;
         if (this.game && this.game.buffOrbs) {
             this.game.buffOrbs.drawSessionEaten = [];
         }
@@ -1344,6 +1365,17 @@ class Player {
         this.kiMax = Math.max(20, turnKiMax);
         this.ki = this.kiMax;
         this.nextTurnKiBonus = 0;
+    }
+
+    takeDamage(rawDamage) {
+        if (this.invincibleTimer > 0 || this.hp <= 0) return 0;
+        const actual = Math.max(1, Math.round(rawDamage));
+        this.hp = Math.max(0, this.hp - actual);
+        this.invincibleTimer = CONFIG.PLAYER.INVINCIBLE_TIME || 0.45;
+        if (this.hp <= 0 && this.game) {
+            this.game._playerDied();
+        }
+        return actual;
     }
 
     invalidatePath() {
@@ -1366,7 +1398,7 @@ class Player {
         this.state = PlayerState.BULLET_TIME;
         if (this.game && this.game.buffOrbs) this.game.buffOrbs.beginDrawSession();
         this.invalidPathTimer = 0;
-        this.attackPath = [];
+        this.attackPath = [{ x: this.x, y: this.y }];
         this.pathIndex = 0;
         this.pathProgress = 0;
         this.hitMonstersInSegment.clear();
@@ -1374,7 +1406,33 @@ class Player {
 
     addPathPoint(x, y) {
         const last = this.attackPath[this.attackPath.length - 1];
-        if (!last || dist(last.x, last.y, x, y) > 4) this.attackPath.push({ x, y });
+        if (!last || dist(last.x, last.y, x, y) > 2) this.attackPath.push({ x, y });
+    }
+
+    extendPathByDirection(dir, step) {
+        if (!dir || step <= 0) return false;
+        const last = this.attackPath[this.attackPath.length - 1];
+        if (!last) return false;
+        const r = this.game.renderer;
+        const playBottom = this.game.ui.getPlayAreaBottom
+            ? this.game.ui.getPlayAreaBottom(r.h, r.uiScale)
+            : r.h;
+        const margin = 16;
+        const top = 84;
+        let nx = last.x + dir.x * step;
+        let ny = last.y + dir.y * step;
+        nx = clamp(nx, margin, r.w - margin);
+        ny = clamp(ny, top, playBottom - margin);
+        const actualStep = dist(last.x, last.y, nx, ny);
+        if (actualStep < 0.5) return false;
+        if (!this.consumeKiByDistance(actualStep)) return false;
+        this.addPathPoint(nx, ny);
+        if (this.game && this.game.buffOrbs && this.attackPath.length >= 2) {
+            const from = this.attackPath[this.attackPath.length - 2];
+            const to = this.attackPath[this.attackPath.length - 1];
+            this.game.buffOrbs.checkPathSegment(from, to);
+        }
+        return true;
     }
 
     startAttack() {
@@ -1407,7 +1465,7 @@ class Player {
     }
 
     _getShadowCloneAnchor() {
-        if (this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING) {
+        if (this.state === PlayerState.ATTACKING) {
             return { x: this.x, y: this.y };
         }
         return { x: this.homeX, y: this.homeY };
@@ -1477,7 +1535,8 @@ class Player {
         this.queueMessage(`获得强化: ${upgrade.name}`);
     }
 
-    update(dt) {
+    update(dt, realDt) {
+        if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
         if (this.messageTimer > 0) this.messageTimer -= dt;
         if (this.invalidPathTimer > 0) {
             this.invalidPathTimer -= dt;
@@ -1494,14 +1553,48 @@ class Player {
             this.comboShakeTimer = Math.max(0, this.comboShakeTimer - dt);
         }
 
-        if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
-        else if (this.state === PlayerState.RETURNING) this._updateReturn(dt);
+        if (this.state === PlayerState.BULLET_TIME) this._updateDraw(realDt || dt);
+        else if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
         this._syncShadowClones();
+    }
+
+    _updateDraw(realDt) {
+        const input = this.game && this.game.input;
+        if (!input || !input.joystick) return;
+        const dir = input.joystick.getDirection();
+        if (!dir) return;
+        const step = CONFIG.PLAYER.DRAW_SPEED * realDt;
+        const ok = this.extendPathByDirection(dir, step);
+        if (!ok && this.ki <= 0) {
+            input.isDrawing = false;
+            input.joystick.end();
+            if (this.attackPath.length >= 2) {
+                this.game.exitBulletTime(false);
+            } else {
+                this.game.exitBulletTime(true);
+                this.invalidatePath();
+            }
+        }
+    }
+
+    _finishAttackAtPathEnd() {
+        if (this.game && this.game.combat) {
+            this.game.combat.recordFinalPathSegment();
+        }
+        const pathSnapshot = this.attackPath.map(pt => ({ x: pt.x, y: pt.y }));
+        this.homeX = this.x;
+        this.homeY = this.y;
+        this.state = PlayerState.IDLE;
+        this.attackPath = [];
+        if (this.game) {
+            this.game.endBulletTimeDim();
+            if (this.game.combat) this.game.combat.beginResolve(pathSnapshot);
+        }
     }
 
     _updateAttack(dt) {
         if (this.pathIndex >= this.attackPath.length - 1) {
-            this.state = PlayerState.RETURNING;
+            this._finishAttackAtPathEnd();
             return;
         }
         let remaining = CONFIG.PLAYER.ATTACK_SPEED * dt;
@@ -1530,48 +1623,8 @@ class Player {
             }
         }
         if (this.pathIndex >= this.attackPath.length - 1) {
-            this.state = PlayerState.RETURNING;
+            this._finishAttackAtPathEnd();
         }
-    }
-
-    _updateReturn(dt) {
-        const d = dist(this.x, this.y, this.homeX, this.homeY);
-        if (d <= 3) {
-            if (this.game && this.game.combat) {
-                this.game.combat.recordFinalPathSegment();
-            }
-            const pathSnapshot = this.attackPath.map(pt => ({ x: pt.x, y: pt.y }));
-            this.x = this.homeX;
-            this.y = this.homeY;
-            this.state = PlayerState.IDLE;
-            this.attackPath = [];
-            if (this.game) {
-                this.game.endBulletTimeDim();
-                if (this.game.combat) this.game.combat.beginResolve(pathSnapshot);
-            }
-            return;
-        }
-        const n = normalize(this.homeX - this.x, this.homeY - this.y);
-        const step = Math.min(d, CONFIG.PLAYER.ATTACK_SPEED * dt);
-        this.x += n.x * step;
-        this.y += n.y * step;
-    }
-
-    drawTriggerZone(ctx) {
-        if (this.state === PlayerState.BULLET_TIME) return;
-        ctx.save();
-        ctx.strokeStyle = 'rgba(90, 110, 130, 0.42)';
-        ctx.setLineDash([6, 4]);
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(90, 110, 130, 0.08)';
-        ctx.beginPath();
-        ctx.arc(this.homeX, this.homeY, this.triggerRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
     }
 
     drawPath(ctx) {
@@ -1587,7 +1640,7 @@ class Player {
             : 'rgba(220, 230, 255, 0.95)';
         const pathThick = 1.25;
         const drawing = this.state === PlayerState.BULLET_TIME || invalidFlash;
-        const flying = this.state === PlayerState.ATTACKING || this.state === PlayerState.RETURNING;
+        const flying = this.state === PlayerState.ATTACKING;
         const outerBase = drawing ? 12 : (flying ? 11 : 6);
         const innerBase = drawing ? 5 : (flying ? 4.5 : 3);
         const outerW = outerBase * pathThick;
@@ -1605,6 +1658,21 @@ class Player {
         ctx.strokeStyle = colorInner;
         ctx.lineWidth = innerW;
         ctx.stroke();
+        ctx.restore();
+    }
+
+    _drawHpBar(ctx) {
+        if (this.hp >= this.maxHp) return;
+        const w = Math.max(28, this.effectiveRadius * 2.4);
+        const h = 5;
+        const bx = Math.floor(this.x - w / 2);
+        const by = Math.floor(this.y - this.effectiveRadius - 22);
+        const ratio = clamp(this.hp / this.maxHp, 0, 1);
+        ctx.save();
+        ctx.fillStyle = '#231a14';
+        ctx.fillRect(bx, by, w, h);
+        ctx.fillStyle = ratio > 0.5 ? '#68d070' : ratio > 0.25 ? '#f0c850' : '#e05840';
+        ctx.fillRect(bx, by, w * ratio, h);
         ctx.restore();
     }
 
@@ -1636,12 +1704,18 @@ class Player {
             return;
         }
 
+        const blink = this.invincibleTimer > 0 && Math.floor(this.invincibleTimer * 18) % 2 === 0;
+
+        ctx.save();
+        if (blink) ctx.globalAlpha = 0.55;
+
         const sprite = this.state === PlayerState.ATTACKING
             ? SPRITES.ninja.attack[Math.floor(Date.now() / 80) % SPRITES.ninja.attack.length]
-            : this.state === PlayerState.RETURNING
-                ? SPRITES.ninja.run[Math.floor(Date.now() / 120) % SPRITES.ninja.run.length]
-                : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
+            : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
         drawSprite(ctx, sprite, Math.floor(this.x), Math.floor(this.y), this.spriteScale);
+        ctx.restore();
+
+        this._drawHpBar(ctx);
 
         if (this.getUpgradeLevel('luck') > 0) {
             const lv = this.getUpgradeLevel('luck');
@@ -1713,6 +1787,9 @@ class Monster {
         this.spawnTimer = 0;
         this.spawnDuration = 0;
         this.failThrowTimer = 0;
+        this.attackDamage = this.base.attack || 10;
+        this.attackInterval = this.base.attackInterval || 1.1;
+        this.attackCooldown = randRange(0.2, this.attackInterval);
     }
 
     beginSpawn(duration = CONFIG.MONSTER_SPAWN_ANIM) {
@@ -1746,43 +1823,21 @@ class Monster {
         return this.frozenTimer > 0;
     }
 
-    _pushOutOfPlayerZone(playerZone) {
-        if (!playerZone) return;
-        const dx = this.x - playerZone.x;
-        const dy = this.y - playerZone.y;
-        let d = Math.hypot(dx, dy);
-        const minDist = playerZone.r + this.hitboxRadius;
-        if (d >= minDist) return;
-
-        let nx, ny;
-        if (d < 0.001) {
-            const a = randRange(0, Math.PI * 2);
-            nx = Math.cos(a);
-            ny = Math.sin(a);
-        } else {
-            nx = dx / d;
-            ny = dy / d;
-        }
-        this.x = playerZone.x + nx * minDist;
-        this.y = playerZone.y + ny * minDist;
-
-        const vx = Math.cos(this.moveDir);
-        const vy = Math.sin(this.moveDir);
-        const dot = vx * nx + vy * ny;
-        if (dot < 0) {
-            this.moveDir = Math.atan2(vy - 2 * dot * ny, vx - 2 * dot * nx);
-        }
-    }
-
-    _move(dt, w, h, playBottom, playerZone) {
-        this.moveTimer -= dt;
-        if (this.moveTimer <= 0) {
-            this.moveTimer = randRange(0.55, 1.6);
-            this.moveDir += randRange(-1.5, 1.5);
-        }
+    _move(dt, w, h, playBottom, playerTarget) {
+        if (!playerTarget) return;
         this.walkPhase += dt * 7;
         this.animPulse += dt * 3.6;
-        const step = this.speed * dt;
+
+        const dx = playerTarget.x - this.x;
+        const dy = playerTarget.y - this.y;
+        const distToPlayer = Math.hypot(dx, dy);
+        if (distToPlayer < 0.001) return;
+
+        this.moveDir = Math.atan2(dy, dx);
+        this.facing = this.moveDir;
+
+        const reachDist = this.hitboxRadius + (playerTarget.effectiveRadius || 12) + 2;
+        const step = Math.min(this.speed * dt, Math.max(0, distToPlayer - reachDist));
         this.x += Math.cos(this.moveDir) * step;
         this.y += Math.sin(this.moveDir) * step;
 
@@ -1790,18 +1845,32 @@ class Monster {
         const top = 84;
         const bottom = Math.max(top + 60, playBottom - 20);
         if (this.x < margin || this.x > w - margin) {
-            this.moveDir = Math.PI - this.moveDir;
             this.x = clamp(this.x, margin, w - margin);
         }
         if (this.y < top || this.y > bottom) {
-            this.moveDir = -this.moveDir;
             this.y = clamp(this.y, top, bottom);
         }
-        this._pushOutOfPlayerZone(playerZone);
-        this.facing = this.moveDir;
     }
 
-    update(dt, w, h, playBottom, playerZone) {
+    _canAttackPlayer(playerTarget) {
+        if (!playerTarget || !playerTarget.player) return false;
+        const player = playerTarget.player;
+        if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME) return false;
+        const reach = this.hitboxRadius + player.effectiveRadius + 4;
+        return dist(this.x, this.y, playerTarget.x, playerTarget.y) <= reach;
+    }
+
+    _attackPlayer(playerTarget) {
+        const player = playerTarget.player;
+        const dmg = player.takeDamage(this.attackDamage);
+        if (dmg > 0 && this.game) {
+            this.game.combat.spawnDamageNumber(player.x, player.y - player.effectiveRadius - 8, dmg, false, '#e05840');
+            this.game.particles.hitSpark(player.x, player.y, false);
+            this.game.renderer.shake(CONFIG.SHAKE.NORMAL.magnitude * 0.6, CONFIG.SHAKE.NORMAL.duration * 0.8);
+        }
+    }
+
+    update(dt, w, h, playBottom, playerTarget) {
         if (!this.alive) return;
         if (this.failThrowTimer > 0) {
             this.failThrowTimer -= dt;
@@ -1825,7 +1894,15 @@ class Monster {
             this.frozenTimer -= dt;
             return;
         }
-        if (this.base.canMove) this._move(dt, w, h, playBottom, playerZone);
+        if (this.base.canMove) this._move(dt, w, h, playBottom, playerTarget);
+
+        if (playerTarget) {
+            this.attackCooldown -= dt;
+            if (this.attackCooldown <= 0 && this._canAttackPlayer(playerTarget)) {
+                this._attackPlayer(playerTarget);
+                this.attackCooldown = this.attackInterval;
+            }
+        }
     }
 
     takeDamage(rawDamage, hitAngle = null) {
@@ -2534,7 +2611,7 @@ class BuffOrbManager {
         for (const o of this.orbs) {
             if (!o.alive) continue;
             o.pulse += dt * 4.2;
-            if (p.state === PlayerState.ATTACKING || p.state === PlayerState.RETURNING) {
+            if (p.state === PlayerState.ATTACKING) {
                 if (dist(p.x, p.y, o.x, o.y) <= p.effectiveRadius + o.r) {
                     this._collectOrb(o);
                 }
@@ -2624,7 +2701,7 @@ class AbilityManager {
     _ctxPos(ctx) {
         if (ctx) return { x: ctx.x, y: ctx.y };
         const p = this.game.player;
-        return { x: p.homeX, y: p.homeY };
+        return { x: p.x, y: p.y };
     }
 
     onResolveStarted(attackPath) {
@@ -3433,8 +3510,8 @@ class StageFailAnimator {
         }
 
         const monsters = game.spawner.getActiveMonsters();
-        const px = p.homeX;
-        const py = p.homeY;
+        const px = p.x;
+        const py = p.y;
         const sources = monsters.length > 0
             ? monsters
             : [{ x: px + randRange(90, 160), y: py - randRange(60, 120), facing: Math.PI + 0.4 }];
@@ -4644,7 +4721,7 @@ class CombatManager {
         m._deathHandled = true;
         const player = this.game.player;
         const hitAngle = player
-            ? angle(player.homeX, player.homeY, m.x, m.y)
+            ? angle(player.x, player.y, m.x, m.y)
             : Math.random() * Math.PI * 2;
         const intensity = m.size > 13 ? 1.35 : 1;
         this.game.bloodStains.spawn(m.x, m.y + m.hitboxRadius * 0.35, intensity, hitAngle);
@@ -4741,10 +4818,10 @@ class CombatManager {
         if (!p || !m) return;
 
         const hitAngle = angle(hit.pathFrom.x, hit.pathFrom.y, hit.pathTo.x, hit.pathTo.y);
-        const dashAngle = angle(p.homeX, p.homeY, m.x, m.y);
+        const dashAngle = angle(p.x, p.y, m.x, m.y);
         this._spawnAfterimage(m.x, m.y, dashAngle);
         this.game.particles.slashTrail(m.x, m.y, hitAngle);
-        this.game.particles.slashTrail(p.homeX, p.homeY, dashAngle);
+        this.game.particles.slashTrail(p.x, p.y, dashAngle);
 
         const combo = p.registerComboHit();
         this.game.abilities.onResolveHit(hit, combo);
@@ -4973,11 +5050,119 @@ class MonsterSpawner {
 
 
 // ---- input.js ----
+class VirtualJoystick {
+    constructor(game) {
+        this.game = game;
+        this.active = false;
+        this.baseX = 0;
+        this.baseY = 0;
+        this.stickOffsetX = 0;
+        this.stickOffsetY = 0;
+        this._syncDefaultBase();
+    }
+
+    _syncDefaultBase() {
+        const r = this.game.renderer;
+        const ui = this.game.ui;
+        const playBottom = ui.getPlayAreaBottom
+            ? ui.getPlayAreaBottom(r.h, r.uiScale)
+            : r.h;
+        const offset = (CONFIG.JOYSTICK.DEFAULT_BOTTOM_OFFSET || 72) * r.uiScale;
+        this.defaultX = r.w / 2;
+        this.defaultY = playBottom - offset;
+        if (!this.active) {
+            this.baseX = this.defaultX;
+            this.baseY = this.defaultY;
+        }
+    }
+
+    resetToDefault() {
+        this.active = false;
+        this.stickOffsetX = 0;
+        this.stickOffsetY = 0;
+        this._syncDefaultBase();
+    }
+
+    beginAt(clientX, clientY) {
+        this._syncDefaultBase();
+        const pos = this.game.renderer.screenToGame(clientX, clientY);
+        this.baseX = pos.x;
+        this.baseY = pos.y;
+        this.active = true;
+        this._updateStick(clientX, clientY);
+    }
+
+    move(clientX, clientY) {
+        if (!this.active) return;
+        this._updateStick(clientX, clientY);
+    }
+
+    end() {
+        this.resetToDefault();
+    }
+
+    _updateStick(clientX, clientY) {
+        const pos = this.game.renderer.screenToGame(clientX, clientY);
+        let dx = pos.x - this.baseX;
+        let dy = pos.y - this.baseY;
+        const max = CONFIG.JOYSTICK.MAX_OFFSET || 46;
+        const len = Math.hypot(dx, dy);
+        if (len > max) {
+            dx = (dx / len) * max;
+            dy = (dy / len) * max;
+        }
+        this.stickOffsetX = dx;
+        this.stickOffsetY = dy;
+    }
+
+    getDirection() {
+        const len = Math.hypot(this.stickOffsetX, this.stickOffsetY);
+        const dead = CONFIG.JOYSTICK.DEAD_ZONE || 10;
+        if (len < dead) return null;
+        return { x: this.stickOffsetX / len, y: this.stickOffsetY / len };
+    }
+
+    draw(ctx) {
+        this._syncDefaultBase();
+        const cfg = CONFIG.JOYSTICK;
+        const baseR = cfg.BASE_RADIUS || 52;
+        const stickR = cfg.STICK_RADIUS || 22;
+        const alpha = this.active ? 0.92 : 0.55;
+        const stickX = this.baseX + this.stickOffsetX;
+        const stickY = this.baseY + this.stickOffsetY;
+
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.35;
+        ctx.fillStyle = '#1a2430';
+        ctx.beginPath();
+        ctx.arc(this.baseX, this.baseY, baseR, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = alpha * 0.55;
+        ctx.strokeStyle = '#8aa0b8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(this.baseX, this.baseY, baseR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#d8e4f0';
+        ctx.beginPath();
+        ctx.arc(stickX, stickY, stickR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#5a7088';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
 class InputManager {
     constructor(canvas, game) {
         this.canvas = canvas;
         this.game = game;
         this.isDrawing = false;
+        this.joystick = new VirtualJoystick(game);
 
         canvas.addEventListener('touchstart', (e) => this.onStart(e), { passive: false });
         canvas.addEventListener('touchmove', (e) => this.onMove(e), { passive: false });
@@ -4995,36 +5180,18 @@ class InputManager {
         return { clientX: e.clientX, clientY: e.clientY };
     }
 
-    getPos(e) {
-        const { clientX, clientY } = this._getClientPos(e);
-        return this.game.renderer.screenToGame(clientX, clientY);
-    }
-
     onStart(e) {
         if (this.game.state !== 'PLAYING') return;
         e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.IDLE) return;
+        if (player.ki <= 0 || player.hp <= 0) return;
 
-        const pos = this.getPos(e);
-        if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
-        if (dist(pos.x, pos.y, player.homeX, player.homeY) > player.triggerRadius) return;
-        if (player.ki <= 0) return;
-
+        const { clientX, clientY } = this._getClientPos(e);
         this.isDrawing = true;
+        this.joystick.beginAt(clientX, clientY);
         this.game.enterBulletTime();
         player.startBulletTime();
-        player.addPathPoint(player.homeX, player.homeY);
-        player.addPathPoint(pos.x, pos.y);
-        this._checkPathOrbs(player);
-    }
-
-    _checkPathOrbs(player) {
-        const path = player.attackPath;
-        if (path.length < 2) return;
-        const from = path[path.length - 2];
-        const to = path[path.length - 1];
-        this.game.buffOrbs.checkPathSegment(from, to);
     }
 
     onMove(e) {
@@ -5032,26 +5199,15 @@ class InputManager {
         e.preventDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
-        const pos = this.getPos(e);
-        if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
-        const last = player.attackPath[player.attackPath.length - 1];
-        if (!last) return;
-        const step = dist(last.x, last.y, pos.x, pos.y);
-        if (step < 2) return;
-
-        if (!player.consumeKiByDistance(step)) {
-            this.isDrawing = false;
-            this.game.exitBulletTime(false);
-            return;
-        }
-        player.addPathPoint(pos.x, pos.y);
-        this._checkPathOrbs(player);
+        const { clientX, clientY } = this._getClientPos(e);
+        this.joystick.move(clientX, clientY);
     }
 
     onEnd(e) {
         if (!this.isDrawing) return;
         if (e) e.preventDefault();
         this.isDrawing = false;
+        this.joystick.end();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
         if (player.attackPath.length < 2) {
@@ -5064,6 +5220,7 @@ class InputManager {
 
     cancelActivePointer() {
         this.isDrawing = false;
+        this.joystick.resetToDefault();
         const player = this.game.player;
         if (!player || player.state !== PlayerState.BULLET_TIME) return;
         this.game.timeScale = CONFIG.NORMAL_TIME_SCALE;
@@ -5149,12 +5306,7 @@ class Game {
                 ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
                 : this.renderer.h;
             this.grass.init(this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
-            if (this.player && this.player.state === PlayerState.IDLE) {
-                this.player.homeX = this.renderer.w / 2;
-                this.player.homeY = this.renderer.h / 2;
-                this.player.x = this.player.homeX;
-                this.player.y = this.player.homeY;
-            }
+            if (this.input && this.input.joystick) this.input.joystick._syncDefaultBase();
         };
         window.addEventListener('resize', onViewport);
         window.addEventListener('orientationchange', onViewport);
@@ -5246,13 +5398,19 @@ class Game {
     }
 
     _updateLiveBattle(dt, realDt) {
-        this.player.update(dt);
+        this.player.update(dt, realDt);
         const playBottom = this.ui.getPlayAreaBottom
             ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale)
             : this.renderer.h;
         const freezeWorld = this.player && this.player.state === PlayerState.BULLET_TIME;
         const worldDt = freezeWorld ? 0 : dt;
-        this.spawner.update(worldDt, this.renderer.w, this.renderer.h, playBottom, this._getSafeZone());
+        const playerTarget = this.player ? {
+            x: this.player.x,
+            y: this.player.y,
+            effectiveRadius: this.player.effectiveRadius,
+            player: this.player,
+        } : null;
+        this.spawner.update(worldDt, this.renderer.w, this.renderer.h, playBottom, playerTarget);
         this.projectiles.update(worldDt, this.renderer.w, this.renderer.h);
         this.combat.update(dt);
         this.buffOrbs.update(realDt);
@@ -5263,9 +5421,15 @@ class Game {
     }
 
     _getSafeZone() {
-        const x = this.player ? this.player.homeX : this.renderer.w / 2;
-        const y = this.player ? this.player.homeY : this.renderer.h / 2;
-        return { x, y, r: Math.max(48, CONFIG.PLAYER.TRIGGER_RADIUS_RATIO * CONFIG.DISPLAY.LOGICAL_WIDTH) };
+        const x = this.player ? this.player.x : this.renderer.w / 2;
+        const y = this.player ? this.player.y : this.renderer.h / 2;
+        return { x, y, r: CONFIG.PLAYER.SPAWN_SAFE_RADIUS || 40 };
+    }
+
+    _playerDied() {
+        if (this.state !== 'PLAYING') return;
+        if (this.input) this.input.cancelActivePointer();
+        this._stageFailed();
     }
 
     _clearCombatResiduals() {
@@ -5304,6 +5468,12 @@ class Game {
         this.levelManager.level = levelIndex;
         this.turnsLeft = CONFIG.TURN.BASE_TURNS;
         this.player.beginTurn();
+        const cx = this.renderer.w / 2;
+        const cy = this.renderer.h / 2;
+        this.player.homeX = cx;
+        this.player.homeY = cy;
+        this.player.x = cx;
+        this.player.y = cy;
         const playBottom = this.ui.getPlayAreaBottom ? this.ui.getPlayAreaBottom(this.renderer.h, this.renderer.uiScale) : this.renderer.h;
         const safe = this._getSafeZone();
         this.spawner.spawnStage(levelIndex, this.renderer.w, this.renderer.h, playBottom, safe, withSpawnAnim);
@@ -5541,7 +5711,6 @@ class Game {
             this.abilities.drawBehind(ctx);
         }
         if (this.player) {
-            if (!this._isFailBattlefield()) this.player.drawTriggerZone(ctx);
             if (battleScene || this.player.state === PlayerState.BULLET_TIME) {
                 this.player.drawPath(ctx);
             }
@@ -5564,6 +5733,9 @@ class Game {
         }
         if (battleScene && this.combat.damageNumbers.length > 0) {
             this.combat.drawDamageNumbers(ctx);
+        }
+        if (this.input && this.input.joystick && battleScene && !this._isFailBattlefield()) {
+            this.input.joystick.draw(ctx);
         }
 
         this.renderer.endClippedGameDraw();

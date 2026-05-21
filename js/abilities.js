@@ -57,7 +57,7 @@ class AbilityManager {
     _ctxPos(ctx) {
         if (ctx) return { x: ctx.x, y: ctx.y };
         const p = this.game.player;
-        return { x: p.homeX, y: p.homeY };
+        return { x: p.x, y: p.y };
     }
 
     onResolveStarted(attackPath) {

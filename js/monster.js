@@ -44,6 +44,9 @@ class Monster {
         this.spawnTimer = 0;
         this.spawnDuration = 0;
         this.failThrowTimer = 0;
+        this.attackDamage = this.base.attack || 10;
+        this.attackInterval = this.base.attackInterval || 1.1;
+        this.attackCooldown = randRange(0.2, this.attackInterval);
     }
 
     beginSpawn(duration = CONFIG.MONSTER_SPAWN_ANIM) {
@@ -77,43 +80,21 @@ class Monster {
         return this.frozenTimer > 0;
     }
 
-    _pushOutOfPlayerZone(playerZone) {
-        if (!playerZone) return;
-        const dx = this.x - playerZone.x;
-        const dy = this.y - playerZone.y;
-        let d = Math.hypot(dx, dy);
-        const minDist = playerZone.r + this.hitboxRadius;
-        if (d >= minDist) return;
-
-        let nx, ny;
-        if (d < 0.001) {
-            const a = randRange(0, Math.PI * 2);
-            nx = Math.cos(a);
-            ny = Math.sin(a);
-        } else {
-            nx = dx / d;
-            ny = dy / d;
-        }
-        this.x = playerZone.x + nx * minDist;
-        this.y = playerZone.y + ny * minDist;
-
-        const vx = Math.cos(this.moveDir);
-        const vy = Math.sin(this.moveDir);
-        const dot = vx * nx + vy * ny;
-        if (dot < 0) {
-            this.moveDir = Math.atan2(vy - 2 * dot * ny, vx - 2 * dot * nx);
-        }
-    }
-
-    _move(dt, w, h, playBottom, playerZone) {
-        this.moveTimer -= dt;
-        if (this.moveTimer <= 0) {
-            this.moveTimer = randRange(0.55, 1.6);
-            this.moveDir += randRange(-1.5, 1.5);
-        }
+    _move(dt, w, h, playBottom, playerTarget) {
+        if (!playerTarget) return;
         this.walkPhase += dt * 7;
         this.animPulse += dt * 3.6;
-        const step = this.speed * dt;
+
+        const dx = playerTarget.x - this.x;
+        const dy = playerTarget.y - this.y;
+        const distToPlayer = Math.hypot(dx, dy);
+        if (distToPlayer < 0.001) return;
+
+        this.moveDir = Math.atan2(dy, dx);
+        this.facing = this.moveDir;
+
+        const reachDist = this.hitboxRadius + (playerTarget.effectiveRadius || 12) + 2;
+        const step = Math.min(this.speed * dt, Math.max(0, distToPlayer - reachDist));
         this.x += Math.cos(this.moveDir) * step;
         this.y += Math.sin(this.moveDir) * step;
 
@@ -121,18 +102,32 @@ class Monster {
         const top = 84;
         const bottom = Math.max(top + 60, playBottom - 20);
         if (this.x < margin || this.x > w - margin) {
-            this.moveDir = Math.PI - this.moveDir;
             this.x = clamp(this.x, margin, w - margin);
         }
         if (this.y < top || this.y > bottom) {
-            this.moveDir = -this.moveDir;
             this.y = clamp(this.y, top, bottom);
         }
-        this._pushOutOfPlayerZone(playerZone);
-        this.facing = this.moveDir;
     }
 
-    update(dt, w, h, playBottom, playerZone) {
+    _canAttackPlayer(playerTarget) {
+        if (!playerTarget || !playerTarget.player) return false;
+        const player = playerTarget.player;
+        if (player.hp <= 0 || player.state === PlayerState.BULLET_TIME) return false;
+        const reach = this.hitboxRadius + player.effectiveRadius + 4;
+        return dist(this.x, this.y, playerTarget.x, playerTarget.y) <= reach;
+    }
+
+    _attackPlayer(playerTarget) {
+        const player = playerTarget.player;
+        const dmg = player.takeDamage(this.attackDamage);
+        if (dmg > 0 && this.game) {
+            this.game.combat.spawnDamageNumber(player.x, player.y - player.effectiveRadius - 8, dmg, false, '#e05840');
+            this.game.particles.hitSpark(player.x, player.y, false);
+            this.game.renderer.shake(CONFIG.SHAKE.NORMAL.magnitude * 0.6, CONFIG.SHAKE.NORMAL.duration * 0.8);
+        }
+    }
+
+    update(dt, w, h, playBottom, playerTarget) {
         if (!this.alive) return;
         if (this.failThrowTimer > 0) {
             this.failThrowTimer -= dt;
@@ -156,7 +151,15 @@ class Monster {
             this.frozenTimer -= dt;
             return;
         }
-        if (this.base.canMove) this._move(dt, w, h, playBottom, playerZone);
+        if (this.base.canMove) this._move(dt, w, h, playBottom, playerTarget);
+
+        if (playerTarget) {
+            this.attackCooldown -= dt;
+            if (this.attackCooldown <= 0 && this._canAttackPlayer(playerTarget)) {
+                this._attackPlayer(playerTarget);
+                this.attackCooldown = this.attackInterval;
+            }
+        }
     }
 
     takeDamage(rawDamage, hitAngle = null) {
