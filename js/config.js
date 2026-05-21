@@ -78,7 +78,7 @@ const CONFIG = {
     // 火柱半径 ≈ 黑洞基础半径(82) 的一半
     FIRE_PILLAR: {
         RADIUS: 60,
-        WARNING_TIME: 1.5,
+        WARNING_TIME: 1.1,
         ACTIVE_TIME: 0.5,
         FADE_TIME: 0.3,
         DAMAGE: 16,
