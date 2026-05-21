@@ -1074,7 +1074,7 @@ class BloodStainSystem {
         this.stains = [];
         this.maxStains = 800;
         this.fadeDuration = 16;
-        this.minAlpha = 0.32;
+        this.minAlpha = 0.22;
     }
 
     clear() {
@@ -1111,7 +1111,7 @@ class BloodStainSystem {
                 x: Math.cos(a) * d,
                 y: Math.sin(a) * d * 0.75,
                 r: randRange(1.2, 3.8) * intensity,
-                c: pickRandom(['#cc1010', '#e61a1a', '#b80808']),
+                c: pickRandom(['#f0a8a8', '#e89090', '#ffc8c8']),
             });
         }
         this.stains.push({ x, y, drops, age: 0 });
