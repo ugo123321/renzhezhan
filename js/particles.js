@@ -209,6 +209,59 @@ class ParticleSystem {
         }
     }
 
+    kiReadyBurst(cx, cy, barW, barH) {
+        const colors = ['#9ae8ff', '#58c8ff', '#d8f8ff', '#ffffff', '#88e8ff', '#b8f0ff'];
+        const halfW = barW * 0.48;
+        const halfH = barH * 0.55;
+        for (let i = 0; i < 42; i++) {
+            const px = cx + randRange(-halfW, halfW);
+            const py = cy + randRange(-halfH, halfH);
+            const a = randRange(0, Math.PI * 2);
+            const spd = randRange(90, 260);
+            this.emit(
+                px, py,
+                Math.cos(a) * spd,
+                Math.sin(a) * spd - randRange(40, 120),
+                randRange(0.35, 0.75),
+                randRange(5, 12),
+                colors[Math.floor(Math.random() * colors.length)],
+                -80, true, true
+            );
+        }
+        for (let i = 0; i < 18; i++) {
+            const t = i / 17;
+            const px = cx - halfW + halfW * 2 * t;
+            const py = cy + randRange(-halfH * 0.35, halfH * 0.35);
+            this.emit(
+                px, py,
+                randRange(-30, 30),
+                randRange(-140, -50),
+                randRange(0.45, 0.9),
+                randRange(6, 11),
+                colors[i % colors.length],
+                -60, true, true
+            );
+        }
+    }
+
+    kiReadySparkle(cx, cy, barW, barH) {
+        const colors = ['#d8f8ff', '#9ae8ff', '#58c8ff', '#ffffff'];
+        const halfW = barW * 0.46;
+        for (let i = 0; i < 3; i++) {
+            const px = cx + randRange(-halfW, halfW);
+            const py = cy + randRange(-barH * 0.35, barH * 0.35);
+            this.emit(
+                px, py,
+                randRange(-25, 25),
+                randRange(-90, -35),
+                randRange(0.22, 0.45),
+                randRange(4, 8),
+                colors[Math.floor(Math.random() * colors.length)],
+                -50, true, true
+            );
+        }
+    }
+
     lightningEffect(x1, y1, x2, y2) {
         const dist = Math.hypot(x2 - x1, y2 - y1);
         const segments = Math.max(18, Math.floor(dist / 14));

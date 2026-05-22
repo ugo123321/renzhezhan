@@ -60,6 +60,7 @@ class Player {
         this.messageTimer = 0;
         this.kiHintText = '';
         this.kiHintTimer = 0;
+        this.kiSparkTimer = 0;
 
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
@@ -178,10 +179,52 @@ class Player {
         return true;
     }
 
+    _getKiBarFxLayout() {
+        return this.game?.ui?._lastHudLayout || null;
+    }
+
+    _triggerKiReadyBurst() {
+        const layout = this._getKiBarFxLayout();
+        const parts = this.game?.particles;
+        if (!layout || !parts) return;
+        const cx = layout.kiX + layout.kiW / 2;
+        const cy = layout.kiY + layout.kiH / 2;
+        parts.kiReadyBurst(cx, cy, layout.kiW, layout.kiH);
+        if (this.game.renderer) this.game.renderer.shake(4, 0.1);
+    }
+
+    _emitKiReadySparkle() {
+        const layout = this._getKiBarFxLayout();
+        const parts = this.game?.particles;
+        if (!layout || !parts) return;
+        const cx = layout.kiX + layout.kiW / 2;
+        const cy = layout.kiY + layout.kiH / 2;
+        parts.kiReadySparkle(cx, cy, layout.kiW, layout.kiH);
+    }
+
+    _canShowKiReadySparkle() {
+        if (!this.isKiFull()) return false;
+        if (this.state !== PlayerState.IDLE) return false;
+        if (!this.game || this.game.state !== 'PLAYING') return false;
+        if (this.game.combat?.isResolving()) return false;
+        if (this.game.isUpgradeBlocked?.()) return false;
+        return true;
+    }
+
+    _updateKiReadySparkles(dt) {
+        if (!this._canShowKiReadySparkle()) return;
+        this.kiSparkTimer -= dt;
+        if (this.kiSparkTimer > 0) return;
+        this.kiSparkTimer = 0.05 + Math.random() * 0.04;
+        this._emitKiReadySparkle();
+    }
+
     _updateKiRegen(realDt) {
         if (!this._canRegenKi()) return;
+        const wasNotFull = !this.isKiFull();
         const rate = CONFIG.PLAYER.KI_REGEN_RATE || 52;
         this.ki = Math.min(this.kiMax, this.ki + rate * realDt);
+        if (wasNotFull && this.isKiFull()) this._triggerKiReadyBurst();
     }
 
     getHealMultiplier() {
@@ -511,6 +554,7 @@ class Player {
         if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
         this._updateHolyShield(dt);
         this._updateKiRegen(realDt || dt);
+        this._updateKiReadySparkles(realDt || dt);
         if (this.kiHintTimer > 0 && (this.isKiFull()
             || this.state === PlayerState.BULLET_TIME
             || this.state === PlayerState.ATTACKING)) {

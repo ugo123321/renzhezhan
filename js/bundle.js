@@ -1035,6 +1035,59 @@ class ParticleSystem {
         }
     }
 
+    kiReadyBurst(cx, cy, barW, barH) {
+        const colors = ['#9ae8ff', '#58c8ff', '#d8f8ff', '#ffffff', '#88e8ff', '#b8f0ff'];
+        const halfW = barW * 0.48;
+        const halfH = barH * 0.55;
+        for (let i = 0; i < 42; i++) {
+            const px = cx + randRange(-halfW, halfW);
+            const py = cy + randRange(-halfH, halfH);
+            const a = randRange(0, Math.PI * 2);
+            const spd = randRange(90, 260);
+            this.emit(
+                px, py,
+                Math.cos(a) * spd,
+                Math.sin(a) * spd - randRange(40, 120),
+                randRange(0.35, 0.75),
+                randRange(5, 12),
+                colors[Math.floor(Math.random() * colors.length)],
+                -80, true, true
+            );
+        }
+        for (let i = 0; i < 18; i++) {
+            const t = i / 17;
+            const px = cx - halfW + halfW * 2 * t;
+            const py = cy + randRange(-halfH * 0.35, halfH * 0.35);
+            this.emit(
+                px, py,
+                randRange(-30, 30),
+                randRange(-140, -50),
+                randRange(0.45, 0.9),
+                randRange(6, 11),
+                colors[i % colors.length],
+                -60, true, true
+            );
+        }
+    }
+
+    kiReadySparkle(cx, cy, barW, barH) {
+        const colors = ['#d8f8ff', '#9ae8ff', '#58c8ff', '#ffffff'];
+        const halfW = barW * 0.46;
+        for (let i = 0; i < 3; i++) {
+            const px = cx + randRange(-halfW, halfW);
+            const py = cy + randRange(-barH * 0.35, barH * 0.35);
+            this.emit(
+                px, py,
+                randRange(-25, 25),
+                randRange(-90, -35),
+                randRange(0.22, 0.45),
+                randRange(4, 8),
+                colors[Math.floor(Math.random() * colors.length)],
+                -50, true, true
+            );
+        }
+    }
+
     lightningEffect(x1, y1, x2, y2) {
         const dist = Math.hypot(x2 - x1, y2 - y1);
         const segments = Math.max(18, Math.floor(dist / 14));
@@ -1456,6 +1509,7 @@ class Player {
         this.messageTimer = 0;
         this.kiHintText = '';
         this.kiHintTimer = 0;
+        this.kiSparkTimer = 0;
 
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
@@ -1574,10 +1628,52 @@ class Player {
         return true;
     }
 
+    _getKiBarFxLayout() {
+        return this.game?.ui?._lastHudLayout || null;
+    }
+
+    _triggerKiReadyBurst() {
+        const layout = this._getKiBarFxLayout();
+        const parts = this.game?.particles;
+        if (!layout || !parts) return;
+        const cx = layout.kiX + layout.kiW / 2;
+        const cy = layout.kiY + layout.kiH / 2;
+        parts.kiReadyBurst(cx, cy, layout.kiW, layout.kiH);
+        if (this.game.renderer) this.game.renderer.shake(4, 0.1);
+    }
+
+    _emitKiReadySparkle() {
+        const layout = this._getKiBarFxLayout();
+        const parts = this.game?.particles;
+        if (!layout || !parts) return;
+        const cx = layout.kiX + layout.kiW / 2;
+        const cy = layout.kiY + layout.kiH / 2;
+        parts.kiReadySparkle(cx, cy, layout.kiW, layout.kiH);
+    }
+
+    _canShowKiReadySparkle() {
+        if (!this.isKiFull()) return false;
+        if (this.state !== PlayerState.IDLE) return false;
+        if (!this.game || this.game.state !== 'PLAYING') return false;
+        if (this.game.combat?.isResolving()) return false;
+        if (this.game.isUpgradeBlocked?.()) return false;
+        return true;
+    }
+
+    _updateKiReadySparkles(dt) {
+        if (!this._canShowKiReadySparkle()) return;
+        this.kiSparkTimer -= dt;
+        if (this.kiSparkTimer > 0) return;
+        this.kiSparkTimer = 0.05 + Math.random() * 0.04;
+        this._emitKiReadySparkle();
+    }
+
     _updateKiRegen(realDt) {
         if (!this._canRegenKi()) return;
+        const wasNotFull = !this.isKiFull();
         const rate = CONFIG.PLAYER.KI_REGEN_RATE || 52;
         this.ki = Math.min(this.kiMax, this.ki + rate * realDt);
+        if (wasNotFull && this.isKiFull()) this._triggerKiReadyBurst();
     }
 
     getHealMultiplier() {
@@ -1907,6 +2003,7 @@ class Player {
         if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
         this._updateHolyShield(dt);
         this._updateKiRegen(realDt || dt);
+        this._updateKiReadySparkles(realDt || dt);
         if (this.kiHintTimer > 0 && (this.isKiFull()
             || this.state === PlayerState.BULLET_TIME
             || this.state === PlayerState.ATTACKING)) {
@@ -7573,7 +7670,22 @@ class UI {
 
     drawTopKiBar(ctx, player, layout, s) {
         const ratio = clamp(player.ki / Math.max(1, player.kiMax), 0, 1);
-        this._drawPixelSwordKiBar(ctx, layout.kiX, layout.kiY, layout.kiW, layout.kiH, ratio);
+        const isKiReady = player.isKiFull();
+        if (isKiReady) {
+            const pulse = 0.55 + Math.sin(Date.now() * 0.009) * 0.35;
+            ctx.save();
+            ctx.globalAlpha = pulse * 0.42;
+            const gx = layout.kiX + layout.kiW / 2;
+            const gy = layout.kiY + layout.kiH / 2;
+            const gr = ctx.createRadialGradient(gx, gy, 4, gx, gy, layout.kiW * 0.55);
+            gr.addColorStop(0, 'rgba(154, 232, 255, 0.95)');
+            gr.addColorStop(0.45, 'rgba(88, 200, 255, 0.55)');
+            gr.addColorStop(1, 'rgba(88, 200, 255, 0)');
+            ctx.fillStyle = gr;
+            ctx.fillRect(layout.kiX, layout.kiY - 4 * s, layout.kiW, layout.kiH + 8 * s);
+            ctx.restore();
+        }
+        this._drawPixelSwordKiBar(ctx, layout.kiX, layout.kiY, layout.kiW, layout.kiH, ratio, isKiReady);
     }
 
     drawTurnBuffIcons(ctx, player, layout, s) {
@@ -7644,14 +7756,14 @@ class UI {
         return { rowMin, rowMax };
     }
 
-    _drawPixelSwordKiBar(ctx, x, y, totalW, h, ratio) {
+    _drawPixelSwordKiBar(ctx, x, y, totalW, h, ratio, isKiReady = true) {
         const rows = 16;
         const px = Math.max(2, Math.floor(h / rows));
         const barH = rows * px;
         const barY = Math.floor(y + (h - barH) / 2);
         const ox = Math.floor(x);
 
-        const pal = {
+        const pal = isKiReady ? {
             outline: '#1a1418',
             pommel: '#4a4048', pommelHi: '#7a7078',
             grip0: '#3a2818', grip1: '#5a4030', grip2: '#8a6848', gripWrap: '#a88868',
@@ -7660,6 +7772,15 @@ class UI {
             kiLo: '#2a6890', kiMid: '#58b0d8', kiHi: '#9ae8ff', kiEdge: '#d8f8ff',
             steel: '#6a7078', steelHi: '#aab0b8',
             warn: '#e04838',
+        } : {
+            outline: '#1a181c',
+            pommel: '#3a383c', pommelHi: '#52545a',
+            grip0: '#2a2428', grip1: '#3a3438', grip2: '#4a4448', gripWrap: '#5a5458',
+            guard: '#424448', guardHi: '#5a5c62', guardEdge: '#2a2830',
+            track: '#2a2a30', trackHi: '#34343a',
+            kiLo: '#3a4048', kiMid: '#4a5058', kiHi: '#5a6268', kiEdge: '#6a7078',
+            steel: '#4a4e54', steelHi: '#5a5e64',
+            warn: '#6a5050',
         };
 
         const pommelCols = 1;
@@ -7675,7 +7796,8 @@ class UI {
         const tipStart = bladeStart + bladeCols;
         const kiCols = bladeCols + tipCols;
         const fillCols = Math.floor(kiCols * ratio);
-        const lowKi = ratio < 0.25 && Math.floor(Date.now() / 280) % 2 === 0;
+        const lowKi = !isKiReady && ratio < 0.25 && Math.floor(Date.now() / 280) % 2 === 0;
+        const kiPulse = isKiReady && Math.floor(Date.now() / 220) % 2 === 0;
 
         const inSpan = (col, row) => {
             const span = this._swordRowSpan(col, rows, pommelCols, gripCols, guardCols, bladeCols, tipCols);
@@ -7717,7 +7839,7 @@ class UI {
                     return row <= 2 ? pal.trackHi : pal.track;
                 }
                 if (edgeRow) return pal.kiLo;
-                if (row <= 2) return pal.kiEdge;
+                if (row <= 2) return kiPulse ? '#e8ffff' : pal.kiEdge;
                 if (row <= 4) return pal.kiHi;
                 return pal.kiMid;
             }
@@ -7728,7 +7850,7 @@ class UI {
                 }
                 if (lowKi && midRow) return pal.warn;
                 if (edgeRow) return pal.kiLo;
-                if (row <= 3) return pal.kiHi;
+                if (row <= 3) return kiPulse ? '#e8ffff' : pal.kiHi;
                 return pal.kiMid;
             }
             return pal.outline;
