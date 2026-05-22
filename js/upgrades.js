@@ -74,7 +74,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '愈合连击',
         icon: '🌿',
-        desc: '连击≥15释放藤蔓，回复5%生命',
+        desc: '连击每+15释放藤蔓，回复5%生命',
         apply() {},
     },
     {

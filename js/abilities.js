@@ -78,7 +78,7 @@ class AbilityManager {
         this.blackHoleSpawnedThisResolve = false;
         const p = this.game.player;
         if (p) {
-            p.healingComboFiredThisResolve = false;
+            p.healingComboMilestone = 0;
             p.comboFireballMilestone = 0;
         }
     }
@@ -130,8 +130,9 @@ class AbilityManager {
         if (p.getUpgradeLevel('shuriken') > 0 && comboFloor > 0) {
             this._spawnComboShurikens(pos.x, pos.y, ctx?.segAng ?? 0);
         }
-        if (comboFloor >= 15 && !p.healingComboFiredThisResolve && p.getUpgradeLevel('healing_combo') > 0) {
-            p.healingComboFiredThisResolve = true;
+        const healMilestone = Math.floor(comboFloor / 15) * 15;
+        if (p.getUpgradeLevel('healing_combo') > 0 && healMilestone >= 15 && healMilestone > p.healingComboMilestone) {
+            p.healingComboMilestone = healMilestone;
             this._emitHealingBurst(pos.x, pos.y, 1.6);
             this._spawnHealingVine(pos.x, pos.y, ctx?.segAng ?? 0);
             const healed = p.heal(p.maxHp * 0.05);

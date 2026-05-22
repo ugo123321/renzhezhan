@@ -1458,7 +1458,7 @@ class Player {
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
         this.killCountForVampire = 0;
-        this.healingComboFiredThisResolve = false;
+        this.healingComboMilestone = 0;
         this.comboFireballMilestone = 0;
     }
 
@@ -1516,7 +1516,7 @@ class Player {
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
         this.killCountForVampire = 0;
-        this.healingComboFiredThisResolve = false;
+        this.healingComboMilestone = 0;
         this.comboFireballMilestone = 0;
         this.hp = this.maxHp;
         if (this.game && this.game.buffOrbs) {
@@ -1543,7 +1543,7 @@ class Player {
         this.comboDisplayTimer = 0;
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
-        this.healingComboFiredThisResolve = false;
+        this.healingComboMilestone = 0;
         this.comboFireballMilestone = 0;
         this.drawSessionSnapshot = null;
         if (this.game && this.game.buffOrbs) {
@@ -1703,7 +1703,7 @@ class Player {
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
         this.whirlCharge = 0;
-        this.healingComboFiredThisResolve = false;
+        this.healingComboMilestone = 0;
         this.comboFireballMilestone = 0;
         return true;
     }
@@ -3523,7 +3523,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '愈合连击',
         icon: '🌿',
-        desc: '连击≥15释放藤蔓，回复5%生命',
+        desc: '连击每+15释放藤蔓，回复5%生命',
         apply() {},
     },
     {
@@ -4382,7 +4382,7 @@ class AbilityManager {
         this.blackHoleSpawnedThisResolve = false;
         const p = this.game.player;
         if (p) {
-            p.healingComboFiredThisResolve = false;
+            p.healingComboMilestone = 0;
             p.comboFireballMilestone = 0;
         }
     }
@@ -4434,8 +4434,9 @@ class AbilityManager {
         if (p.getUpgradeLevel('shuriken') > 0 && comboFloor > 0) {
             this._spawnComboShurikens(pos.x, pos.y, ctx?.segAng ?? 0);
         }
-        if (comboFloor >= 15 && !p.healingComboFiredThisResolve && p.getUpgradeLevel('healing_combo') > 0) {
-            p.healingComboFiredThisResolve = true;
+        const healMilestone = Math.floor(comboFloor / 15) * 15;
+        if (p.getUpgradeLevel('healing_combo') > 0 && healMilestone >= 15 && healMilestone > p.healingComboMilestone) {
+            p.healingComboMilestone = healMilestone;
             this._emitHealingBurst(pos.x, pos.y, 1.6);
             this._spawnHealingVine(pos.x, pos.y, ctx?.segAng ?? 0);
             const healed = p.heal(p.maxHp * 0.05);

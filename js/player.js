@@ -62,7 +62,7 @@ class Player {
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
         this.killCountForVampire = 0;
-        this.healingComboFiredThisResolve = false;
+        this.healingComboMilestone = 0;
         this.comboFireballMilestone = 0;
     }
 
@@ -120,7 +120,7 @@ class Player {
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
         this.killCountForVampire = 0;
-        this.healingComboFiredThisResolve = false;
+        this.healingComboMilestone = 0;
         this.comboFireballMilestone = 0;
         this.hp = this.maxHp;
         if (this.game && this.game.buffOrbs) {
@@ -147,7 +147,7 @@ class Player {
         this.comboDisplayTimer = 0;
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
-        this.healingComboFiredThisResolve = false;
+        this.healingComboMilestone = 0;
         this.comboFireballMilestone = 0;
         this.drawSessionSnapshot = null;
         if (this.game && this.game.buffOrbs) {
@@ -307,7 +307,7 @@ class Player {
         this.comboShakeTimer = 0;
         this.waterTornadoCharge = 0;
         this.whirlCharge = 0;
-        this.healingComboFiredThisResolve = false;
+        this.healingComboMilestone = 0;
         this.comboFireballMilestone = 0;
         return true;
     }
