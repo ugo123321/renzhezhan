@@ -136,6 +136,7 @@ class UI {
         }
         this.drawTurnBuffIcons(ctx, game.player, layout, s);
         this.drawComboBanner(ctx, game.player, vp, layout, s);
+        this.drawKiHint(ctx, game.player, layout, s);
         this.drawMessage(ctx, game.player, vp, s);
         this.drawBuffNotice(ctx, game.buffOrbs, vp, s);
         if (game.experience) this.drawExpBar(ctx, game.experience, vp, s);
@@ -414,6 +415,33 @@ class UI {
             subSize,
             { main: colors.sub, glow: colors.glow }
         );
+        ctx.restore();
+    }
+
+    drawKiHint(ctx, player, layout, s) {
+        if (!player || player.kiHintTimer <= 0 || !player.kiHintText) return;
+        const maxT = 1.75;
+        const alpha = clamp(player.kiHintTimer / maxT, 0, 1);
+        const pulse = 0.82 + Math.sin(Date.now() * 0.012) * 0.18;
+        const text = player.kiHintText;
+        const fontSize = Math.round(16 * s);
+        const padX = 14 * s;
+        const padY = 7 * s;
+        const y = layout.kiY + layout.kiH + (layout.showBossBar ? 3 * s : 8 * s);
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = alpha * pulse;
+        ctx.font = `bold ${fontSize}px ${GAME_FONT}`;
+        const tw = ctx.measureText(text).width;
+        const boxW = tw + padX * 2;
+        const boxH = fontSize + padY * 2;
+        const bx = Math.floor(layout.kiX + layout.kiW / 2 - boxW / 2);
+        const by = Math.floor(y);
+        const textY = by + boxH / 2;
+        drawPixelPanel(ctx, bx, by, boxW, boxH, 'rgba(18, 36, 58, 0.96)', '#ff6868', 3);
+        drawPixelPanel(ctx, bx + 2, by + 2, boxW - 4, boxH - 4, 'rgba(32, 72, 108, 0.88)', '#58c8ff', 1);
+        drawPixelText(ctx, text, layout.kiX + layout.kiW / 2, textY, fontSize, '#fff0d0');
         ctx.restore();
     }
 

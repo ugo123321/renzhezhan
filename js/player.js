@@ -58,6 +58,8 @@ class Player {
         this.drawSessionSnapshot = null;
         this.activeMessage = '';
         this.messageTimer = 0;
+        this.kiHintText = '';
+        this.kiHintTimer = 0;
 
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
@@ -159,6 +161,14 @@ class Player {
         this.ki = Math.min(this.ki, this.kiMax);
         this.nextTurnKiBonus = 0;
     }
+    isKiFull() {
+        return this.ki >= this.kiMax - 0.01;
+    }
+
+    canBeginPathDraw() {
+        return this.state === PlayerState.IDLE && this.hp > 0 && this.isKiFull();
+    }
+
     _canRegenKi() {
         if (this.state !== PlayerState.IDLE || this.ki >= this.kiMax) return false;
         if (!this.game || !this.game.combat) return false;
@@ -421,6 +431,11 @@ class Player {
         this.messageTimer = 1.25;
     }
 
+    queueKiHint(text) {
+        this.kiHintText = text;
+        this.kiHintTimer = 1.75;
+    }
+
     getUpgradeLevel(id) {
         return this.upgradeStacks[id] || 0;
     }
@@ -471,6 +486,7 @@ class Player {
         if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
         if (this.healFlashTimer > 0) this.healFlashTimer -= dt;
         if (this.messageTimer > 0) this.messageTimer -= dt;
+        if (this.kiHintTimer > 0) this.kiHintTimer -= dt;
         if (this.invalidPathTimer > 0) {
             this.invalidPathTimer -= dt;
             if (this.invalidPathTimer <= 0) {

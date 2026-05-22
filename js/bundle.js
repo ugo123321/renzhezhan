@@ -1454,6 +1454,8 @@ class Player {
         this.drawSessionSnapshot = null;
         this.activeMessage = '';
         this.messageTimer = 0;
+        this.kiHintText = '';
+        this.kiHintTimer = 0;
 
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
@@ -1555,6 +1557,14 @@ class Player {
         this.ki = Math.min(this.ki, this.kiMax);
         this.nextTurnKiBonus = 0;
     }
+    isKiFull() {
+        return this.ki >= this.kiMax - 0.01;
+    }
+
+    canBeginPathDraw() {
+        return this.state === PlayerState.IDLE && this.hp > 0 && this.isKiFull();
+    }
+
     _canRegenKi() {
         if (this.state !== PlayerState.IDLE || this.ki >= this.kiMax) return false;
         if (!this.game || !this.game.combat) return false;
@@ -1817,6 +1827,11 @@ class Player {
         this.messageTimer = 1.25;
     }
 
+    queueKiHint(text) {
+        this.kiHintText = text;
+        this.kiHintTimer = 1.75;
+    }
+
     getUpgradeLevel(id) {
         return this.upgradeStacks[id] || 0;
     }
@@ -1867,6 +1882,7 @@ class Player {
         if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
         if (this.healFlashTimer > 0) this.healFlashTimer -= dt;
         if (this.messageTimer > 0) this.messageTimer -= dt;
+        if (this.kiHintTimer > 0) this.kiHintTimer -= dt;
         if (this.invalidPathTimer > 0) {
             this.invalidPathTimer -= dt;
             if (this.invalidPathTimer <= 0) {
@@ -7480,6 +7496,7 @@ class UI {
         }
         this.drawTurnBuffIcons(ctx, game.player, layout, s);
         this.drawComboBanner(ctx, game.player, vp, layout, s);
+        this.drawKiHint(ctx, game.player, layout, s);
         this.drawMessage(ctx, game.player, vp, s);
         this.drawBuffNotice(ctx, game.buffOrbs, vp, s);
         if (game.experience) this.drawExpBar(ctx, game.experience, vp, s);
@@ -7758,6 +7775,33 @@ class UI {
             subSize,
             { main: colors.sub, glow: colors.glow }
         );
+        ctx.restore();
+    }
+
+    drawKiHint(ctx, player, layout, s) {
+        if (!player || player.kiHintTimer <= 0 || !player.kiHintText) return;
+        const maxT = 1.75;
+        const alpha = clamp(player.kiHintTimer / maxT, 0, 1);
+        const pulse = 0.82 + Math.sin(Date.now() * 0.012) * 0.18;
+        const text = player.kiHintText;
+        const fontSize = Math.round(16 * s);
+        const padX = 14 * s;
+        const padY = 7 * s;
+        const y = layout.kiY + layout.kiH + (layout.showBossBar ? 3 * s : 8 * s);
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = alpha * pulse;
+        ctx.font = `bold ${fontSize}px ${GAME_FONT}`;
+        const tw = ctx.measureText(text).width;
+        const boxW = tw + padX * 2;
+        const boxH = fontSize + padY * 2;
+        const bx = Math.floor(layout.kiX + layout.kiW / 2 - boxW / 2);
+        const by = Math.floor(y);
+        const textY = by + boxH / 2;
+        drawPixelPanel(ctx, bx, by, boxW, boxH, 'rgba(18, 36, 58, 0.96)', '#ff6868', 3);
+        drawPixelPanel(ctx, bx + 2, by + 2, boxW - 4, boxH - 4, 'rgba(32, 72, 108, 0.88)', '#58c8ff', 1);
+        drawPixelText(ctx, text, layout.kiX + layout.kiW / 2, textY, fontSize, '#fff0d0');
         ctx.restore();
     }
 
@@ -8994,7 +9038,11 @@ class InputManager {
         const pos = this.getPos(e);
         if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
         if (dist(pos.x, pos.y, player.homeX, player.homeY) > player.triggerRadius) return;
-        if (player.ki <= 0 || player.hp <= 0) return;
+        if (player.hp <= 0) return;
+        if (!player.isKiFull()) {
+            player.queueKiHint('气力未满，无法行动');
+            return;
+        }
 
         this.isDrawing = true;
         this.game.enterBulletTime();

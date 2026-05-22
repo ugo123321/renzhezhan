@@ -34,7 +34,11 @@ class InputManager {
         const pos = this.getPos(e);
         if (!this.game.renderer.isGameInBounds(pos.x, pos.y)) return;
         if (dist(pos.x, pos.y, player.homeX, player.homeY) > player.triggerRadius) return;
-        if (player.ki <= 0 || player.hp <= 0) return;
+        if (player.hp <= 0) return;
+        if (!player.isKiFull()) {
+            player.queueKiHint('气力未满，无法行动');
+            return;
+        }
 
         this.isDrawing = true;
         this.game.enterBulletTime();
