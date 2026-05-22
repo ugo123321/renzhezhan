@@ -1680,6 +1680,7 @@ class Player {
     }
 
     startBulletTime() {
+        this.clearKiHint();
         this.state = PlayerState.BULLET_TIME;
         if (this.game && this.game.buffOrbs) this.game.buffOrbs.beginDrawSession();
         this.invalidPathTimer = 0;
@@ -1906,7 +1907,11 @@ class Player {
         if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
         this._updateHolyShield(dt);
         this._updateKiRegen(realDt || dt);
-        if (this.kiHintTimer > 0 && this.isKiFull()) this.clearKiHint();
+        if (this.kiHintTimer > 0 && (this.isKiFull()
+            || this.state === PlayerState.BULLET_TIME
+            || this.state === PlayerState.ATTACKING)) {
+            this.clearKiHint();
+        }
         this._syncShadowClones();
     }
 
@@ -7786,6 +7791,7 @@ class UI {
 
     drawKiHint(ctx, player, layout, s) {
         if (!player || player.kiHintTimer <= 0 || !player.kiHintText) return;
+        if (player.state === PlayerState.BULLET_TIME || player.state === PlayerState.ATTACKING) return;
         const maxT = 1.75;
         const alpha = clamp(player.kiHintTimer / maxT, 0, 1);
         const pulse = 0.82 + Math.sin(Date.now() * 0.012) * 0.18;

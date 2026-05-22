@@ -420,6 +420,7 @@ class UI {
 
     drawKiHint(ctx, player, layout, s) {
         if (!player || player.kiHintTimer <= 0 || !player.kiHintText) return;
+        if (player.state === PlayerState.BULLET_TIME || player.state === PlayerState.ATTACKING) return;
         const maxT = 1.75;
         const alpha = clamp(player.kiHintTimer / maxT, 0, 1);
         const pulse = 0.82 + Math.sin(Date.now() * 0.012) * 0.18;
