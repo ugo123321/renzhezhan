@@ -436,6 +436,11 @@ class Player {
         this.kiHintTimer = 1.75;
     }
 
+    clearKiHint() {
+        this.kiHintText = '';
+        this.kiHintTimer = 0;
+    }
+
     getUpgradeLevel(id) {
         return this.upgradeStacks[id] || 0;
     }
@@ -505,6 +510,7 @@ class Player {
         if (this.state === PlayerState.ATTACKING) this._updateAttack(dt);
         this._updateHolyShield(dt);
         this._updateKiRegen(realDt || dt);
+        if (this.kiHintTimer > 0 && this.isKiFull()) this.clearKiHint();
         this._syncShadowClones();
     }
 
