@@ -34,7 +34,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '巨大飞镖',
         icon: '⭕',
-        desc: '普攻20%概率发射巨大飞镖，伤害×2，重复升级发射数+1',
+        desc: '普攻20%概率发射巨大飞镖',
         apply() {},
     },
     {
@@ -42,7 +42,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '寒冰飞镖',
         icon: '❄️',
-        desc: '普攻命中5%释放寒冰飞镖，冰冻2秒，额外伤害20%',
+        desc: '普攻命中5%释放寒冰飞镖',
         apply() {},
     },
     {
@@ -50,7 +50,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '元气弹',
         icon: '💫',
-        desc: '飞镖变元气弹，伤害+50%',
+        desc: '飞镖变元气弹',
         apply() {},
     },
     {
@@ -58,7 +58,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '手里剑',
         icon: '🎯',
-        desc: '每次连击释放2枚手里剑(10%攻)',
+        desc: '每次连击释放2枚手里剑',
         apply() {},
     },
     {
@@ -82,7 +82,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '圣盾',
         icon: '🛡️',
-        desc: '每5秒获得1层护盾，获得时立刻生效',
+        desc: '每5秒获得1层护盾',
         apply(player) {
             player.grantHolyShieldImmediate();
         },
@@ -92,7 +92,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '吸血蝙蝠',
         icon: '🦇',
-        desc: '每击杀10敌，蝙蝠群攻并回复2%生命',
+        desc: '每击杀10敌人，蝙蝠群攻并回复2%生命',
         apply() {},
     },
     {
@@ -131,7 +131,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '影分身',
         icon: '👤',
-        desc: '连击>10召唤影分身(20%伤)',
+        desc: '连击>10召唤影分身',
         apply() {},
     },
     {
@@ -177,7 +177,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '天雷',
         icon: '⚡',
-        desc: '每秒落雷范围攻击，重复升级落雷数+1',
+        desc: '每秒落雷范围攻击',
         apply() {},
     },
     {
@@ -186,7 +186,7 @@ const UPGRADE_DEFS = [
         name: '野狼',
         icon: '🐺',
         pet: true,
-        desc: '宠物：野狼散养寻敌，无敌，重复升级数量+1',
+        desc: '宠物：召唤一只野狼',
         apply() {},
     },
     {
@@ -195,7 +195,7 @@ const UPGRADE_DEFS = [
         name: '野牛',
         icon: '🐂',
         pet: true,
-        desc: '宠物：野牛散养冲锋，无敌，重复升级数量+1',
+        desc: '宠物：召唤一只野牛',
         apply() {},
     },
     {
@@ -204,7 +204,7 @@ const UPGRADE_DEFS = [
         name: '天神',
         icon: '✨',
         pet: true,
-        desc: '宠物：天神制裁之剑，全屏索敌，重复升级数量+1',
+        desc: '宠物：召唤天神',
         apply() {},
     },
     {
@@ -212,7 +212,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '养育之心',
         icon: '💗',
-        desc: '宠物数量翻倍，重复升级再次翻倍',
+        desc: '宠物数量翻倍',
         apply() {},
     },
 ];
