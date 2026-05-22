@@ -262,7 +262,7 @@ const CONFIG = {
             segmentSpacing: 28,
             lengthScale: 1.3,
             segmentHp: 320,
-            hpScale: 6,
+            hpScale: 4,
             segmentDef: 3,
             segmentRadius: 23,
             crawlSpeed: 240,

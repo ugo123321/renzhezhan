@@ -12,9 +12,9 @@
             explodeTime: 0.32,
             skyY: 0,
         },
-        wild_wolf: { speed: 118, aggro: 200, atkRange: 36, atkCd: 0.75, dmgMult: 0.72 },
-        wild_bull: { aggro: 240, chargeSpeed: 420, chargeDmgMult: 1.3, idleCd: 1.1, dmgMult: 1.1 },
-        divine_god: { followSpeed: 52, atkInterval: 0.28, swordSpeed: 540, dmgMult: 0.32, orbitDist: 14 },
+        wild_wolf: { speed: 118, aggro: 200, atkRange: 36, atkCd: 0.75, dmgMult: 2 },
+        wild_bull: { aggro: 240, chargeSpeed: 420, chargeDmgMult: 2.5, idleCd: 1.1, dmgMult: 3 },
+        divine_god: { followSpeed: 52, atkInterval: 0.28, swordSpeed: 540, dmgMult: 2, orbitDist: 14 },
         wild_wolf_orbit: 22,
         wild_bull_orbit: 24,
     };

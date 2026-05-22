@@ -3486,7 +3486,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '元气弹',
         icon: '💫',
-        desc: '飞镖变元气弹，伤害+50%',
+        desc: '飞镖变元气弹',
         apply() {},
     },
     {
@@ -3494,7 +3494,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '手里剑',
         icon: '🎯',
-        desc: '每次连击释放2枚手里剑(10%攻)',
+        desc: '每次连击释放2枚手里剑',
         apply() {},
     },
     {
@@ -3518,7 +3518,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '圣盾',
         icon: '🛡️',
-        desc: '每5秒获得1层护盾，获得时立刻生效',
+        desc: '每5秒获得1层护盾',
         apply(player) {
             player.grantHolyShieldImmediate();
         },
@@ -3528,7 +3528,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '吸血蝙蝠',
         icon: '🦇',
-        desc: '每击杀10敌，蝙蝠群攻并回复2%生命',
+        desc: '每击杀10敌人，蝙蝠群攻并回复2%生命',
         apply() {},
     },
     {
@@ -3567,7 +3567,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '影分身',
         icon: '👤',
-        desc: '连击>10时召唤影分身',
+        desc: '连击>10召唤影分身',
         apply() {},
     },
     {
@@ -3575,7 +3575,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '水龙卷术',
         icon: '🌊',
-        desc: '连击每+3释放水龙卷，暴击率+5%',
+        desc: '暴击+5%，连击每+3释放水龙卷',
         apply(player) {
             player.critRate += 0.05;
         },
@@ -3613,7 +3613,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '天雷',
         icon: '⚡',
-        desc: '每秒落雷范围攻击，重复升级落雷数+1',
+        desc: '每秒落雷范围攻击',
         apply() {},
     },
     {
@@ -4300,7 +4300,7 @@ const SHURIKEN_SPEED_MIN = 340;
 const SHURIKEN_SPEED_MAX = 500;
 const SHURIKEN_LIFE_MIN = 0.42;
 const SHURIKEN_LIFE_MAX = 0.62;
-const WHIRL_SIZE_SCALE = 1.5;
+const WHIRL_SIZE_SCALE = 1.12;
 
 const SHURIKEN_SPRITE = [
     [null, '#7a8aa8', null, '#7a8aa8', null],
@@ -4423,6 +4423,7 @@ class AbilityManager {
         }
         if (comboFloor >= 15 && !p.healingComboFiredThisResolve && p.getUpgradeLevel('healing_combo') > 0) {
             p.healingComboFiredThisResolve = true;
+            this._emitHealingBurst(pos.x, pos.y, 1.6);
             this._spawnHealingVine(pos.x, pos.y, ctx?.segAng ?? 0);
             const healed = p.heal(p.maxHp * 0.05);
             if (healed > 0) {
@@ -4477,23 +4478,48 @@ class AbilityManager {
         }
     }
 
+    _emitHealingBurst(x, y, intensity = 1) {
+        const count = Math.floor(14 * intensity);
+        const colors = ['#88ffb0', '#58e878', '#a8ffd0', '#48c868', '#d8ffe8', '#b8f8c8'];
+        for (let i = 0; i < count; i++) {
+            const a = randRange(0, Math.PI * 2);
+            const spd = randRange(70, 200) * intensity;
+            this.game.particles.emit(
+                x, y,
+                Math.cos(a) * spd,
+                Math.sin(a) * spd - randRange(30, 90),
+                randRange(0.28, 0.6), randRange(4, 10 * intensity),
+                colors[Math.floor(Math.random() * colors.length)],
+                -140, true, true
+            );
+        }
+    }
+
     _spawnHealingVine(x, y, segAng) {
         const p = this.game.player;
         const lv = p.getUpgradeLevel('healing_combo');
-        const a = this._nearestMonsterAngle(x, y, segAng);
-        const spd = 320;
-        this.vines.push({
-            x, y,
-            vx: Math.cos(a) * spd,
-            vy: Math.sin(a) * spd,
-            rot: a,
-            life: 0.95,
-            maxLife: 0.95,
-            hit: new Set(),
-            hitR: 28 + lv * 4,
-            damage: p.getAbilityDamage(0.12 + 0.04 * Math.max(0, lv - 1)),
-            slowDur: 3,
-        });
+        const baseAng = this._nearestMonsterAngle(x, y, segAng);
+        const spd = 340;
+        const vineCount = 1 + Math.min(2, Math.floor(lv / 3));
+        const spreads = vineCount === 1 ? [0] : [-0.32, 0, 0.32];
+        for (let i = 0; i < vineCount; i++) {
+            const a = baseAng + (spreads[i] ?? 0);
+            this.vines.push({
+                x, y,
+                vx: Math.cos(a) * spd,
+                vy: Math.sin(a) * spd,
+                rot: a,
+                life: 1.25,
+                maxLife: 1.25,
+                wavePhase: randRange(0, Math.PI * 2),
+                leafPhase: randRange(0, Math.PI * 2),
+                hit: new Set(),
+                hitR: 32 + lv * 4,
+                damage: p.getAbilityDamage(0.52 + 0.18 * Math.max(0, lv - 1)),
+                slowDur: 3,
+            });
+        }
+        this._emitHealingBurst(x, y, 0.9);
     }
 
     spawnVampireBatSwarm(fromX, fromY) {
@@ -4887,7 +4913,7 @@ class AbilityManager {
     _spawnWhirl(x, y) {
         const p = this.game.player;
         const lv = p.getUpgradeLevel('blade_whirl');
-        const baseR = (92 + lv * 12) * WHIRL_SIZE_SCALE;
+        const baseR = (68 + lv * 8) * WHIRL_SIZE_SCALE;
         this.whirls.push({
             x, y,
             r: baseR * 0.55,
@@ -5256,10 +5282,26 @@ class AbilityManager {
 
     _updateVines(dt) {
         const monsters = this.game.spawner.getActiveMonsters();
+        const leafColors = ['#68e888', '#88ffb0', '#48c868', '#a8ffd0'];
         for (const v of this.vines) {
             v.life -= dt;
+            v.wavePhase = (v.wavePhase || 0) + dt * 16;
             v.x += v.vx * dt;
             v.y += v.vy * dt;
+            if (Math.random() < 0.85) {
+                const back = 18 + v.hitR * 0.3;
+                const px = v.x - Math.cos(v.rot) * back;
+                const py = v.y - Math.sin(v.rot) * back;
+                const a = v.rot + randRange(-0.6, 0.6);
+                this.game.particles.emit(
+                    px, py,
+                    Math.cos(a) * randRange(20, 70),
+                    Math.sin(a) * randRange(20, 70),
+                    randRange(0.12, 0.28), randRange(3, 7),
+                    leafColors[Math.floor(Math.random() * leafColors.length)],
+                    -60, true, true
+                );
+            }
             for (const m of monsters) {
                 if (v.hit.has(m.id)) continue;
                 if (!circlesCollide(v.x, v.y, v.hitR, m.x, m.y, m.hitboxRadius)) continue;
@@ -5268,6 +5310,7 @@ class AbilityManager {
                 const hit = m.takeDamage(v.damage, angle(v.x, v.y, m.x, m.y));
                 if (hit.actualDamage > 0) {
                     this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#58c878');
+                    this._emitHealingBurst(m.x, m.y, 0.55);
                     this.game.particles.hitSpark(m.x, m.y, false);
                 }
                 if (m.dying) this.game.combat._handleMonsterKilled(m);
@@ -5339,31 +5382,90 @@ class AbilityManager {
         this.batSwarms = this.batSwarms.filter(s => s.phase !== 'done');
     }
 
+    _vineWaveY(t, wavePhase, amp) {
+        return Math.sin(t * Math.PI * 3.2 + wavePhase) * amp
+            + Math.sin(t * Math.PI * 6.5 + wavePhase * 1.4) * amp * 0.35;
+    }
+
+    _traceVinePath(ctx, len, wavePhase, amp) {
+        const steps = 14;
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const x = lerp(-len * 0.5, len * 0.5, t);
+            const y = this._vineWaveY(t, wavePhase, amp);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+    }
+
     _drawVine(ctx, v) {
         const lifeT = v.maxLife ? v.life / v.maxLife : 1;
         const cx = Math.floor(v.x);
         const cy = Math.floor(v.y);
-        const len = 36 + v.hitR;
+        const len = 52 + v.hitR * 1.1;
+        const wavePhase = v.wavePhase || 0;
+        const leafPhase = v.leafPhase || 0;
+        const amp = 10 + v.hitR * 0.12;
+        const pulse = 0.88 + Math.sin(Date.now() * 0.014 + wavePhase) * 0.12;
+
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(v.rot);
-        ctx.globalAlpha = clamp(0.55 + lifeT * 0.45, 0.4, 1);
-        const g = ctx.createLinearGradient(-len * 0.5, 0, len * 0.5, 0);
-        g.addColorStop(0, 'rgba(40, 100, 48, 0)');
-        g.addColorStop(0.35, 'rgba(72, 168, 88, 0.85)');
-        g.addColorStop(0.65, 'rgba(48, 130, 62, 0.9)');
-        g.addColorStop(1, 'rgba(30, 80, 40, 0)');
-        ctx.strokeStyle = g;
-        ctx.lineWidth = 10 + v.hitR * 0.15;
+        ctx.globalAlpha = clamp((0.7 + lifeT * 0.3) * pulse, 0.55, 1);
         ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(-len * 0.5, 0);
-        ctx.lineTo(len * 0.5, 0);
+        ctx.lineJoin = 'round';
+
+        ctx.shadowColor = '#68ffb0';
+        ctx.shadowBlur = 18 + v.hitR * 0.25;
+        this._traceVinePath(ctx, len, wavePhase, amp);
+        ctx.strokeStyle = 'rgba(56, 200, 96, 0.35)';
+        ctx.lineWidth = 22 + v.hitR * 0.2;
         ctx.stroke();
-        ctx.fillStyle = '#88e8a0';
-        for (let i = -2; i <= 2; i++) {
-            ctx.fillRect(len * 0.15 * i - 2, -4 + (i % 2) * 3, 4, 4);
+
+        this._traceVinePath(ctx, len, wavePhase, amp);
+        const g = ctx.createLinearGradient(-len * 0.5, 0, len * 0.5, 0);
+        g.addColorStop(0, 'rgba(32, 120, 56, 0)');
+        g.addColorStop(0.25, 'rgba(72, 200, 104, 0.9)');
+        g.addColorStop(0.5, 'rgba(120, 255, 160, 0.95)');
+        g.addColorStop(0.75, 'rgba(64, 180, 96, 0.9)');
+        g.addColorStop(1, 'rgba(24, 90, 48, 0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 14 + v.hitR * 0.18;
+        ctx.stroke();
+
+        this._traceVinePath(ctx, len, wavePhase + 0.4, amp * 0.55);
+        ctx.strokeStyle = 'rgba(200, 255, 220, 0.75)';
+        ctx.lineWidth = 5;
+        ctx.shadowBlur = 8;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        const leafCount = 8;
+        for (let i = 0; i < leafCount; i++) {
+            const t = (i + 0.5) / leafCount;
+            const lx = lerp(-len * 0.45, len * 0.45, t);
+            const ly = this._vineWaveY(t, wavePhase, amp);
+            const side = i % 2 === 0 ? 1 : -1;
+            const sway = Math.sin(leafPhase + i * 1.1 + Date.now() * 0.01) * 3;
+            const sz = 5 + (i % 3);
+            ctx.save();
+            ctx.translate(lx, ly + side * (7 + sway));
+            ctx.rotate(side * 0.55 + Math.sin(leafPhase + i) * 0.2);
+            ctx.fillStyle = i % 3 === 0 ? '#a8ffc0' : '#68e888';
+            ctx.fillRect(-sz, -sz * 0.5, sz, sz);
+            ctx.fillStyle = '#48c868';
+            ctx.fillRect(-sz + 1, -sz * 0.5 + 1, Math.max(2, sz - 2), Math.max(2, sz - 2));
+            ctx.restore();
         }
+
+        ctx.fillStyle = '#e8fff0';
+        ctx.globalAlpha = clamp(lifeT * pulse, 0.5, 1);
+        const headX = len * 0.42;
+        const headY = this._vineWaveY(0.92, wavePhase, amp);
+        ctx.beginPath();
+        ctx.arc(headX, headY, 6 + v.hitR * 0.08, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
     }
 
@@ -5570,9 +5672,9 @@ class AbilityManager {
             explodeTime: 0.32,
             skyY: 0,
         },
-        wild_wolf: { speed: 118, aggro: 200, atkRange: 36, atkCd: 0.75, dmgMult: 0.72 },
-        wild_bull: { aggro: 240, chargeSpeed: 420, chargeDmgMult: 1.3, idleCd: 1.1, dmgMult: 1.1 },
-        divine_god: { followSpeed: 52, atkInterval: 0.28, swordSpeed: 540, dmgMult: 0.32, orbitDist: 14 },
+        wild_wolf: { speed: 118, aggro: 200, atkRange: 36, atkCd: 0.75, dmgMult: 2 },
+        wild_bull: { aggro: 240, chargeSpeed: 420, chargeDmgMult: 2.5, idleCd: 1.1, dmgMult: 3 },
+        divine_god: { followSpeed: 52, atkInterval: 0.28, swordSpeed: 540, dmgMult: 2, orbitDist: 14 },
         wild_wolf_orbit: 22,
         wild_bull_orbit: 24,
     };
