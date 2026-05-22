@@ -654,6 +654,11 @@ class Game {
         if (this.state === 'LEVEL_UP') this.upgrades.drawUI(ctx, vp, s, this.player);
         if (this.state === 'PAUSED') this.pauseMenu.draw(ctx, vp, s);
         this.levelManager.drawStageIntro(ctx, vp, s);
+        if (battleScene && this.spawner && this.spawner.boss
+            && this.spawner.boss.phase === 'warning'
+            && typeof this.spawner.boss.drawWarningCountdown === 'function') {
+            this.spawner.boss.drawWarningCountdown(ctx, vp, s);
+        }
         this.levelManager.drawClearFlash(ctx, vp, s);
         if (this.state === 'FAIL' || this.state === 'STAGE_FAIL') {
             this.levelManager.drawFail(ctx, vp, s);

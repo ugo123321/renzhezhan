@@ -424,6 +424,19 @@ class CentipedeBoss {
         ctx.restore();
     }
 
+    drawWarningCountdown(ctx, vp, uiScale) {
+        if (this.phase !== 'warning') return;
+        const s = uiScale || 1;
+        const sec = Math.max(1, Math.ceil(this.warningTimer));
+        const pulse = 0.88 + Math.sin(this.warningPulse * 2.2) * 0.12;
+        const numY = vp.y + vp.h * 0.46;
+
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        drawPixelText(ctx, String(sec), vp.cx, numY, Math.round(52 * s), '#ff3030');
+        ctx.restore();
+    }
+
     draw(ctx) {
         if (this.phase === 'warning') return;
         if (this.getBodyDrawAlpha() <= 0) return;

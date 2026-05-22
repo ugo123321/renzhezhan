@@ -80,7 +80,7 @@ class LevelManager {
         const intro = this.stageIntro;
         const labelY = Math.floor(vp.y + vp.h * 0.22);
         const textX = Math.floor(this._getStageIntroTextX(intro, vp));
-        const fontSize = Math.round(14 * s);
+        const fontSize = Math.round(22 * s);
         const text = `第${intro.levelNum}关`;
 
         ctx.save();
@@ -88,7 +88,7 @@ class LevelManager {
         this._drawStageIntroText(ctx, text, textX, labelY, fontSize, '#000000');
         if (intro.bossName) {
             const subSize = Math.round(11 * s);
-            this._drawStageIntroText(ctx, intro.bossName, textX, labelY + Math.round(16 * s), subSize, '#000000');
+            this._drawStageIntroText(ctx, intro.bossName, textX, labelY + Math.round(24 * s), subSize, '#000000');
         }
         ctx.restore();
     }

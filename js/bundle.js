@@ -350,7 +350,7 @@ const CONFIG = {
             segmentSpacing: 28,
             lengthScale: 1.3,
             segmentHp: 320,
-            hpScale: 6,
+            hpScale: 3.5,
             segmentDef: 3,
             segmentRadius: 23,
             crawlSpeed: 240,
@@ -3140,6 +3140,19 @@ class CentipedeBoss {
         ctx.strokeStyle = `rgba(255, 40, 40, ${0.5 + pulse * 0.45})`;
         ctx.lineWidth = border;
         ctx.strokeRect(border / 2, border / 2, this.w - border, this.h - border);
+        ctx.restore();
+    }
+
+    drawWarningCountdown(ctx, vp, uiScale) {
+        if (this.phase !== 'warning') return;
+        const s = uiScale || 1;
+        const sec = Math.max(1, Math.ceil(this.warningTimer));
+        const pulse = 0.88 + Math.sin(this.warningPulse * 2.2) * 0.12;
+        const numY = vp.y + vp.h * 0.46;
+
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        drawPixelText(ctx, String(sec), vp.cx, numY, Math.round(52 * s), '#ff3030');
         ctx.restore();
     }
 
@@ -6974,7 +6987,7 @@ class LevelManager {
         const intro = this.stageIntro;
         const labelY = Math.floor(vp.y + vp.h * 0.22);
         const textX = Math.floor(this._getStageIntroTextX(intro, vp));
-        const fontSize = Math.round(14 * s);
+        const fontSize = Math.round(22 * s);
         const text = `第${intro.levelNum}关`;
 
         ctx.save();
@@ -6982,7 +6995,7 @@ class LevelManager {
         this._drawStageIntroText(ctx, text, textX, labelY, fontSize, '#000000');
         if (intro.bossName) {
             const subSize = Math.round(11 * s);
-            this._drawStageIntroText(ctx, intro.bossName, textX, labelY + Math.round(16 * s), subSize, '#000000');
+            this._drawStageIntroText(ctx, intro.bossName, textX, labelY + Math.round(24 * s), subSize, '#000000');
         }
         ctx.restore();
     }
@@ -9701,6 +9714,11 @@ class Game {
         if (this.state === 'LEVEL_UP') this.upgrades.drawUI(ctx, vp, s, this.player);
         if (this.state === 'PAUSED') this.pauseMenu.draw(ctx, vp, s);
         this.levelManager.drawStageIntro(ctx, vp, s);
+        if (battleScene && this.spawner && this.spawner.boss
+            && this.spawner.boss.phase === 'warning'
+            && typeof this.spawner.boss.drawWarningCountdown === 'function') {
+            this.spawner.boss.drawWarningCountdown(ctx, vp, s);
+        }
         this.levelManager.drawClearFlash(ctx, vp, s);
         if (this.state === 'FAIL' || this.state === 'STAGE_FAIL') {
             this.levelManager.drawFail(ctx, vp, s);
