@@ -50,6 +50,7 @@ const CONFIG = {
         SIZE_SCALE: 1.0,
         INVINCIBLE_TIME: 0.45,
         DAMAGE_FLASH_TIME: 0.42,
+        HEAL_FLASH_TIME: 0.5,
         COMBO_DAMAGE_BONUS: 0.01,
         COMBO_DISPLAY_HOLD: 0.6,
         COMBO_END_FADE: 0.4,
@@ -115,11 +116,11 @@ const CONFIG = {
     },
 
     STAGES: [
-        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 0, fireMage: 0 },
+        { normal: 62, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 0, fireMage: 0 },
         { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10, fireMage: 0 },
         { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0, archer: 12, fireMage: 6 },
         { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0, archer: 14, fireMage: 7 },
-        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0, archer: 16, fireMage: 8 },
+        { boss: 'centipede' },
         { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0, archer: 18, fireMage: 9 },
         { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0, archer: 20, fireMage: 10 },
         { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0, archer: 22, fireMage: 11 },
@@ -235,10 +236,10 @@ const CONFIG = {
     },
 
     UPGRADE_RARITY: {
-        white: { chance: 0.40, color: '#d8d8d8', name: '白色' },
-        blue: { chance: 0.30, color: '#58a8ff', name: '蓝色' },
-        purple: { chance: 0.20, color: '#b070ff', name: '紫色' },
-        orange: { chance: 0.10, color: '#ff9830', name: '橙色' },
+        white: { chance: 0.30, color: '#d8d8d8', name: '普通' },
+        blue: { chance: 0.30, color: '#58a8ff', name: '稀有' },
+        purple: { chance: 0.30, color: '#b070ff', name: '史诗' },
+        orange: { chance: 0.10, color: '#ff9830', name: '传奇' },
     },
 
     SHAKE: {
@@ -246,5 +247,34 @@ const CONFIG = {
         CRIT: { magnitude: 8, duration: 0.22 },
         COMBO_MAG_PER_HIT: 0.1,
         COMBO_MAG_CAP: 1.5,
+    },
+
+    DEBUG: {
+        PASSWORD: '1',
+        STAGES_PER_CHAPTER: 4,
+        MAX_UPGRADE_LEVEL: 9,
+    },
+
+    BOSS: {
+        CENTIPEDE: {
+            name: '千足虫',
+            warningTime: 3,
+            segmentSpacing: 28,
+            lengthScale: 1.3,
+            segmentHp: 320,
+            hpScale: 6,
+            segmentDef: 3,
+            segmentRadius: 23,
+            crawlSpeed: 240,
+            crawlGap: 0.55,
+            bulletInterval: 0.38,
+            bulletsPerShot: 20,
+            bulletDamage: 24,
+            bulletSpeed: 130,
+            bulletLife: 8,
+            bulletRadius: 7,
+            defeatExp: 140,
+            segmentKillExp: 4,
+        },
     },
 };

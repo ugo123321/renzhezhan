@@ -43,7 +43,26 @@ class ExperienceManager {
     }
 
     onMonsterKilled(monster) {
+        if (monster.isBossSegment) return;
         this.addExp(this.getKillReward(monster));
+    }
+
+    _countUpgradePicks(player) {
+        if (!player || typeof UPGRADE_DEFS === 'undefined') return 0;
+        let n = 0;
+        for (const def of UPGRADE_DEFS) {
+            n += player.getUpgradeLevel(def.id);
+        }
+        return n;
+    }
+
+    setDebugLevel(targetLevel, player) {
+        const lv = clamp(Math.floor(targetLevel), 1, 30);
+        this.level = lv;
+        this.exp = 0;
+        this.expToNext = this._calcExpToNext(lv);
+        const picks = this._countUpgradePicks(player);
+        this.pendingLevelUps = Math.max(0, lv - 1 - picks);
     }
 
     tryTriggerPendingUpgrade() {

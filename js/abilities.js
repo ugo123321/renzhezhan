@@ -2,7 +2,7 @@ const FIREBALL_PIXEL = 4;
 const FIREBALL_RADIUS_BLOCKS = 8;
 const SHURIKEN_PIXEL = 4;
 const WATER_TORNADO_PIXEL = 5;
-const WATER_TORNADO_SIZE_SCALE = 3.2;
+const WATER_TORNADO_SIZE_SCALE = 1.92;
 const WATER_TORNADO_SPEED = 360;
 const WATER_TORNADO_LIFE = 1.85;
 const SHURIKEN_SPEED_MIN = 340;
@@ -33,6 +33,7 @@ class AbilityManager {
         this.resolveFxTimer = 0;
         this.lightningChain = null;
         this.blackHoleSpawnedThisResolve = false;
+        if (this._initSummonState) this._initSummonState();
     }
 
     reset() {
@@ -50,7 +51,7 @@ class AbilityManager {
     }
 
     hasAutoDarts() {
-        return this.shurikens.some(s => s.kind === 'auto');
+        return this.shurikens.some(s => s.kind === 'auto' || s.kind === 'ice');
     }
 
     _hasFlyingProjectiles() {
@@ -218,13 +219,73 @@ class AbilityManager {
             oy: fromY,
             targets: monsters.slice(0, maxTargets),
             idx: 0,
-            phase: 'attack',
+            phase: 'orbit',
             timer: 0,
-            stepDelay: 0.07,
+            orbitElapsed: 0,
+            orbitDuration: 0.95,
+            returnElapsed: 0,
+            returnDuration: 0.55,
+            stepDelay: 0.06,
             damage: p.getAbilityDamage(0.14),
             healAmount: Math.round(p.maxHp * 0.02 * lv),
-            batParticles: [],
+            batCount: 10 + lv * 2,
         });
+        for (let i = 0; i < 14; i++) {
+            const a = randRange(0, Math.PI * 2);
+            this.game.particles.emit(
+                p.x, p.y,
+                Math.cos(a) * randRange(40, 120), Math.sin(a) * randRange(40, 120),
+                randRange(0.15, 0.35), randRange(3, 6),
+                '#503070', 0, true, false
+            );
+        }
+    }
+
+    _drawBat(ctx, x, y, wingPhase) {
+        const bx = Math.floor(x);
+        const by = Math.floor(y);
+        const flap = Math.sin(wingPhase) > 0;
+        ctx.fillStyle = '#281838';
+        ctx.fillRect(bx - 4, by, 8, 3);
+        ctx.fillStyle = '#6040a0';
+        if (flap) {
+            ctx.fillRect(bx - 6, by - 4, 4, 3);
+            ctx.fillRect(bx + 2, by - 4, 4, 3);
+        } else {
+            ctx.fillRect(bx - 7, by - 1, 3, 2);
+            ctx.fillRect(bx + 4, by - 1, 3, 2);
+        }
+        ctx.fillStyle = '#c8a8e8';
+        ctx.fillRect(bx - 1, by - 1, 2, 2);
+    }
+
+    _drawBatsAroundPlayer(ctx, swarm, p) {
+        const t = Date.now() * 0.014;
+        const count = swarm.batCount || 10;
+        const baseR = p.effectiveRadius + 22;
+        const cx = p.x;
+        const cy = p.y;
+
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        const aura = ctx.createRadialGradient(cx, cy, 6, cx, cy, baseR + 14);
+        aura.addColorStop(0, 'rgba(120, 60, 160, 0.45)');
+        aura.addColorStop(1, 'rgba(60, 30, 90, 0)');
+        ctx.fillStyle = aura;
+        ctx.beginPath();
+        ctx.arc(cx, cy, baseR + 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        for (let i = 0; i < count; i++) {
+            const a = t * 1.35 + (i / count) * Math.PI * 2;
+            const wobble = Math.sin(t * 2.2 + i * 0.7) * 8;
+            const layer = (i % 3) * 4;
+            const r = baseR + wobble + layer;
+            const bx = cx + Math.cos(a) * r;
+            const by = cy + Math.sin(a) * r * 0.82;
+            this._drawBat(ctx, bx, by, t * 3 + i);
+        }
     }
 
     _spawnLightningChain(maxTargets, fromX, fromY) {
@@ -323,8 +384,7 @@ class AbilityManager {
         const baseAng = angle(origin.x, origin.y, target.x, target.y);
         const spd = cfg.SPEED || 420;
         const count = 1 + p.getUpgradeLevel('multi_dart');
-        const scale = p.getAutoDartScale();
-        const hitR = this._shurikenHitRadius() * scale;
+        const hitR = this._shurikenHitRadius();
         const damage = p.getAutoDartDamage();
         const isSpirit = p.hasSpiritBomb();
 
@@ -344,8 +404,44 @@ class AbilityManager {
                 hit: new Set(),
                 damage,
                 hitRadius: hitR,
-                visualScale: scale,
+                visualScale: isSpirit ? 1.35 : 1,
                 isSpirit,
+            });
+        }
+
+        this._trySpawnGiantDarts(origin, baseAng, spd, damage, hitR, cfg);
+    }
+
+    _trySpawnGiantDarts(origin, baseAng, spd, normalDamage, baseHitR, cfg) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('giant_dart');
+        if (lv <= 0) return;
+        if (Math.random() >= 0.20) return;
+
+        const giantDamage = Math.max(1, Math.round(normalDamage * 2));
+        const giantScale = 2;
+        const giantHitR = baseHitR * giantScale * 0.85;
+        const count = lv;
+
+        for (let i = 0; i < count; i++) {
+            const spread = count > 1
+                ? baseAng + (i - (count - 1) * 0.5) * 0.14
+                : baseAng;
+            this.shurikens.push({
+                kind: 'auto',
+                x: origin.x,
+                y: origin.y,
+                vx: Math.cos(spread) * spd * 0.92,
+                vy: Math.sin(spread) * spd * 0.92,
+                rot: spread,
+                spin: 10,
+                life: cfg.LIFE || 0.9,
+                hit: new Set(),
+                damage: giantDamage,
+                hitRadius: giantHitR,
+                visualScale: giantScale,
+                isSpirit: false,
+                isGiant: true,
             });
         }
     }
@@ -356,39 +452,34 @@ class AbilityManager {
         return Math.min(0.95, 0.05 + 0.04 * Math.max(0, lv - 1));
     }
 
-    _getIceDartFrostMult() {
+    _getIceDartBonusMult() {
         const lv = this.game.player.getUpgradeLevel('ice_dart');
         if (lv <= 0) return 0;
         return 0.2 + 0.05 * Math.max(0, lv - 1);
     }
 
-    _tryIceDartBurst(x, y, dartDamage) {
+    _trySpawnIceDart(x, y, dartDamage, flyAng) {
         if (this.game.player.getUpgradeLevel('ice_dart') <= 0) return;
         if (Math.random() >= this._getIceDartProcChance()) return;
-        this._triggerIceDartBurst(x, y, dartDamage);
-    }
 
-    _triggerIceDartBurst(x, y, dartDamage) {
-        const p = this.game.player;
-        const lv = p.getUpgradeLevel('ice_dart');
-        if (lv <= 0) return;
-        const radius = 78 + lv * 8;
-        const dmg = Math.max(1, Math.round(dartDamage * this._getIceDartFrostMult()));
-        const monsters = this.game.spawner.getActiveMonsters();
-        let hitAny = false;
-        for (const m of monsters) {
-            if (dist(x, y, m.x, m.y) > radius + m.hitboxRadius) continue;
-            m.freeze(2);
-            const hit = m.takeDamage(dmg, angle(x, y, m.x, m.y));
-            if (hit.actualDamage > 0) {
-                hitAny = true;
-                this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#78d8ff');
-                this.game.particles.freezeEffect(m.x, m.y, 1.35);
-            }
-            if (m.dying) this.game.combat._handleMonsterKilled(m);
-        }
-        this.game.particles.iceBurstEffect(x, y, radius);
-        if (!hitAny) this.game.particles.freezeEffect(x, y, 1.2);
+        const a = this._nearestMonsterAngle(x, y, flyAng);
+        const spd = 400;
+        const bonus = Math.max(1, Math.round(dartDamage * this._getIceDartBonusMult()));
+        this.shurikens.push({
+            kind: 'ice',
+            x,
+            y,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd,
+            rot: a,
+            spin: 16,
+            life: 0.9,
+            hit: new Set(),
+            damage: bonus,
+            freezeDur: 2,
+            hitRadius: 9,
+        });
+        this.game.particles.freezeEffect(x, y, 0.85);
     }
 
     _updateAutoDartFire(dt) {
@@ -704,7 +795,8 @@ class AbilityManager {
         const p = this.game.player;
         for (const s of this.shurikens) {
             if (kindFilter === 'auto' && s.kind !== 'auto') continue;
-            if (kindFilter === 'skill' && s.kind === 'auto') continue;
+            if (kindFilter === 'skill' && s.kind !== 'skill') continue;
+            if (kindFilter === 'passive' && s.kind !== 'auto' && s.kind !== 'ice') continue;
             const hitR = this._shurikenHitRadius(s);
             s.life -= dt;
             s.x += s.vx * dt;
@@ -715,14 +807,23 @@ class AbilityManager {
                 if (!circlesCollide(s.x, s.y, hitR, m.x, m.y, m.hitboxRadius)) continue;
                 s.hit.add(m.id);
                 const dmg = this._shurikenDamage(s);
+                if (s.kind === 'ice') {
+                    m.freeze(s.freezeDur || 2);
+                }
                 const hit = m.takeDamage(dmg, angle(s.x, s.y, m.x, m.y));
                 if (hit.actualDamage > 0) {
-                    const color = s.isSpirit ? '#ffe878' : (s.kind === 'auto' ? '#98b8d8' : '#a8c0e8');
+                    let color = '#a8c0e8';
+                    if (s.isSpirit) color = '#ffe878';
+                    else if (s.kind === 'auto') color = '#98b8d8';
+                    else if (s.kind === 'ice') color = '#78d8ff';
                     this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, color);
                     this.game.particles.hitSpark(m.x, m.y, false);
+                    if (s.kind === 'ice') {
+                        this.game.particles.freezeEffect(m.x, m.y, 1.1);
+                    }
                 }
                 if (s.kind === 'auto') {
-                    this._tryIceDartBurst(s.x, s.y, dmg);
+                    this._trySpawnIceDart(s.x, s.y, dmg, Math.atan2(s.vy, s.vx));
                 }
                 if (m.dying) this.game.combat._handleMonsterKilled(m);
             }
@@ -888,24 +989,52 @@ class AbilityManager {
         const p = this.game.player;
         if (!p) return;
         for (const swarm of this.batSwarms) {
+            if (swarm.phase === 'orbit') {
+                swarm.orbitElapsed = (swarm.orbitElapsed || 0) + dt;
+                if (swarm.orbitElapsed < swarm.orbitDuration) continue;
+                if (swarm.targets.length > 0) {
+                    swarm.phase = 'attack';
+                    swarm.idx = 0;
+                    swarm.timer = 0;
+                } else {
+                    swarm.phase = 'return';
+                    swarm.returnElapsed = 0;
+                }
+                continue;
+            }
+
+            if (swarm.phase === 'return') {
+                swarm.returnElapsed = (swarm.returnElapsed || 0) + dt;
+                if (swarm.returnElapsed < swarm.returnDuration) continue;
+                const healed = p.heal(swarm.healAmount);
+                if (healed > 0) {
+                    this.game.combat.spawnDamageNumber(
+                        p.x, p.y - p.effectiveRadius - 12, healed, false, '#68d878'
+                    );
+                }
+                swarm.phase = 'done';
+                continue;
+            }
+
             swarm.timer -= dt;
             if (swarm.timer > 0) continue;
 
             if (swarm.phase === 'attack') {
                 if (swarm.idx >= swarm.targets.length) {
                     swarm.phase = 'return';
-                    swarm.idx = 0;
-                    swarm.timer = swarm.stepDelay * 0.5;
+                    swarm.returnElapsed = 0;
                     continue;
                 }
                 const m = swarm.targets[swarm.idx];
                 if (m.alive && !m.dying) {
+                    const fromX = p.x;
+                    const fromY = p.y;
                     this.game.particles.emit(
-                        swarm.ox, swarm.oy,
-                        (m.x - swarm.ox) * 2, (m.y - swarm.oy) * 2,
-                        0.12, 4, '#402858', 0, true, false
+                        fromX, fromY,
+                        (m.x - fromX) * 3, (m.y - fromY) * 3,
+                        0.1, 4, '#503070', 0, true, false
                     );
-                    const hit = m.takeDamage(swarm.damage, angle(swarm.ox, swarm.oy, m.x, m.y));
+                    const hit = m.takeDamage(swarm.damage, angle(fromX, fromY, m.x, m.y));
                     if (hit.actualDamage > 0) {
                         this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#a070c8');
                         this.game.particles.hitSpark(m.x, m.y, false);
@@ -914,14 +1043,6 @@ class AbilityManager {
                 }
                 swarm.idx++;
                 swarm.timer = swarm.stepDelay;
-            } else if (swarm.phase === 'return') {
-                const healed = p.heal(swarm.healAmount);
-                if (healed > 0) {
-                    this.game.combat.spawnDamageNumber(
-                        p.x, p.y - p.effectiveRadius - 12, healed, false, '#68d878'
-                    );
-                }
-                swarm.phase = 'done';
             }
         }
         this.batSwarms = this.batSwarms.filter(s => s.phase !== 'done');
@@ -958,27 +1079,36 @@ class AbilityManager {
     _drawBatSwarm(ctx, swarm) {
         const p = this.game.player;
         if (!p) return;
-        const t = Date.now() * 0.01;
-        const count = 6;
-        for (let i = 0; i < count; i++) {
-            const a = t + (i / count) * Math.PI * 2;
-            const orbit = swarm.phase === 'return' ? 8 : 18 + i * 3;
-            const cx = swarm.phase === 'return'
-                ? lerp(swarm.ox, p.x, 0.55 + Math.sin(t + i) * 0.15)
-                : swarm.ox + Math.cos(a) * orbit;
-            const cy = swarm.phase === 'return'
-                ? lerp(swarm.oy, p.y, 0.55 + Math.cos(t + i) * 0.15)
-                : swarm.oy + Math.sin(a) * orbit;
-            ctx.fillStyle = '#302040';
-            ctx.fillRect(Math.floor(cx) - 3, Math.floor(cy) - 2, 6, 4);
-            ctx.fillStyle = '#8060a8';
-            ctx.fillRect(Math.floor(cx) - 2, Math.floor(cy) - 3, 4, 2);
+
+        if (swarm.phase === 'orbit' || swarm.phase === 'return') {
+            this._drawBatsAroundPlayer(ctx, swarm, p);
+            return;
+        }
+
+        if (swarm.phase === 'attack') {
+            const t = Date.now() * 0.018;
+            const count = Math.min(swarm.batCount || 8, 8);
+            const target = swarm.targets[swarm.idx] || swarm.targets[swarm.targets.length - 1];
+            if (!target) {
+                this._drawBatsAroundPlayer(ctx, swarm, p);
+                return;
+            }
+            for (let i = 0; i < count; i++) {
+                const prog = (swarm.idx + i * 0.08) / Math.max(1, swarm.targets.length);
+                const a = t + (i / count) * Math.PI * 2;
+                const cx = lerp(p.x, target.x, 0.35 + prog * 0.5) + Math.cos(a) * 12;
+                const cy = lerp(p.y, target.y, 0.35 + prog * 0.5) + Math.sin(a) * 10;
+                this._drawBat(ctx, cx, cy, t * 2 + i);
+            }
+            this._drawBatsAroundPlayer(ctx, swarm, p);
         }
     }
 
     updatePassive(dt) {
         this._updateAutoDartFire(dt);
-        if (this.shurikens.some(s => s.kind === 'auto')) this._updateShurikens(dt, 'auto');
+        if (this.shurikens.some(s => s.kind === 'auto' || s.kind === 'ice')) {
+            this._updateShurikens(dt, 'passive');
+        }
         if (this.batSwarms.length > 0) this._updateBatSwarms(dt);
     }
 
@@ -987,7 +1117,7 @@ class AbilityManager {
         if (!this._isResolvePhase()) return;
 
         this._updateLightningChain(dt);
-        if (this.shurikens.some(s => s.kind !== 'auto')) this._updateShurikens(dt, 'skill');
+        if (this.shurikens.some(s => s.kind === 'skill')) this._updateShurikens(dt, 'skill');
         if (this.vines.length > 0) this._updateVines(dt);
         this._updateFireballs(dt);
         this._updateWaterTornados(dt);
@@ -1040,12 +1170,54 @@ class AbilityManager {
         ctx.restore();
     }
 
+    _drawIceDart(ctx, x, y, rot, px) {
+        const rows = SHURIKEN_SPRITE.length;
+        const cols = SHURIKEN_SPRITE[0].length;
+        const iceColors = {
+            '#7a8aa8': '#58b8f0',
+            '#e8f4ff': '#e8ffff',
+            '#b8cce8': '#a8e8ff',
+            '#586878': '#3890d8',
+        };
+        ctx.save();
+        ctx.translate(Math.floor(x), Math.floor(y));
+        ctx.rotate(rot);
+        const ox = -Math.floor((cols * px) / 2);
+        const oy = -Math.floor((rows * px) / 2);
+        ctx.shadowColor = '#88e8ff';
+        ctx.shadowBlur = 10;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const base = SHURIKEN_SPRITE[r][c];
+                if (!base) continue;
+                ctx.fillStyle = iceColors[base] || '#a8e8ff';
+                ctx.fillRect(ox + c * px, oy + r * px, px, px);
+            }
+        }
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = '#d8ffff';
+        ctx.fillRect(ox - 1, oy - 1, cols * px + 2, rows * px + 2);
+        ctx.restore();
+    }
+
     drawAutoDarts(ctx) {
         for (const s of this.shurikens) {
+            if (s.kind === 'ice') {
+                this._drawIceDart(ctx, s.x, s.y, s.rot, SHURIKEN_PIXEL);
+                continue;
+            }
             if (s.kind !== 'auto') continue;
             const scale = s.visualScale || 1;
             if (s.isSpirit) {
                 this._drawSpiritBomb(ctx, s.x, s.y, s.rot, scale);
+            } else if (s.isGiant) {
+                const px = SHURIKEN_PIXEL * scale;
+                ctx.save();
+                ctx.shadowColor = '#ffd060';
+                ctx.shadowBlur = 8;
+                this._drawPixelShuriken(ctx, s.x, s.y, s.rot, px);
+                ctx.restore();
             } else {
                 const px = SHURIKEN_PIXEL * scale;
                 this._drawPixelShuriken(ctx, s.x, s.y, s.rot, px);
@@ -1058,7 +1230,7 @@ class AbilityManager {
         if (!this._isResolvePhase() && !showAuto) return;
 
         for (const s of this.shurikens) {
-            if (s.kind === 'auto') continue;
+            if (s.kind === 'auto' || s.kind === 'ice') continue;
             this._drawPixelShuriken(ctx, s.x, s.y, s.rot, SHURIKEN_PIXEL);
         }
 

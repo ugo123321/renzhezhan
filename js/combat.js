@@ -44,7 +44,7 @@ class CombatManager {
     }
 
     _handleMonsterKilled(m) {
-        if (m._deathHandled) return;
+        if (m._deathHandled || m.isBossSegment) return;
         m._deathHandled = true;
         const player = this.game.player;
         const hitAngle = player
@@ -189,7 +189,7 @@ class CombatManager {
     }
 
     _getMonsterById(id) {
-        return this.game.spawner.monsters.find(m => m.id === id && m.alive && !m.dying);
+        return this.game.spawner.getCombatTargetById(id);
     }
 
     _applyQueuedHit(hit) {
@@ -220,7 +220,7 @@ class CombatManager {
         this.game.particles.hitSpark(m.x, m.y, isCrit);
         this.game.renderer.shakeAttackHit(isCrit, combo);
 
-        if (m.kind === MonsterKind.BERSERKER) {
+        if (m.kind === MonsterKind.BERSERKER && m.base) {
             const drain = m.base.kiDrainOnHit || 0;
             p.ki = Math.max(0, p.ki - drain);
         }

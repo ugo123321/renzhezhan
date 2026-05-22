@@ -8,6 +8,7 @@ class MonsterSpawner {
     reset() {
         this.monsters = [];
         this.spawnClusters = [];
+        this.boss = null;
     }
 
     _getSpawnBounds(w, playBottom) {
@@ -146,10 +147,17 @@ class MonsterSpawner {
 
     spawnStage(stageIndex, w, h, playBottom, safeZone, withSpawnAnim = false) {
         this.monsters = [];
-        this._initSpawnClusters(w, h, playBottom, safeZone);
+        this.boss = null;
         const cfg = CONFIG.STAGES[clamp(stageIndex, 0, CONFIG.STAGES.length - 1)];
         if (!cfg) return;
         const stageStatScale = getStageStatScale(stageIndex);
+
+        if (cfg.boss === 'centipede') {
+            this.boss = new CentipedeBoss(this.game, w, h, playBottom, safeZone, stageStatScale);
+            return;
+        }
+
+        this._initSpawnClusters(w, h, playBottom, safeZone);
         this._spawnBatch(MonsterKind.NORMAL, this._scaledCount(cfg.normal), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.ELITE, this._scaledCount(cfg.elite), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.SHIELD, this._scaledShieldCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
@@ -186,6 +194,10 @@ class MonsterSpawner {
     }
 
     update(dt, w, h, playBottom, playerTarget) {
+        if (this.boss) {
+            this.boss.update(dt, playerTarget);
+            return;
+        }
         const resolving = this.game && this.game.combat && this.game.combat.isResolving();
         for (const m of this.monsters) {
             if (resolving && !m.dying) continue;
@@ -194,11 +206,23 @@ class MonsterSpawner {
         this.monsters = this.monsters.filter(m => m.alive);
     }
 
+    getCombatTargetById(id) {
+        if (this.boss) {
+            const seg = this.boss.segments.find(s => s.id === id && s.alive);
+            if (seg && this.boss.phase === 'active') return seg;
+        }
+        return this.monsters.find(m => m.id === id && m.alive && !m.dying);
+    }
+
     getActiveMonsters() {
+        if (this.boss && this.boss.phase === 'active') {
+            return this.boss.getActiveSegments();
+        }
         return this.monsters.filter(m => m.alive && !m.dying && !m.spawning);
     }
 
     allClear() {
+        if (this.boss) return this.boss.isDefeated();
         return !this.monsters.some(m => m.alive && !m.dying);
     }
 }

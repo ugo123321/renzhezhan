@@ -56,6 +56,8 @@ class Monster {
         this.attackDamage = this.base.attack || 10;
         this.attackInterval = this.base.attackInterval || 1.1;
         this.attackCooldown = randRange(0.2, this.attackInterval);
+        this.shieldIntact = kind === MonsterKind.SHIELD;
+        this.shieldBreakAnim = 0;
     }
 
     beginSpawn(duration = CONFIG.MONSTER_SPAWN_ANIM) {
@@ -237,6 +239,7 @@ class Monster {
             this.slowTimer -= dt;
             if (this.slowTimer <= 0) this.slowMult = 1;
         }
+        if (this.shieldBreakAnim > 0) this.shieldBreakAnim -= dt;
         if (this.base.canMove) this._move(dt, w, h, playBottom, playerTarget);
 
         if (playerTarget) {
@@ -259,7 +262,62 @@ class Monster {
         }
     }
 
+    _spawnShieldBreakFx() {
+        if (!this.game?.particles) return;
+        const px = Math.max(2, Math.round(this.hitboxRadius / 4));
+        const fx = Math.cos(this.facing) * (this.hitboxRadius + px * 2);
+        const fy = Math.sin(this.facing) * (this.hitboxRadius + px * 2);
+        const bx = this.x + fx;
+        const by = this.y + fy;
+        const colors = ['#8ab0d0', '#c8e0f8', '#e8f4ff', '#5a7898'];
+        for (let i = 0; i < 18; i++) {
+            const a = this.facing + randRange(-1.1, 1.1);
+            const spd = randRange(60, 180);
+            this.game.particles.emit(
+                bx, by,
+                Math.cos(a) * spd, Math.sin(a) * spd,
+                randRange(0.2, 0.45), randRange(3, 7),
+                colors[Math.floor(Math.random() * colors.length)],
+                0, true, false
+            );
+        }
+        this.game.renderer?.shake(3, 0.08);
+    }
+
+    _drawShieldBreakDebris(ctx, x, y, r, alpha) {
+        const px = Math.max(2, Math.round(r / 4));
+        const facing = this.facing;
+        const dist = r + px * 2.5;
+        const t = this.shieldBreakAnim > 0
+            ? clamp(this.shieldBreakAnim / 0.35, 0, 1)
+            : 0;
+        if (t <= 0) return;
+
+        ctx.save();
+        ctx.globalAlpha = alpha * t;
+        ctx.translate(x, y);
+        ctx.rotate(facing);
+        const sx = Math.floor(dist - px);
+        const sy = Math.floor(-px * 4);
+        const debris = ['#4a6888', '#8ab0d0', '#c8e0f8', '#3a5878'];
+        for (let i = 0; i < 10; i++) {
+            ctx.fillStyle = debris[i % debris.length];
+            ctx.fillRect(
+                sx + ((i * 5) % 14) - 4 + (1 - t) * 6,
+                sy + (i % 4) * px + (1 - t) * 8,
+                px,
+                px
+            );
+        }
+        ctx.restore();
+    }
+
     _drawShieldPlate(ctx, x, y, r, alpha) {
+        if (!this.shieldIntact) {
+            this._drawShieldBreakDebris(ctx, x, y, r, alpha);
+            return;
+        }
+
         const px = Math.max(2, Math.round(r / 4));
         const facing = this.facing;
         const dist = r + px * 2.5;
@@ -314,42 +372,16 @@ class Monster {
         ctx.fillRect(cx, cy - px, px, px * 3);
         ctx.fillRect(cx - px, cy, px * 3, px);
 
-        // 朝向箭头（指向前方）
-        const ax = sx + w + px * 1.2;
-        const ay = sy + h * 0.5;
-        ctx.fillStyle = '#ffd060';
-        ctx.fillRect(Math.floor(ax), Math.floor(ay - px), px * 2, px * 2);
-        ctx.fillRect(Math.floor(ax + px * 2), Math.floor(ay - px * 0.5), px * 2, px);
-
-        ctx.restore();
-
-        // 前方格挡范围提示弧
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.28;
-        ctx.strokeStyle = '#78a8d8';
-        ctx.fillStyle = 'rgba(120, 168, 220, 0.12)';
-        ctx.lineWidth = Math.max(2, px * 0.6);
-        ctx.setLineDash([5, 4]);
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.arc(x, y, r + px * 6, facing - Math.PI * 0.55, facing + Math.PI * 0.55);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
         ctx.restore();
     }
 
     takeDamage(rawDamage, hitAngle = null) {
-        let blockedByShield = false;
-        if (this.kind === MonsterKind.SHIELD && hitAngle !== null) {
-            const diff = Math.abs(Math.atan2(
-                Math.sin(hitAngle - this.facing),
-                Math.cos(hitAngle - this.facing)
-            ));
-            // Front hemisphere blocks damage.
-            if (diff < Math.PI * 0.55) blockedByShield = true;
+        if (this.kind === MonsterKind.SHIELD && this.shieldIntact) {
+            this.shieldIntact = false;
+            this.shieldBreakAnim = 0.35;
+            this._spawnShieldBreakFx();
+            return { actualDamage: 0, blockedByShield: true, shieldBroken: true };
         }
-        if (blockedByShield) return { actualDamage: 0, blockedByShield: true };
 
         const vulnerableMult = this.vulnerableMark ? 2 : 1;
         this.vulnerableMark = false;

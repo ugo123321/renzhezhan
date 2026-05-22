@@ -138,6 +138,7 @@ const CONFIG = {
         SIZE_SCALE: 1.0,
         INVINCIBLE_TIME: 0.45,
         DAMAGE_FLASH_TIME: 0.42,
+        HEAL_FLASH_TIME: 0.5,
         COMBO_DAMAGE_BONUS: 0.01,
         COMBO_DISPLAY_HOLD: 0.6,
         COMBO_END_FADE: 0.4,
@@ -203,11 +204,11 @@ const CONFIG = {
     },
 
     STAGES: [
-        { normal: 56, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 0, fireMage: 0 },
+        { normal: 62, elite: 0, shield: 0, berserker: 0, splitter: 0, archer: 0, fireMage: 0 },
         { normal: 60, elite: 12, shield: 0, berserker: 0, splitter: 0, archer: 10, fireMage: 0 },
         { normal: 64, elite: 20, shield: 8, berserker: 0, splitter: 0, archer: 12, fireMage: 6 },
         { normal: 64, elite: 20, shield: 12, berserker: 8, splitter: 0, archer: 14, fireMage: 7 },
-        { normal: 68, elite: 24, shield: 12, berserker: 8, splitter: 0, archer: 16, fireMage: 8 },
+        { boss: 'centipede' },
         { normal: 68, elite: 24, shield: 16, berserker: 12, splitter: 0, archer: 18, fireMage: 9 },
         { normal: 72, elite: 28, shield: 20, berserker: 12, splitter: 0, archer: 20, fireMage: 10 },
         { normal: 76, elite: 28, shield: 24, berserker: 16, splitter: 0, archer: 22, fireMage: 11 },
@@ -323,10 +324,10 @@ const CONFIG = {
     },
 
     UPGRADE_RARITY: {
-        white: { chance: 0.40, color: '#d8d8d8', name: '白色' },
-        blue: { chance: 0.30, color: '#58a8ff', name: '蓝色' },
-        purple: { chance: 0.20, color: '#b070ff', name: '紫色' },
-        orange: { chance: 0.10, color: '#ff9830', name: '橙色' },
+        white: { chance: 0.30, color: '#d8d8d8', name: '普通' },
+        blue: { chance: 0.30, color: '#58a8ff', name: '稀有' },
+        purple: { chance: 0.30, color: '#b070ff', name: '史诗' },
+        orange: { chance: 0.10, color: '#ff9830', name: '传奇' },
     },
 
     SHAKE: {
@@ -334,6 +335,35 @@ const CONFIG = {
         CRIT: { magnitude: 8, duration: 0.22 },
         COMBO_MAG_PER_HIT: 0.1,
         COMBO_MAG_CAP: 1.5,
+    },
+
+    DEBUG: {
+        PASSWORD: '1',
+        STAGES_PER_CHAPTER: 4,
+        MAX_UPGRADE_LEVEL: 9,
+    },
+
+    BOSS: {
+        CENTIPEDE: {
+            name: '千足虫',
+            warningTime: 3,
+            segmentSpacing: 28,
+            lengthScale: 1.3,
+            segmentHp: 320,
+            hpScale: 6,
+            segmentDef: 3,
+            segmentRadius: 23,
+            crawlSpeed: 240,
+            crawlGap: 0.55,
+            bulletInterval: 0.38,
+            bulletsPerShot: 20,
+            bulletDamage: 24,
+            bulletSpeed: 130,
+            bulletLife: 8,
+            bulletRadius: 7,
+            defeatExp: 140,
+            segmentKillExp: 4,
+        },
     },
 };
 
@@ -1410,6 +1440,7 @@ class Player {
         this.invalidPathTimer = 0;
         this.kiAtDrawStart = this.ki;
         this.damageFlashTimer = 0;
+        this.healFlashTimer = 0;
 
         this.turnBuffs = {
             attackMult: 1,
@@ -1481,6 +1512,7 @@ class Player {
         this.drawSessionSnapshot = null;
         this.invincibleTimer = 0;
         this.damageFlashTimer = 0;
+        this.healFlashTimer = 0;
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
         this.killCountForVampire = 0;
@@ -1548,13 +1580,23 @@ class Player {
         const actual = Math.max(1, Math.round(amount * this.getHealMultiplier()));
         const before = this.hp;
         this.hp = Math.min(this.maxHp, this.hp + actual);
-        return this.hp - before;
+        const gained = this.hp - before;
+        if (gained > 0) {
+            this.healFlashTimer = CONFIG.PLAYER.HEAL_FLASH_TIME || 0.5;
+        }
+        return gained;
     }
 
     getHolyShieldInterval() {
         const lv = this.getUpgradeLevel('holy_shield');
         if (lv <= 0) return 0;
-        return Math.max(1.5, 6 - 0.5 * (lv - 1));
+        return Math.max(1.5, 5 - 0.5 * (lv - 1));
+    }
+
+    grantHolyShieldImmediate() {
+        if (this.getUpgradeLevel('holy_shield') <= 0) return;
+        this.holyShieldCharges = 1;
+        this.holyShieldTimer = this.getHolyShieldInterval();
     }
 
     _refreshHolyShieldInterval() {
@@ -1766,10 +1808,6 @@ class Player {
         return Math.max(1, Math.round(dmg));
     }
 
-    getAutoDartScale() {
-        return 1 + 0.2 * this.getUpgradeLevel('giant_dart');
-    }
-
     hasSpiritBomb() {
         return this.getUpgradeLevel('spirit_bomb') > 0;
     }
@@ -1789,9 +1827,45 @@ class Player {
         this.queueMessage(`获得强化: ${upgrade.name}`);
     }
 
+    rebuildUpgradesFromStacks(stacks, silent = false) {
+        const hpRatio = clamp(this.hp / Math.max(1, this.maxHp), 0, 1);
+        this.baseAttack = CONFIG.PLAYER.BASE_ATTACK;
+        this.attackPowerScale = 1;
+        this.critRate = CONFIG.PLAYER.BASE_CRIT_RATE;
+        this.critDamage = CONFIG.PLAYER.BASE_CRIT_DAMAGE;
+        this.sizeScale = CONFIG.PLAYER.SIZE_SCALE;
+        this.baseHp = CONFIG.PLAYER.BASE_HP;
+        this.maxHp = this.baseHp;
+        this.baseKi = CONFIG.PLAYER.BASE_KI;
+        this.comboDamageBonus = CONFIG.PLAYER.COMBO_DAMAGE_BONUS;
+        this.upgradeStacks = {};
+        this.holyShieldCharges = 0;
+        this.holyShieldTimer = 0;
+        this.killCountForVampire = 0;
+
+        if (typeof UPGRADE_DEFS !== 'undefined') {
+            const maxLv = CONFIG.DEBUG?.MAX_UPGRADE_LEVEL || 9;
+            for (const def of UPGRADE_DEFS) {
+                const lv = clamp(Math.floor(stacks[def.id] || 0), 0, maxLv);
+                for (let i = 0; i < lv; i++) {
+                    this.upgradeStacks[def.id] = (this.upgradeStacks[def.id] || 0) + 1;
+                    def.apply(this, this.upgradeStacks[def.id]);
+                }
+            }
+        }
+
+        this.hp = Math.max(1, Math.round(this.maxHp * hpRatio));
+        const turnKiMax = Math.round(this.baseKi * (1 + this.nextTurnKiBonus));
+        this.kiMax = Math.max(20, turnKiMax);
+        this.ki = Math.min(this.kiMax, this.ki);
+        this._refreshHolyShieldInterval();
+        if (!silent) this.queueMessage('调试: 强化已更新');
+    }
+
     update(dt, realDt) {
         if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
         if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
+        if (this.healFlashTimer > 0) this.healFlashTimer -= dt;
         if (this.messageTimer > 0) this.messageTimer -= dt;
         if (this.invalidPathTimer > 0) {
             this.invalidPathTimer -= dt;
@@ -1969,6 +2043,9 @@ class Player {
             && Math.floor(this.invincibleTimer * 18) % 2 === 0;
         const damageFlashOn = this.damageFlashTimer > 0
             && Math.floor(this.damageFlashTimer * 22) % 2 === 0;
+        const healT = this.healFlashTimer > 0
+            ? clamp(this.healFlashTimer / (CONFIG.PLAYER.HEAL_FLASH_TIME || 0.5), 0, 1)
+            : 0;
         const px = Math.floor(this.x);
         const py = Math.floor(this.y);
 
@@ -1976,8 +2053,32 @@ class Player {
             ? SPRITES.ninja.attack[Math.floor(Date.now() / 80) % SPRITES.ninja.attack.length]
             : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
         const alpha = blink ? 0.55 : 1;
-        const tint = damageFlashOn ? 0.72 : 0;
-        drawSprite(ctx, sprite, px, py, this.spriteScale, alpha, false, tint);
+        let tint = 0;
+        let tintR = 255;
+        let tintG = 72;
+        let tintB = 72;
+        if (damageFlashOn) {
+            tint = 0.72;
+        } else if (healT > 0) {
+            tint = 0.62 * healT;
+            tintR = 80;
+            tintG = 230;
+            tintB = 130;
+        }
+        drawSprite(ctx, sprite, px, py, this.spriteScale, alpha, false, tint, tintR, tintG, tintB);
+
+        if (healT > 0) {
+            ctx.save();
+            ctx.globalAlpha = 0.28 * healT;
+            const glow = ctx.createRadialGradient(px, py, 4, px, py, this.effectiveRadius + 18);
+            glow.addColorStop(0, 'rgba(140, 255, 180, 0.85)');
+            glow.addColorStop(1, 'rgba(80, 200, 120, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(px, py, this.effectiveRadius + 16, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
 
         this._drawHpBar(ctx);
 
@@ -2075,6 +2176,8 @@ class Monster {
         this.attackDamage = this.base.attack || 10;
         this.attackInterval = this.base.attackInterval || 1.1;
         this.attackCooldown = randRange(0.2, this.attackInterval);
+        this.shieldIntact = kind === MonsterKind.SHIELD;
+        this.shieldBreakAnim = 0;
     }
 
     beginSpawn(duration = CONFIG.MONSTER_SPAWN_ANIM) {
@@ -2256,6 +2359,7 @@ class Monster {
             this.slowTimer -= dt;
             if (this.slowTimer <= 0) this.slowMult = 1;
         }
+        if (this.shieldBreakAnim > 0) this.shieldBreakAnim -= dt;
         if (this.base.canMove) this._move(dt, w, h, playBottom, playerTarget);
 
         if (playerTarget) {
@@ -2278,7 +2382,62 @@ class Monster {
         }
     }
 
+    _spawnShieldBreakFx() {
+        if (!this.game?.particles) return;
+        const px = Math.max(2, Math.round(this.hitboxRadius / 4));
+        const fx = Math.cos(this.facing) * (this.hitboxRadius + px * 2);
+        const fy = Math.sin(this.facing) * (this.hitboxRadius + px * 2);
+        const bx = this.x + fx;
+        const by = this.y + fy;
+        const colors = ['#8ab0d0', '#c8e0f8', '#e8f4ff', '#5a7898'];
+        for (let i = 0; i < 18; i++) {
+            const a = this.facing + randRange(-1.1, 1.1);
+            const spd = randRange(60, 180);
+            this.game.particles.emit(
+                bx, by,
+                Math.cos(a) * spd, Math.sin(a) * spd,
+                randRange(0.2, 0.45), randRange(3, 7),
+                colors[Math.floor(Math.random() * colors.length)],
+                0, true, false
+            );
+        }
+        this.game.renderer?.shake(3, 0.08);
+    }
+
+    _drawShieldBreakDebris(ctx, x, y, r, alpha) {
+        const px = Math.max(2, Math.round(r / 4));
+        const facing = this.facing;
+        const dist = r + px * 2.5;
+        const t = this.shieldBreakAnim > 0
+            ? clamp(this.shieldBreakAnim / 0.35, 0, 1)
+            : 0;
+        if (t <= 0) return;
+
+        ctx.save();
+        ctx.globalAlpha = alpha * t;
+        ctx.translate(x, y);
+        ctx.rotate(facing);
+        const sx = Math.floor(dist - px);
+        const sy = Math.floor(-px * 4);
+        const debris = ['#4a6888', '#8ab0d0', '#c8e0f8', '#3a5878'];
+        for (let i = 0; i < 10; i++) {
+            ctx.fillStyle = debris[i % debris.length];
+            ctx.fillRect(
+                sx + ((i * 5) % 14) - 4 + (1 - t) * 6,
+                sy + (i % 4) * px + (1 - t) * 8,
+                px,
+                px
+            );
+        }
+        ctx.restore();
+    }
+
     _drawShieldPlate(ctx, x, y, r, alpha) {
+        if (!this.shieldIntact) {
+            this._drawShieldBreakDebris(ctx, x, y, r, alpha);
+            return;
+        }
+
         const px = Math.max(2, Math.round(r / 4));
         const facing = this.facing;
         const dist = r + px * 2.5;
@@ -2333,42 +2492,16 @@ class Monster {
         ctx.fillRect(cx, cy - px, px, px * 3);
         ctx.fillRect(cx - px, cy, px * 3, px);
 
-        // 朝向箭头（指向前方）
-        const ax = sx + w + px * 1.2;
-        const ay = sy + h * 0.5;
-        ctx.fillStyle = '#ffd060';
-        ctx.fillRect(Math.floor(ax), Math.floor(ay - px), px * 2, px * 2);
-        ctx.fillRect(Math.floor(ax + px * 2), Math.floor(ay - px * 0.5), px * 2, px);
-
-        ctx.restore();
-
-        // 前方格挡范围提示弧
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.28;
-        ctx.strokeStyle = '#78a8d8';
-        ctx.fillStyle = 'rgba(120, 168, 220, 0.12)';
-        ctx.lineWidth = Math.max(2, px * 0.6);
-        ctx.setLineDash([5, 4]);
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.arc(x, y, r + px * 6, facing - Math.PI * 0.55, facing + Math.PI * 0.55);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
         ctx.restore();
     }
 
     takeDamage(rawDamage, hitAngle = null) {
-        let blockedByShield = false;
-        if (this.kind === MonsterKind.SHIELD && hitAngle !== null) {
-            const diff = Math.abs(Math.atan2(
-                Math.sin(hitAngle - this.facing),
-                Math.cos(hitAngle - this.facing)
-            ));
-            // Front hemisphere blocks damage.
-            if (diff < Math.PI * 0.55) blockedByShield = true;
+        if (this.kind === MonsterKind.SHIELD && this.shieldIntact) {
+            this.shieldIntact = false;
+            this.shieldBreakAnim = 0.35;
+            this._spawnShieldBreakFx();
+            return { actualDamage: 0, blockedByShield: true, shieldBroken: true };
         }
-        if (blockedByShield) return { actualDamage: 0, blockedByShield: true };
 
         const vulnerableMult = this.vulnerableMark ? 2 : 1;
         this.vulnerableMark = false;
@@ -2579,6 +2712,461 @@ class Monster {
             case MonsterKind.FIRE_MAGE: return SPRITES.strongRanged;
             default: return SPRITES.normalMelee;
         }
+    }
+}
+
+
+// ---- bossCentipede.js ----
+let nextBossSegmentId = 100000;
+
+class CentipedeSegment {
+    constructor(boss, index, radius) {
+        this.boss = boss;
+        this.id = nextBossSegmentId++;
+        this.index = index;
+        this.x = 0;
+        this.y = 0;
+        this.def = 0;
+        this.hitboxRadius = radius;
+        this.size = radius;
+        this.alive = true;
+        this.dying = false;
+        this._deathHandled = false;
+        this.color = '#3d5a48';
+        this.frozenTimer = 0;
+        this.slowTimer = 0;
+        this.slowMult = 1;
+        this.vulnerableMark = false;
+        this.pathTargetHighlight = false;
+        this.isBossSegment = true;
+        this.kind = 'BOSS_SEGMENT';
+    }
+
+    canSplit() {
+        return false;
+    }
+
+    freeze(duration) {
+        this.frozenTimer = Math.max(this.frozenTimer, duration);
+    }
+
+    isFrozen() {
+        return this.frozenTimer > 0;
+    }
+
+    slow(duration, speedMult = 0.45) {
+        this.slowTimer = Math.max(this.slowTimer, duration);
+        this.slowMult = Math.min(this.slowMult ?? 1, speedMult);
+    }
+
+    takeDamage(rawDamage, hitAngle) {
+        return this.boss.applyDamage(rawDamage, this);
+    }
+
+    update(dt) {
+        if (!this.alive) return;
+        if (this.frozenTimer > 0) this.frozenTimer -= dt;
+        if (this.slowTimer > 0) {
+            this.slowTimer -= dt;
+            if (this.slowTimer <= 0) this.slowMult = 1;
+        }
+    }
+
+    draw(ctx) {
+        if (!this.alive) return;
+        const alpha = this.boss.getBodyDrawAlpha();
+        if (alpha <= 0) return;
+
+        const segAng = this.boss.getSegmentAngle(this.index);
+        const r = this.hitboxRadius;
+        const w = r * 2.1;
+        const h = r * 1.55;
+        const frozen = this.isFrozen();
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(this.x, this.y);
+        ctx.rotate(segAng);
+        if (this.pathTargetHighlight) {
+            ctx.shadowColor = '#ffe878';
+            ctx.shadowBlur = 10;
+        }
+
+        ctx.fillStyle = frozen ? '#5a88b8' : '#2a3830';
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.fillStyle = frozen ? '#88c8f0' : '#4a6858';
+        ctx.fillRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 5);
+        ctx.fillStyle = frozen ? '#b8e8ff' : '#6a9078';
+        ctx.fillRect(-w / 2 + 4, -h / 2 + 3, w - 8, Math.max(2, h * 0.35));
+
+        const legN = 4;
+        ctx.fillStyle = '#1a2820';
+        for (let i = 0; i < legN; i++) {
+            const lx = -w / 2 + (i + 0.5) * (w / legN);
+            ctx.fillRect(lx - 1, h / 2 - 1, 2, 4);
+            ctx.fillRect(lx - 1, -h / 2 - 3, 2, 4);
+        }
+
+        if (frozen) {
+            ctx.strokeStyle = 'rgba(200, 240, 255, 0.75)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-w / 2, -h / 2, w, h);
+        }
+
+        ctx.restore();
+    }
+}
+
+class CentipedeBoss {
+    constructor(game, w, h, playBottom, safeZone, stageStatScale) {
+        this.game = game;
+        this.w = w;
+        this.h = h;
+        this.top = 88;
+        this.bottom = playBottom;
+        this.cfg = CONFIG.BOSS.CENTIPEDE;
+        this.name = this.cfg.name;
+        this.stageStatScale = stageStatScale || { hp: 1, def: 1 };
+
+        this.phase = 'warning';
+        this.warningTimer = this.cfg.warningTime || 3;
+        this.warningPulse = 0;
+        this.segments = [];
+        this.bullets = [];
+        this.crawlProgress = 0;
+        this.crawlSpeed = this.cfg.crawlSpeed || 240;
+        this.pathStart = { x: 0, y: 0 };
+        this.pathEnd = { x: 0, y: 0 };
+        this.pathLength = 1;
+        this.bodySpan = 0.85;
+        this.crawlPause = 0;
+        this.shootTimer = 0;
+        this.defeated = false;
+        this._defeatRewarded = false;
+        this.hp = 0;
+        this.maxHp = 0;
+        this.def = 0;
+        this.deathFadeDur = CONFIG.MONSTER_DEATH_FADE;
+        this.deathFadeTimer = 0;
+
+        const py = safeZone ? safeZone.y : h * 0.5;
+        const px = safeZone ? safeZone.x : w * 0.5;
+        this.pathPlayer = { x: px, y: py };
+
+        this._initSegments();
+        this._buildCrawlPath();
+    }
+
+    _initSegments() {
+        const playH = this.bottom - this.top;
+        const spacing = this.cfg.segmentSpacing || 28;
+        const lengthScale = this.cfg.lengthScale ?? 1;
+        const count = Math.max(12, Math.floor((playH / spacing) * lengthScale));
+        const hpEach = Math.round((this.cfg.segmentHp || 300) * this.stageStatScale.hp);
+        const defEach = Math.max(1, Math.round((this.cfg.segmentDef || 3) * this.stageStatScale.def));
+        const radius = this.cfg.segmentRadius || 15;
+
+        const hpScale = this.cfg.hpScale ?? 1;
+        this.maxHp = Math.round(count * hpEach * hpScale);
+        this.hp = this.maxHp;
+        this.def = defEach;
+
+        this.segments = [];
+        for (let i = 0; i < count; i++) {
+            this.segments.push(new CentipedeSegment(this, i, radius));
+        }
+        this.bodySpan = count > 1 ? (count - 1) * spacing / Math.max(1, this.pathLength) : 0.5;
+    }
+
+    applyDamage(rawDamage, hitSegment) {
+        if (this.defeated || this.phase !== 'active') {
+            return { actualDamage: 0, blockedByShield: false };
+        }
+        const vulnerableMult = hitSegment.vulnerableMark ? 2 : 1;
+        hitSegment.vulnerableMark = false;
+        const actualDamage = Math.max(1, Math.round((rawDamage - this.def) * vulnerableMult));
+        this.hp = Math.max(0, this.hp - actualDamage);
+        if (this.hp <= 0) this._defeat();
+        return { actualDamage, blockedByShield: false };
+    }
+
+    getBodyDrawAlpha() {
+        if (this.phase === 'active') return 1;
+        if (this.phase === 'dead') {
+            return clamp(this.deathFadeTimer / this.deathFadeDur, 0, 1);
+        }
+        return 0;
+    }
+
+    _buildCrawlPath() {
+        const p = this.game && this.game.player;
+        if (p) {
+            this.pathPlayer.x = p.homeX;
+            this.pathPlayer.y = p.homeY;
+        }
+        const margin = 58;
+        const px = this.pathPlayer.x;
+        const py = this.pathPlayer.y;
+        const side = randInt(0, 3);
+        let ex;
+        let ey;
+
+        if (side === 0) {
+            ex = randRange(margin, this.w - margin);
+            ey = this.top - margin;
+        } else if (side === 1) {
+            ex = randRange(margin, this.w - margin);
+            ey = this.bottom + margin;
+        } else if (side === 2) {
+            ex = -margin;
+            ey = randRange(this.top + margin, this.bottom - margin);
+        } else {
+            ex = this.w + margin;
+            ey = randRange(this.top + margin, this.bottom - margin);
+        }
+
+        const ang = Math.atan2(py - ey, px - ex);
+        const back = margin + 45;
+        const forward = (this.bottom - this.top) + margin * 2 + 100;
+        this.pathStart = {
+            x: ex - Math.cos(ang) * back,
+            y: ey - Math.sin(ang) * back,
+        };
+        this.pathEnd = {
+            x: ex + Math.cos(ang) * forward,
+            y: ey + Math.sin(ang) * forward,
+        };
+        this.pathLength = Math.max(80, dist(
+            this.pathStart.x, this.pathStart.y,
+            this.pathEnd.x, this.pathEnd.y
+        ));
+        const spacing = this.cfg.segmentSpacing || 28;
+        const count = this.segments.length;
+        this.bodySpan = count > 1 ? ((count - 1) * spacing) / this.pathLength : 0.5;
+    }
+
+    _posOnPath(t) {
+        const tt = clamp(t, 0, 1);
+        return {
+            x: lerp(this.pathStart.x, this.pathEnd.x, tt),
+            y: lerp(this.pathStart.y, this.pathEnd.y, tt),
+        };
+    }
+
+    getSegmentAngle(index) {
+        const t0 = clamp(this.crawlProgress - (index / Math.max(1, this.segments.length - 1)) * this.bodySpan, 0, 1);
+        const t1 = clamp(t0 + 0.02, 0, 1);
+        const p0 = this._posOnPath(t0);
+        const p1 = this._posOnPath(t1);
+        return Math.atan2(p1.y - p0.y, p1.x - p0.x);
+    }
+
+    _updateSegmentPositions() {
+        const n = this.segments.length;
+        for (let i = 0; i < n; i++) {
+            const seg = this.segments[i];
+            const offset = n > 1 ? (i / (n - 1)) * this.bodySpan : 0;
+            const t = clamp(this.crawlProgress - offset, 0, 1);
+            const pos = this._posOnPath(t);
+            seg.x = pos.x;
+            seg.y = pos.y;
+        }
+    }
+
+    get totalHp() {
+        return this.hp;
+    }
+
+    get maxTotalHp() {
+        return this.maxHp;
+    }
+
+    get hpRatio() {
+        return this.maxHp > 0 ? clamp(this.hp / this.maxHp, 0, 1) : 0;
+    }
+
+    isDefeated() {
+        return this.defeated;
+    }
+
+    getActiveSegments() {
+        if (this.phase !== 'active') return [];
+        return this.segments;
+    }
+
+    activate() {
+        this.phase = 'active';
+        this.crawlProgress = 0;
+        this.crawlPause = 0;
+        this._buildCrawlPath();
+        this._updateSegmentPositions();
+    }
+
+    _shootBullet(playerTarget) {
+        if (!playerTarget) return;
+        const live = this.getActiveSegments();
+        if (!live.length) return;
+        const spd = this.cfg.bulletSpeed || 200;
+        const count = this.cfg.bulletsPerShot || 1;
+        for (let n = 0; n < count; n++) {
+            const seg = live[randInt(0, live.length - 1)];
+            const dir = normalize(playerTarget.x - seg.x, playerTarget.y - seg.y);
+            this.bullets.push({
+                x: seg.x,
+                y: seg.y,
+                vx: dir.x * spd,
+                vy: dir.y * spd,
+                radius: this.cfg.bulletRadius || 5,
+                damage: this.cfg.bulletDamage || 8,
+                life: this.cfg.bulletLife ?? 4,
+            });
+        }
+    }
+
+    _updateBullets(dt, playerTarget) {
+        const player = playerTarget && playerTarget.player;
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const b = this.bullets[i];
+            b.x += b.vx * dt;
+            b.y += b.vy * dt;
+            b.life -= dt;
+            if (b.life <= 0
+                || b.x < -30 || b.x > this.w + 30
+                || b.y < -30 || b.y > this.h + 30) {
+                this.bullets.splice(i, 1);
+                continue;
+            }
+            if (!player || player.hp <= 0) continue;
+            const pr = player.effectiveRadius || 14;
+            if (dist(b.x, b.y, player.x, player.y) <= b.radius + pr * 0.55) {
+                const dmg = player.takeDamage(b.damage);
+                if (dmg > 0 && this.game) {
+                    this.game.combat.spawnDamageNumber(
+                        player.x, player.y - pr - 8, dmg, false, '#e05840'
+                    );
+                    this.game.particles.hitSpark(player.x, player.y, false);
+                    this.game.renderer.shake(
+                        CONFIG.SHAKE.NORMAL.magnitude * 0.55,
+                        CONFIG.SHAKE.NORMAL.duration * 0.7
+                    );
+                }
+                this.bullets.splice(i, 1);
+            }
+        }
+    }
+
+    _defeat() {
+        if (this.defeated) return;
+        this.hp = 0;
+        this.defeated = true;
+        this.phase = 'dead';
+        this.deathFadeTimer = this.deathFadeDur;
+        this.bullets = [];
+
+        let cx = 0;
+        let cy = 0;
+        for (const seg of this.segments) {
+            cx += seg.x;
+            cy += seg.y;
+        }
+        const n = this.segments.length;
+        if (n > 0) {
+            cx /= n;
+            cy /= n;
+            const combat = this.game && this.game.combat;
+            const player = this.game && this.game.player;
+            const hitAngle = player
+                ? angle(player.x, player.y, cx, cy)
+                : Math.random() * Math.PI * 2;
+            if (combat) {
+                this.game.bloodStains.spawn(cx, cy, 1.5, hitAngle);
+                this.game.particles.deathEffect(cx, cy, '#3d5a48');
+            }
+        }
+
+        if (!this._defeatRewarded && this.game.experience) {
+            this._defeatRewarded = true;
+            const bonus = this.cfg.defeatExp || 120;
+            this.game.experience.addExp(bonus);
+            if (this.game.player) {
+                this.game.player.queueMessage(`${this.name} 击破!`);
+            }
+        }
+    }
+
+    update(dt, playerTarget) {
+        if (this.phase === 'warning') {
+            this.warningTimer -= dt;
+            this.warningPulse += dt * 5;
+            if (this.warningTimer <= 0) this.activate();
+            return;
+        }
+        if (this.phase === 'dead') {
+            this.deathFadeTimer -= dt;
+            if (this.deathFadeTimer <= 0) {
+                for (const seg of this.segments) seg.alive = false;
+            }
+            return;
+        }
+
+        if (this.crawlPause > 0) {
+            this.crawlPause -= dt;
+        } else {
+            this.crawlProgress += (dt * this.crawlSpeed) / this.pathLength;
+            if (this.crawlProgress >= 1 + this.bodySpan) {
+                this.crawlProgress = 0;
+                this.crawlPause = this.cfg.crawlGap || 0.55;
+                this._buildCrawlPath();
+            }
+        }
+
+        this._updateSegmentPositions();
+
+        for (const seg of this.segments) seg.update(dt);
+
+        this.shootTimer -= dt;
+        if (this.shootTimer <= 0 && this.crawlPause <= 0) {
+            this._shootBullet(playerTarget);
+            this.shootTimer = this.cfg.bulletInterval || 0.4;
+        }
+
+        this._updateBullets(dt, playerTarget);
+    }
+
+    drawWarningOverlay(ctx) {
+        const pulse = 0.45 + Math.sin(this.warningPulse) * 0.35;
+        const border = Math.max(6, Math.floor(10 + pulse * 8));
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 40, 40, ${0.5 + pulse * 0.45})`;
+        ctx.lineWidth = border;
+        ctx.strokeRect(border / 2, border / 2, this.w - border, this.h - border);
+        ctx.restore();
+    }
+
+    draw(ctx) {
+        if (this.phase === 'warning') return;
+        if (this.getBodyDrawAlpha() <= 0) return;
+        for (const seg of this.segments) seg.draw(ctx);
+    }
+
+    drawBullets(ctx) {
+        if (this.phase === 'warning' || this.getBodyDrawAlpha() <= 0) return;
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        for (const b of this.bullets) {
+            const r = b.radius;
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            ctx.fillStyle = '#c03030';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ff8080';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, Math.max(1.5, r * 0.55), 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
     }
 }
 
@@ -2846,6 +3434,16 @@ class GroundEffectManager {
 
 
 // ---- upgrades.js ----
+function hexToRgba(hex, alpha) {
+    const h = (hex || '#ffffff').replace('#', '');
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const n = parseInt(full, 16);
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
 const UPGRADE_DEFS = [
     {
         id: 'luck',
@@ -2861,7 +3459,7 @@ const UPGRADE_DEFS = [
     },
     {
         id: 'multi_dart',
-        rarity: 'blue',
+        rarity: 'white',
         name: '多重飞镖',
         icon: '🎯',
         desc: '普攻飞镖数量+1',
@@ -2869,10 +3467,10 @@ const UPGRADE_DEFS = [
     },
     {
         id: 'giant_dart',
-        rarity: 'white',
+        rarity: 'blue',
         name: '巨大飞镖',
         icon: '⭕',
-        desc: '普攻飞镖体积+20%',
+        desc: '普攻20%概率发射巨大飞镖',
         apply() {},
     },
     {
@@ -2880,7 +3478,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '寒冰飞镖',
         icon: '❄️',
-        desc: '飞镖命中5%概率释放寒冰气，冰冻2秒(伤害=飞镖20%)；重复升级提高概率与伤害',
+        desc: '普攻命中5%释放寒冰飞镖',
         apply() {},
     },
     {
@@ -2888,7 +3486,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '元气弹',
         icon: '💫',
-        desc: '飞镖升级为元气弹，伤害+50%',
+        desc: '飞镖变元气弹，伤害+50%',
         apply() {},
     },
     {
@@ -2896,7 +3494,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '手里剑',
         icon: '🎯',
-        desc: '每次连击释放2个手里剑(10%攻击力)',
+        desc: '每次连击释放2枚手里剑(10%攻)',
         apply() {},
     },
     {
@@ -2912,7 +3510,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '愈合连击',
         icon: '🌿',
-        desc: '连击≥15时释放藤蔓减速并造成少量伤害，回复5%最大生命',
+        desc: '连击≥15释放藤蔓，回复5%生命',
         apply() {},
     },
     {
@@ -2920,9 +3518,9 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '圣盾',
         icon: '🛡️',
-        desc: '每6秒获得可抵挡1次伤害的护盾(最多1层)',
+        desc: '每5秒获得1层护盾，获得时立刻生效',
         apply(player) {
-            player._refreshHolyShieldInterval();
+            player.grantHolyShieldImmediate();
         },
     },
     {
@@ -2930,14 +3528,14 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '吸血蝙蝠',
         icon: '🦇',
-        desc: '每击败10个敌人释放蝙蝠群攻击附近敌人，飞回后回复2%最大生命/层',
+        desc: '每击杀10敌，蝙蝠群攻并回复2%生命',
         apply() {},
     },
     {
         id: 'meat_shield',
         rarity: 'white',
         name: '变肉',
-        icon: '🥩',
+        icon: '🛡️',
         desc: '最大生命+10%，体积+15%',
         apply(player) {
             const oldMax = player.maxHp;
@@ -2959,7 +3557,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '闪电链',
         icon: '⚡',
-        desc: '结算连击每+5在命中点释放闪电链(3目标)',
+        desc: '连击每+5释放闪电链',
         apply(player) {
             player.upgradeStacks.lightning_chain = (player.upgradeStacks.lightning_chain || 0) + 1;
         },
@@ -2969,7 +3567,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '影分身',
         icon: '👤',
-        desc: '连击>10时永久召唤影分身(20%伤害)',
+        desc: '连击>10时召唤影分身',
         apply() {},
     },
     {
@@ -2977,7 +3575,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '水龙卷术',
         icon: '🌊',
-        desc: '暴击率+5%，连击每+3对最近敌人释放穿透水龙卷',
+        desc: '连击每+3释放水龙卷，暴击率+5%',
         apply(player) {
             player.critRate += 0.05;
         },
@@ -2987,7 +3585,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '黑洞',
         icon: '🕳️',
-        desc: '连击达到8时在攻击点生成黑洞（每次攻击最多1个）',
+        desc: '连击8时生成黑洞',
         apply(player) {
             player.upgradeStacks.black_hole = (player.upgradeStacks.black_hole || 0) + 1;
         },
@@ -2997,7 +3595,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '刀阵旋风',
         icon: '🌀',
-        desc: '连击每+5在攻击点释放刀阵旋风',
+        desc: '连击每+5释放刀阵旋风',
         apply() {},
     },
     {
@@ -3005,17 +3603,97 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '豪火球术',
         icon: '🔥',
-        desc: '连击每+10在攻击点释放豪火球(100%攻击力)',
+        desc: '连击每+10释放豪火球',
         apply(player) {
             player.upgradeStacks.great_fireball = (player.upgradeStacks.great_fireball || 0) + 1;
         },
     },
+    {
+        id: 'heavenly_thunder',
+        rarity: 'orange',
+        name: '天雷',
+        icon: '⚡',
+        desc: '每秒落雷范围攻击，重复升级落雷数+1',
+        apply() {},
+    },
+    {
+        id: 'wild_wolf',
+        rarity: 'white',
+        name: '野狼',
+        icon: '🐺',
+        pet: true,
+        desc: '宠物：召唤一只野狼',
+        apply() {},
+    },
+    {
+        id: 'wild_bull',
+        rarity: 'blue',
+        name: '野牛',
+        icon: '🐂',
+        pet: true,
+        desc: '宠物：召唤一只野牛',
+        apply() {},
+    },
+    {
+        id: 'divine_god',
+        rarity: 'purple',
+        name: '天神',
+        icon: '✨',
+        pet: true,
+        desc: '宠物：召唤天神',
+        apply() {},
+    },
+    {
+        id: 'nurturing_heart',
+        rarity: 'orange',
+        name: '养育之心',
+        icon: '💗',
+        desc: '宠物数量翻倍',
+        apply() {},
+    },
 ];
+
+const UPGRADE_POPUP_FX = {
+    white: {
+        overlay: 0.76,
+        edgeGlow: 0,
+        cardGlow: 0.12,
+        shimmer: false,
+        pulse: false,
+        sparkCount: 0,
+    },
+    blue: {
+        overlay: 0.8,
+        edgeGlow: 0.28,
+        cardGlow: 0.32,
+        shimmer: true,
+        pulse: false,
+        sparkCount: 6,
+    },
+    purple: {
+        overlay: 0.84,
+        edgeGlow: 0.48,
+        cardGlow: 0.5,
+        shimmer: true,
+        pulse: true,
+        sparkCount: 12,
+    },
+    orange: {
+        overlay: 0.88,
+        edgeGlow: 0.78,
+        cardGlow: 0.85,
+        shimmer: true,
+        pulse: true,
+        sparkCount: 22,
+        rays: true,
+    },
+};
 
 class UpgradeManager {
     constructor() {
         this.active = false;
         this.choices = [];
+        this.rolledRarity = 'white';
         this.onSelect = null;
         this._cardRects = [];
         this.popupTimer = 0;
@@ -3032,25 +3710,23 @@ class UpgradeManager {
         return 'white';
     }
 
-    _pickByRarity(rarity) {
-        const pool = UPGRADE_DEFS.filter(u => u.rarity === rarity);
-        if (pool.length === 0) return pickRandom(UPGRADE_DEFS);
-        return pickRandom(pool);
-    }
-
     generateChoices() {
         this.active = true;
         this.popupTimer = 0;
         this.choices = [];
-        const used = new Set();
+        this.rolledRarity = this._rollRarity();
+        let pool = UPGRADE_DEFS.filter(u => u.rarity === this.rolledRarity);
+        if (pool.length === 0) pool = UPGRADE_DEFS.slice();
+
+        const available = pool.slice();
         for (let i = 0; i < 3; i++) {
-            let pick = null;
-            for (let k = 0; k < 12; k++) {
-                pick = this._pickByRarity(this._rollRarity());
-                if (!used.has(pick.id) || k > 8) break;
+            if (available.length > 0) {
+                const idx = Math.floor(Math.random() * available.length);
+                this.choices.push(available[idx]);
+                available.splice(idx, 1);
+            } else {
+                this.choices.push(pickRandom(pool));
             }
-            used.add(pick.id);
-            this.choices.push(pick);
         }
     }
 
@@ -3106,12 +3782,88 @@ class UpgradeManager {
         }
     }
 
+    _getPopupFx() {
+        return UPGRADE_POPUP_FX[this.rolledRarity] || UPGRADE_POPUP_FX.white;
+    }
+
+    _drawRarityBackdrop(ctx, vp, s, popT) {
+        const fx = this._getPopupFx();
+        const tier = CONFIG.UPGRADE_RARITY[this.rolledRarity] || CONFIG.UPGRADE_RARITY.white;
+        const t = popT;
+
+        ctx.save();
+        ctx.globalAlpha = t;
+        ctx.fillStyle = `rgba(0, 0, 0, ${fx.overlay})`;
+        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+
+        if (fx.edgeGlow > 0) {
+            const pulse = fx.pulse ? (0.85 + Math.sin(Date.now() * 0.008) * 0.15) : 1;
+            const g = ctx.createRadialGradient(vp.cx, vp.cy, vp.w * 0.12, vp.cx, vp.cy, vp.w * 0.72);
+            g.addColorStop(0, 'rgba(0,0,0,0)');
+            g.addColorStop(0.55, hexToRgba(tier.color, fx.edgeGlow * 0.35 * pulse));
+            g.addColorStop(1, hexToRgba(tier.color, fx.edgeGlow * pulse));
+            ctx.fillStyle = g;
+            ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+        }
+
+        if (fx.rays) {
+            ctx.save();
+            ctx.translate(vp.cx, vp.cy);
+            ctx.rotate(Date.now() * 0.0004);
+            for (let i = 0; i < 8; i++) {
+                ctx.rotate(Math.PI / 4);
+                const ray = ctx.createLinearGradient(0, 0, vp.w * 0.5, 0);
+                ray.addColorStop(0, hexToRgba(tier.color, 0));
+                ray.addColorStop(0.5, hexToRgba(tier.color, 0.12 * t));
+                ray.addColorStop(1, hexToRgba(tier.color, 0));
+                ctx.fillStyle = ray;
+                ctx.fillRect(0, -vp.h * 0.06, vp.w * 0.55, vp.h * 0.12);
+            }
+            ctx.restore();
+        }
+
+        if (fx.sparkCount > 0) {
+            const seed = Math.floor(Date.now() / 120);
+            for (let i = 0; i < fx.sparkCount; i++) {
+                const a = ((i * 47 + seed) % 360) / 360 * Math.PI * 2;
+                const dist = ((i * 19 + seed) % 100) / 100;
+                const px = vp.cx + Math.cos(a) * vp.w * 0.38 * dist;
+                const py = vp.cy + Math.sin(a) * vp.h * 0.32 * dist;
+                const sz = 2 + (i % 3);
+                ctx.fillStyle = hexToRgba(tier.color, 0.25 + (i % 4) * 0.12);
+                ctx.fillRect(Math.floor(px), Math.floor(py), sz, sz);
+            }
+        }
+        ctx.restore();
+    }
+
     _drawCard(ctx, u, x, y, cardW, cardH, cardCx, innerPad, textMaxW, s, player, alpha) {
         const rarity = CONFIG.UPGRADE_RARITY[u.rarity];
+        const fx = this._getPopupFx();
         ctx.save();
         ctx.globalAlpha = alpha;
 
+        if (fx.cardGlow > 0) {
+            const pulse = fx.pulse ? (0.9 + Math.sin(Date.now() * 0.01 + x * 0.01) * 0.1) : 1;
+            ctx.shadowColor = rarity.color;
+            ctx.shadowBlur = (8 + fx.cardGlow * 18) * pulse * s;
+        }
+
         drawPixelPanel(ctx, x, y, cardW, cardH, 'rgba(30, 30, 60, 0.96)', rarity.color, 2);
+        ctx.shadowBlur = 0;
+
+        if (fx.shimmer && fx.cardGlow > 0.2) {
+            const sweep = ((Date.now() * 0.0012 + x * 0.002) % 1);
+            const sx = x + cardW * sweep;
+            ctx.globalAlpha = alpha * 0.22 * fx.cardGlow;
+            const shine = ctx.createLinearGradient(sx - 30, y, sx + 30, y);
+            shine.addColorStop(0, 'rgba(255,255,255,0)');
+            shine.addColorStop(0.5, 'rgba(255,255,255,0.9)');
+            shine.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = shine;
+            ctx.fillRect(x, y, cardW, cardH);
+            ctx.globalAlpha = alpha;
+        }
 
         const iconSize = Math.round(32 * s);
         const iconY = y + innerPad + iconSize * 0.45;
@@ -3142,19 +3894,26 @@ class UpgradeManager {
         if (!this.active) return;
         const s = uiScale || 1;
         const popT = easeOutQuad(this.getPopupT());
+        const tier = CONFIG.UPGRADE_RARITY[this.rolledRarity] || CONFIG.UPGRADE_RARITY.white;
+        const fx = this._getPopupFx();
 
         ctx.save();
-        ctx.fillStyle = `rgba(0, 0, 0, ${0.78 * popT})`;
-        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+        this._drawRarityBackdrop(ctx, vp, s, popT);
 
-        const titleY = vp.y + vp.h * 0.14;
+        const titleY = vp.y + vp.h * 0.12;
         const titleScale = 0.75 + 0.25 * popT;
         ctx.save();
         ctx.translate(vp.cx, titleY);
         ctx.scale(titleScale, titleScale);
         ctx.translate(-vp.cx, -titleY);
         ctx.globalAlpha = popT;
+        if (fx.cardGlow > 0.35) {
+            ctx.shadowColor = tier.color;
+            ctx.shadowBlur = (6 + fx.cardGlow * 14) * s;
+        }
         drawPixelText(ctx, '升级！选择一个强化', vp.cx, titleY, Math.round(20 * s), '#ffe8c8');
+        ctx.shadowBlur = 0;
+        drawPixelText(ctx, tier.name, vp.cx, titleY + 26 * s, Math.round(14 * s), tier.color);
         ctx.restore();
 
         const cardW = vp.w * 0.84;
@@ -3534,7 +4293,7 @@ const FIREBALL_PIXEL = 4;
 const FIREBALL_RADIUS_BLOCKS = 8;
 const SHURIKEN_PIXEL = 4;
 const WATER_TORNADO_PIXEL = 5;
-const WATER_TORNADO_SIZE_SCALE = 3.2;
+const WATER_TORNADO_SIZE_SCALE = 1.92;
 const WATER_TORNADO_SPEED = 360;
 const WATER_TORNADO_LIFE = 1.85;
 const SHURIKEN_SPEED_MIN = 340;
@@ -3565,6 +4324,7 @@ class AbilityManager {
         this.resolveFxTimer = 0;
         this.lightningChain = null;
         this.blackHoleSpawnedThisResolve = false;
+        if (this._initSummonState) this._initSummonState();
     }
 
     reset() {
@@ -3582,7 +4342,7 @@ class AbilityManager {
     }
 
     hasAutoDarts() {
-        return this.shurikens.some(s => s.kind === 'auto');
+        return this.shurikens.some(s => s.kind === 'auto' || s.kind === 'ice');
     }
 
     _hasFlyingProjectiles() {
@@ -3750,13 +4510,73 @@ class AbilityManager {
             oy: fromY,
             targets: monsters.slice(0, maxTargets),
             idx: 0,
-            phase: 'attack',
+            phase: 'orbit',
             timer: 0,
-            stepDelay: 0.07,
+            orbitElapsed: 0,
+            orbitDuration: 0.95,
+            returnElapsed: 0,
+            returnDuration: 0.55,
+            stepDelay: 0.06,
             damage: p.getAbilityDamage(0.14),
             healAmount: Math.round(p.maxHp * 0.02 * lv),
-            batParticles: [],
+            batCount: 10 + lv * 2,
         });
+        for (let i = 0; i < 14; i++) {
+            const a = randRange(0, Math.PI * 2);
+            this.game.particles.emit(
+                p.x, p.y,
+                Math.cos(a) * randRange(40, 120), Math.sin(a) * randRange(40, 120),
+                randRange(0.15, 0.35), randRange(3, 6),
+                '#503070', 0, true, false
+            );
+        }
+    }
+
+    _drawBat(ctx, x, y, wingPhase) {
+        const bx = Math.floor(x);
+        const by = Math.floor(y);
+        const flap = Math.sin(wingPhase) > 0;
+        ctx.fillStyle = '#281838';
+        ctx.fillRect(bx - 4, by, 8, 3);
+        ctx.fillStyle = '#6040a0';
+        if (flap) {
+            ctx.fillRect(bx - 6, by - 4, 4, 3);
+            ctx.fillRect(bx + 2, by - 4, 4, 3);
+        } else {
+            ctx.fillRect(bx - 7, by - 1, 3, 2);
+            ctx.fillRect(bx + 4, by - 1, 3, 2);
+        }
+        ctx.fillStyle = '#c8a8e8';
+        ctx.fillRect(bx - 1, by - 1, 2, 2);
+    }
+
+    _drawBatsAroundPlayer(ctx, swarm, p) {
+        const t = Date.now() * 0.014;
+        const count = swarm.batCount || 10;
+        const baseR = p.effectiveRadius + 22;
+        const cx = p.x;
+        const cy = p.y;
+
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        const aura = ctx.createRadialGradient(cx, cy, 6, cx, cy, baseR + 14);
+        aura.addColorStop(0, 'rgba(120, 60, 160, 0.45)');
+        aura.addColorStop(1, 'rgba(60, 30, 90, 0)');
+        ctx.fillStyle = aura;
+        ctx.beginPath();
+        ctx.arc(cx, cy, baseR + 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        for (let i = 0; i < count; i++) {
+            const a = t * 1.35 + (i / count) * Math.PI * 2;
+            const wobble = Math.sin(t * 2.2 + i * 0.7) * 8;
+            const layer = (i % 3) * 4;
+            const r = baseR + wobble + layer;
+            const bx = cx + Math.cos(a) * r;
+            const by = cy + Math.sin(a) * r * 0.82;
+            this._drawBat(ctx, bx, by, t * 3 + i);
+        }
     }
 
     _spawnLightningChain(maxTargets, fromX, fromY) {
@@ -3855,8 +4675,7 @@ class AbilityManager {
         const baseAng = angle(origin.x, origin.y, target.x, target.y);
         const spd = cfg.SPEED || 420;
         const count = 1 + p.getUpgradeLevel('multi_dart');
-        const scale = p.getAutoDartScale();
-        const hitR = this._shurikenHitRadius() * scale;
+        const hitR = this._shurikenHitRadius();
         const damage = p.getAutoDartDamage();
         const isSpirit = p.hasSpiritBomb();
 
@@ -3876,8 +4695,44 @@ class AbilityManager {
                 hit: new Set(),
                 damage,
                 hitRadius: hitR,
-                visualScale: scale,
+                visualScale: isSpirit ? 1.35 : 1,
                 isSpirit,
+            });
+        }
+
+        this._trySpawnGiantDarts(origin, baseAng, spd, damage, hitR, cfg);
+    }
+
+    _trySpawnGiantDarts(origin, baseAng, spd, normalDamage, baseHitR, cfg) {
+        const p = this.game.player;
+        const lv = p.getUpgradeLevel('giant_dart');
+        if (lv <= 0) return;
+        if (Math.random() >= 0.20) return;
+
+        const giantDamage = Math.max(1, Math.round(normalDamage * 2));
+        const giantScale = 2;
+        const giantHitR = baseHitR * giantScale * 0.85;
+        const count = lv;
+
+        for (let i = 0; i < count; i++) {
+            const spread = count > 1
+                ? baseAng + (i - (count - 1) * 0.5) * 0.14
+                : baseAng;
+            this.shurikens.push({
+                kind: 'auto',
+                x: origin.x,
+                y: origin.y,
+                vx: Math.cos(spread) * spd * 0.92,
+                vy: Math.sin(spread) * spd * 0.92,
+                rot: spread,
+                spin: 10,
+                life: cfg.LIFE || 0.9,
+                hit: new Set(),
+                damage: giantDamage,
+                hitRadius: giantHitR,
+                visualScale: giantScale,
+                isSpirit: false,
+                isGiant: true,
             });
         }
     }
@@ -3888,39 +4743,34 @@ class AbilityManager {
         return Math.min(0.95, 0.05 + 0.04 * Math.max(0, lv - 1));
     }
 
-    _getIceDartFrostMult() {
+    _getIceDartBonusMult() {
         const lv = this.game.player.getUpgradeLevel('ice_dart');
         if (lv <= 0) return 0;
         return 0.2 + 0.05 * Math.max(0, lv - 1);
     }
 
-    _tryIceDartBurst(x, y, dartDamage) {
+    _trySpawnIceDart(x, y, dartDamage, flyAng) {
         if (this.game.player.getUpgradeLevel('ice_dart') <= 0) return;
         if (Math.random() >= this._getIceDartProcChance()) return;
-        this._triggerIceDartBurst(x, y, dartDamage);
-    }
 
-    _triggerIceDartBurst(x, y, dartDamage) {
-        const p = this.game.player;
-        const lv = p.getUpgradeLevel('ice_dart');
-        if (lv <= 0) return;
-        const radius = 78 + lv * 8;
-        const dmg = Math.max(1, Math.round(dartDamage * this._getIceDartFrostMult()));
-        const monsters = this.game.spawner.getActiveMonsters();
-        let hitAny = false;
-        for (const m of monsters) {
-            if (dist(x, y, m.x, m.y) > radius + m.hitboxRadius) continue;
-            m.freeze(2);
-            const hit = m.takeDamage(dmg, angle(x, y, m.x, m.y));
-            if (hit.actualDamage > 0) {
-                hitAny = true;
-                this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#78d8ff');
-                this.game.particles.freezeEffect(m.x, m.y, 1.35);
-            }
-            if (m.dying) this.game.combat._handleMonsterKilled(m);
-        }
-        this.game.particles.iceBurstEffect(x, y, radius);
-        if (!hitAny) this.game.particles.freezeEffect(x, y, 1.2);
+        const a = this._nearestMonsterAngle(x, y, flyAng);
+        const spd = 400;
+        const bonus = Math.max(1, Math.round(dartDamage * this._getIceDartBonusMult()));
+        this.shurikens.push({
+            kind: 'ice',
+            x,
+            y,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd,
+            rot: a,
+            spin: 16,
+            life: 0.9,
+            hit: new Set(),
+            damage: bonus,
+            freezeDur: 2,
+            hitRadius: 9,
+        });
+        this.game.particles.freezeEffect(x, y, 0.85);
     }
 
     _updateAutoDartFire(dt) {
@@ -4236,7 +5086,8 @@ class AbilityManager {
         const p = this.game.player;
         for (const s of this.shurikens) {
             if (kindFilter === 'auto' && s.kind !== 'auto') continue;
-            if (kindFilter === 'skill' && s.kind === 'auto') continue;
+            if (kindFilter === 'skill' && s.kind !== 'skill') continue;
+            if (kindFilter === 'passive' && s.kind !== 'auto' && s.kind !== 'ice') continue;
             const hitR = this._shurikenHitRadius(s);
             s.life -= dt;
             s.x += s.vx * dt;
@@ -4247,14 +5098,23 @@ class AbilityManager {
                 if (!circlesCollide(s.x, s.y, hitR, m.x, m.y, m.hitboxRadius)) continue;
                 s.hit.add(m.id);
                 const dmg = this._shurikenDamage(s);
+                if (s.kind === 'ice') {
+                    m.freeze(s.freezeDur || 2);
+                }
                 const hit = m.takeDamage(dmg, angle(s.x, s.y, m.x, m.y));
                 if (hit.actualDamage > 0) {
-                    const color = s.isSpirit ? '#ffe878' : (s.kind === 'auto' ? '#98b8d8' : '#a8c0e8');
+                    let color = '#a8c0e8';
+                    if (s.isSpirit) color = '#ffe878';
+                    else if (s.kind === 'auto') color = '#98b8d8';
+                    else if (s.kind === 'ice') color = '#78d8ff';
                     this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, color);
                     this.game.particles.hitSpark(m.x, m.y, false);
+                    if (s.kind === 'ice') {
+                        this.game.particles.freezeEffect(m.x, m.y, 1.1);
+                    }
                 }
                 if (s.kind === 'auto') {
-                    this._tryIceDartBurst(s.x, s.y, dmg);
+                    this._trySpawnIceDart(s.x, s.y, dmg, Math.atan2(s.vy, s.vx));
                 }
                 if (m.dying) this.game.combat._handleMonsterKilled(m);
             }
@@ -4420,24 +5280,52 @@ class AbilityManager {
         const p = this.game.player;
         if (!p) return;
         for (const swarm of this.batSwarms) {
+            if (swarm.phase === 'orbit') {
+                swarm.orbitElapsed = (swarm.orbitElapsed || 0) + dt;
+                if (swarm.orbitElapsed < swarm.orbitDuration) continue;
+                if (swarm.targets.length > 0) {
+                    swarm.phase = 'attack';
+                    swarm.idx = 0;
+                    swarm.timer = 0;
+                } else {
+                    swarm.phase = 'return';
+                    swarm.returnElapsed = 0;
+                }
+                continue;
+            }
+
+            if (swarm.phase === 'return') {
+                swarm.returnElapsed = (swarm.returnElapsed || 0) + dt;
+                if (swarm.returnElapsed < swarm.returnDuration) continue;
+                const healed = p.heal(swarm.healAmount);
+                if (healed > 0) {
+                    this.game.combat.spawnDamageNumber(
+                        p.x, p.y - p.effectiveRadius - 12, healed, false, '#68d878'
+                    );
+                }
+                swarm.phase = 'done';
+                continue;
+            }
+
             swarm.timer -= dt;
             if (swarm.timer > 0) continue;
 
             if (swarm.phase === 'attack') {
                 if (swarm.idx >= swarm.targets.length) {
                     swarm.phase = 'return';
-                    swarm.idx = 0;
-                    swarm.timer = swarm.stepDelay * 0.5;
+                    swarm.returnElapsed = 0;
                     continue;
                 }
                 const m = swarm.targets[swarm.idx];
                 if (m.alive && !m.dying) {
+                    const fromX = p.x;
+                    const fromY = p.y;
                     this.game.particles.emit(
-                        swarm.ox, swarm.oy,
-                        (m.x - swarm.ox) * 2, (m.y - swarm.oy) * 2,
-                        0.12, 4, '#402858', 0, true, false
+                        fromX, fromY,
+                        (m.x - fromX) * 3, (m.y - fromY) * 3,
+                        0.1, 4, '#503070', 0, true, false
                     );
-                    const hit = m.takeDamage(swarm.damage, angle(swarm.ox, swarm.oy, m.x, m.y));
+                    const hit = m.takeDamage(swarm.damage, angle(fromX, fromY, m.x, m.y));
                     if (hit.actualDamage > 0) {
                         this.game.combat.spawnDamageNumber(m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, '#a070c8');
                         this.game.particles.hitSpark(m.x, m.y, false);
@@ -4446,14 +5334,6 @@ class AbilityManager {
                 }
                 swarm.idx++;
                 swarm.timer = swarm.stepDelay;
-            } else if (swarm.phase === 'return') {
-                const healed = p.heal(swarm.healAmount);
-                if (healed > 0) {
-                    this.game.combat.spawnDamageNumber(
-                        p.x, p.y - p.effectiveRadius - 12, healed, false, '#68d878'
-                    );
-                }
-                swarm.phase = 'done';
             }
         }
         this.batSwarms = this.batSwarms.filter(s => s.phase !== 'done');
@@ -4490,27 +5370,36 @@ class AbilityManager {
     _drawBatSwarm(ctx, swarm) {
         const p = this.game.player;
         if (!p) return;
-        const t = Date.now() * 0.01;
-        const count = 6;
-        for (let i = 0; i < count; i++) {
-            const a = t + (i / count) * Math.PI * 2;
-            const orbit = swarm.phase === 'return' ? 8 : 18 + i * 3;
-            const cx = swarm.phase === 'return'
-                ? lerp(swarm.ox, p.x, 0.55 + Math.sin(t + i) * 0.15)
-                : swarm.ox + Math.cos(a) * orbit;
-            const cy = swarm.phase === 'return'
-                ? lerp(swarm.oy, p.y, 0.55 + Math.cos(t + i) * 0.15)
-                : swarm.oy + Math.sin(a) * orbit;
-            ctx.fillStyle = '#302040';
-            ctx.fillRect(Math.floor(cx) - 3, Math.floor(cy) - 2, 6, 4);
-            ctx.fillStyle = '#8060a8';
-            ctx.fillRect(Math.floor(cx) - 2, Math.floor(cy) - 3, 4, 2);
+
+        if (swarm.phase === 'orbit' || swarm.phase === 'return') {
+            this._drawBatsAroundPlayer(ctx, swarm, p);
+            return;
+        }
+
+        if (swarm.phase === 'attack') {
+            const t = Date.now() * 0.018;
+            const count = Math.min(swarm.batCount || 8, 8);
+            const target = swarm.targets[swarm.idx] || swarm.targets[swarm.targets.length - 1];
+            if (!target) {
+                this._drawBatsAroundPlayer(ctx, swarm, p);
+                return;
+            }
+            for (let i = 0; i < count; i++) {
+                const prog = (swarm.idx + i * 0.08) / Math.max(1, swarm.targets.length);
+                const a = t + (i / count) * Math.PI * 2;
+                const cx = lerp(p.x, target.x, 0.35 + prog * 0.5) + Math.cos(a) * 12;
+                const cy = lerp(p.y, target.y, 0.35 + prog * 0.5) + Math.sin(a) * 10;
+                this._drawBat(ctx, cx, cy, t * 2 + i);
+            }
+            this._drawBatsAroundPlayer(ctx, swarm, p);
         }
     }
 
     updatePassive(dt) {
         this._updateAutoDartFire(dt);
-        if (this.shurikens.some(s => s.kind === 'auto')) this._updateShurikens(dt, 'auto');
+        if (this.shurikens.some(s => s.kind === 'auto' || s.kind === 'ice')) {
+            this._updateShurikens(dt, 'passive');
+        }
         if (this.batSwarms.length > 0) this._updateBatSwarms(dt);
     }
 
@@ -4519,7 +5408,7 @@ class AbilityManager {
         if (!this._isResolvePhase()) return;
 
         this._updateLightningChain(dt);
-        if (this.shurikens.some(s => s.kind !== 'auto')) this._updateShurikens(dt, 'skill');
+        if (this.shurikens.some(s => s.kind === 'skill')) this._updateShurikens(dt, 'skill');
         if (this.vines.length > 0) this._updateVines(dt);
         this._updateFireballs(dt);
         this._updateWaterTornados(dt);
@@ -4572,12 +5461,54 @@ class AbilityManager {
         ctx.restore();
     }
 
+    _drawIceDart(ctx, x, y, rot, px) {
+        const rows = SHURIKEN_SPRITE.length;
+        const cols = SHURIKEN_SPRITE[0].length;
+        const iceColors = {
+            '#7a8aa8': '#58b8f0',
+            '#e8f4ff': '#e8ffff',
+            '#b8cce8': '#a8e8ff',
+            '#586878': '#3890d8',
+        };
+        ctx.save();
+        ctx.translate(Math.floor(x), Math.floor(y));
+        ctx.rotate(rot);
+        const ox = -Math.floor((cols * px) / 2);
+        const oy = -Math.floor((rows * px) / 2);
+        ctx.shadowColor = '#88e8ff';
+        ctx.shadowBlur = 10;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const base = SHURIKEN_SPRITE[r][c];
+                if (!base) continue;
+                ctx.fillStyle = iceColors[base] || '#a8e8ff';
+                ctx.fillRect(ox + c * px, oy + r * px, px, px);
+            }
+        }
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = '#d8ffff';
+        ctx.fillRect(ox - 1, oy - 1, cols * px + 2, rows * px + 2);
+        ctx.restore();
+    }
+
     drawAutoDarts(ctx) {
         for (const s of this.shurikens) {
+            if (s.kind === 'ice') {
+                this._drawIceDart(ctx, s.x, s.y, s.rot, SHURIKEN_PIXEL);
+                continue;
+            }
             if (s.kind !== 'auto') continue;
             const scale = s.visualScale || 1;
             if (s.isSpirit) {
                 this._drawSpiritBomb(ctx, s.x, s.y, s.rot, scale);
+            } else if (s.isGiant) {
+                const px = SHURIKEN_PIXEL * scale;
+                ctx.save();
+                ctx.shadowColor = '#ffd060';
+                ctx.shadowBlur = 8;
+                this._drawPixelShuriken(ctx, s.x, s.y, s.rot, px);
+                ctx.restore();
             } else {
                 const px = SHURIKEN_PIXEL * scale;
                 this._drawPixelShuriken(ctx, s.x, s.y, s.rot, px);
@@ -4590,7 +5521,7 @@ class AbilityManager {
         if (!this._isResolvePhase() && !showAuto) return;
 
         for (const s of this.shurikens) {
-            if (s.kind === 'auto') continue;
+            if (s.kind === 'auto' || s.kind === 'ice') continue;
             this._drawPixelShuriken(ctx, s.x, s.y, s.rot, SHURIKEN_PIXEL);
         }
 
@@ -4622,6 +5553,818 @@ class AbilityManager {
         }
     }
 }
+
+
+// ---- summonAbilities.js ----
+/**
+ * 天雷 / 野狼 / 野牛 / 天神 — 被动召唤与落雷
+ */
+(function () {
+    const SUMMON_CFG = {
+        heavenly_thunder: {
+            interval: 1.0,
+            radius: 40,
+            dmgMult: 0.38,
+            warnTime: 0.22,
+            boltTime: 0.09,
+            explodeTime: 0.32,
+            skyY: 0,
+        },
+        wild_wolf: { speed: 118, aggro: 200, atkRange: 36, atkCd: 0.75, dmgMult: 0.72 },
+        wild_bull: { aggro: 240, chargeSpeed: 420, chargeDmgMult: 1.3, idleCd: 1.1, dmgMult: 1.1 },
+        divine_god: { followSpeed: 52, atkInterval: 0.28, swordSpeed: 540, dmgMult: 0.32, orbitDist: 14 },
+        wild_wolf_orbit: 22,
+        wild_bull_orbit: 24,
+    };
+
+    function _playBottom(game) {
+        const ui = game.ui;
+        return ui && ui.getPlayAreaBottom
+            ? ui.getPlayAreaBottom(game.renderer.h, game.renderer.uiScale)
+            : game.renderer.h;
+    }
+
+    Object.assign(AbilityManager.prototype, {
+        _initSummonState() {
+            this.thunderBolts = [];
+            this.thunderTimer = 0;
+            this.companions = [];
+            this.godSwords = [];
+        },
+
+        _summonDealDamage(m, damage, color, fromX, fromY) {
+            if (!m || !m.alive || m.dying) return;
+            const ang = angle(fromX ?? m.x, fromY ?? m.y, m.x, m.y);
+            const hit = m.takeDamage(damage, ang);
+            if (hit.actualDamage > 0) {
+                this.game.combat.spawnDamageNumber(
+                    m.x, m.y - m.hitboxRadius - 4, hit.actualDamage, false, color || '#e8c040'
+                );
+                this.game.particles.hitSpark(m.x, m.y, false);
+            }
+            if (m.dying) this.game.combat._handleMonsterKilled(m);
+        },
+
+        _summonAoeDamage(x, y, radius, damage, color) {
+            const monsters = this.game.spawner.getActiveMonsters();
+            for (const m of monsters) {
+                if (dist(x, y, m.x, m.y) > radius + m.hitboxRadius) continue;
+                this._summonDealDamage(m, damage, color, x, y);
+            }
+        },
+
+        _anchorNearPlayer(p, index, total, distMul) {
+            const base = (index / Math.max(1, total)) * Math.PI * 2;
+            const orbit = Date.now() * 0.001 + base;
+            const r = p.effectiveRadius + 36 + distMul;
+            return {
+                x: p.homeX + Math.cos(orbit) * r,
+                y: p.homeY + Math.sin(orbit) * r * 0.85,
+            };
+        },
+
+        _getPetCountMultiplier(p) {
+            const heart = p.getUpgradeLevel('nurturing_heart');
+            return heart > 0 ? Math.pow(2, heart) : 1;
+        },
+
+        _getDesiredPetCount(p, upgradeId) {
+            const base = p.getUpgradeLevel(upgradeId);
+            if (base <= 0) return 0;
+            const def = typeof UPGRADE_DEFS !== 'undefined'
+                ? UPGRADE_DEFS.find(u => u.id === upgradeId)
+                : null;
+            if (!def || !def.pet) return base;
+            return base * this._getPetCountMultiplier(p);
+        },
+
+        _spawnPetWorldPos(p, index, total, scatterInField = false) {
+            const w = this.game.renderer.w;
+            const top = 88;
+            const bottom = _playBottom(this.game);
+            if (scatterInField) {
+                return {
+                    x: randRange(40, w - 40),
+                    y: randRange(top + 30, bottom - 30),
+                };
+            }
+            const spread = (index / Math.max(1, total)) * Math.PI * 2 + randRange(-0.35, 0.35);
+            const r = randRange(55, 95 + index * 14);
+            return {
+                x: clamp(p.homeX + Math.cos(spread) * r, 30, w - 30),
+                y: clamp(p.homeY + Math.sin(spread) * r * 0.85, top + 24, bottom - 24),
+            };
+        },
+
+        _spawnCompanion(type, index, total) {
+            const p = this.game.player;
+            const isPet = type === 'wolf' || type === 'bull';
+            const scatter = isPet && this._playerRepositioning(p);
+            const pos = isPet
+                ? this._spawnPetWorldPos(p, index, total, scatter)
+                : this._anchorNearPlayer(p, index, total, SUMMON_CFG.divine_god.orbitDist);
+            const cfg = SUMMON_CFG[type === 'wolf' ? 'wild_wolf' : type === 'bull' ? 'wild_bull' : 'divine_god'];
+            const lvKey = type === 'wolf' ? 'wild_wolf' : type === 'bull' ? 'wild_bull' : 'divine_god';
+            const lv = p.getUpgradeLevel(lvKey);
+            return {
+                type,
+                isPet,
+                x: pos.x,
+                y: pos.y,
+                slot: index,
+                state: 'idle',
+                atkTimer: randRange(0, 0.4),
+                chargeTimer: 0,
+                targetId: null,
+                chargeHit: new Set(),
+                walkPhase: randRange(0, Math.PI * 2),
+                facing: 1,
+                lv,
+                damage: p.getAbilityDamage(cfg.dmgMult * (1 + (lv - 1) * 0.08)),
+            };
+        },
+
+        _ensureCompanions() {
+            const p = this.game.player;
+            if (!p) return;
+            const specs = [
+                { id: 'wild_wolf', type: 'wolf' },
+                { id: 'wild_bull', type: 'bull' },
+                { id: 'divine_god', type: 'god' },
+            ];
+            for (const spec of specs) {
+                const need = this._getDesiredPetCount(p, spec.id);
+                let list = this.companions.filter(c => c.type === spec.type);
+                while (list.length < need) {
+                    const c = this._spawnCompanion(spec.type, list.length, need);
+                    this.companions.push(c);
+                    list.push(c);
+                }
+                while (list.length > need) {
+                    const rem = this.companions.findIndex(c => c.type === spec.type);
+                    if (rem >= 0) this.companions.splice(rem, 1);
+                    list = this.companions.filter(c => c.type === spec.type);
+                }
+            }
+        },
+
+        _spawnThunderStrikes() {
+            const p = this.game.player;
+            const lv = p.getUpgradeLevel('heavenly_thunder');
+            if (lv <= 0) return;
+            const cfg = SUMMON_CFG.heavenly_thunder;
+            const monsters = this.game.spawner.getActiveMonsters();
+            const count = lv;
+            const w = this.game.renderer.w;
+            const top = 88;
+
+            for (let i = 0; i < count; i++) {
+                let tx;
+                let ty;
+                if (monsters.length > 0) {
+                    const m = monsters[randInt(0, monsters.length - 1)];
+                    tx = m.x + randRange(-20, 20);
+                    ty = m.y + randRange(-16, 16);
+                } else {
+                    tx = p.homeX + randRange(-80, 80);
+                    ty = p.homeY + randRange(-60, 60);
+                }
+                tx = clamp(tx, 30, w - 30);
+                ty = clamp(ty, top + 20, _playBottom(this.game) - 20);
+                this.thunderBolts.push({
+                    x: tx,
+                    y: ty,
+                    phase: 'warn',
+                    timer: cfg.warnTime || 0.22,
+                    radius: cfg.radius + lv * 3,
+                    damage: p.getAbilityDamage(cfg.dmgMult * (1 + (lv - 1) * 0.06)),
+                    skyY: cfg.skyY ?? 0,
+                    boltPoints: null,
+                    explodeMax: cfg.explodeTime || 0.32,
+                });
+            }
+        },
+
+        _generateThunderBoltPath(gx, gy, skyY) {
+            const points = [{ x: gx, y: skyY }];
+            const steps = 14;
+            for (let i = 1; i < steps; i++) {
+                const t = i / steps;
+                points.push({
+                    x: gx + randRange(-22, 22) * (1 - t * 0.45),
+                    y: lerp(skyY, gy, t) + randRange(-10, 10),
+                });
+            }
+            points.push({ x: gx, y: gy });
+            return points;
+        },
+
+        _spawnThunderExplosionFx(x, y, radius) {
+            const parts = this.game.particles;
+            if (!parts) return;
+            for (let i = 0; i < 22; i++) {
+                const a = randRange(0, Math.PI * 2);
+                const spd = randRange(90, 200);
+                parts.emit(
+                    x, y,
+                    Math.cos(a) * spd, Math.sin(a) * spd,
+                    randRange(0.18, 0.42), randRange(5, 12),
+                    i % 3 === 0 ? '#fff8d0' : (i % 3 === 1 ? '#ffb040' : '#ff6020'),
+                    0, true, true
+                );
+            }
+            for (let i = 0; i < 8; i++) {
+                const a = randRange(0, Math.PI * 2);
+                parts.emit(
+                    x + Math.cos(a) * radius * 0.3,
+                    y + Math.sin(a) * radius * 0.2,
+                    Math.cos(a) * randRange(30, 70),
+                    Math.sin(a) * randRange(20, 50) - 40,
+                    randRange(0.35, 0.55), randRange(8, 16),
+                    '#888898', 0.15, true, false
+                );
+            }
+        },
+
+        _updateThunder(dt) {
+            const p = this.game.player;
+            const lv = p ? p.getUpgradeLevel('heavenly_thunder') : 0;
+            if (lv <= 0) {
+                this.thunderBolts = [];
+                return;
+            }
+
+            const cfg = SUMMON_CFG.heavenly_thunder;
+            this.thunderTimer -= dt;
+            if (this.thunderTimer <= 0) {
+                this._spawnThunderStrikes();
+                this.thunderTimer = cfg.interval;
+            }
+
+            for (const t of this.thunderBolts) {
+                t.timer -= dt;
+                if (t.phase === 'warn' && t.timer <= 0) {
+                    t.phase = 'bolt';
+                    t.timer = cfg.boltTime || 0.09;
+                    t.boltPoints = this._generateThunderBoltPath(t.x, t.y, t.skyY);
+                } else if (t.phase === 'bolt' && t.timer <= 0) {
+                    t.phase = 'explode';
+                    t.timer = t.explodeMax || cfg.explodeTime || 0.32;
+                    this._summonAoeDamage(t.x, t.y, t.radius, t.damage, '#ffe878');
+                    this._spawnThunderExplosionFx(t.x, t.y, t.radius);
+                    this.game.renderer.shake(7 + lv * 0.5, 0.16);
+                } else if (t.phase === 'explode' && t.timer <= 0) {
+                    t.phase = 'done';
+                }
+            }
+            this.thunderBolts = this.thunderBolts.filter(t => t.phase !== 'done');
+        },
+
+        _updateWolf(c, dt, p, cfg) {
+            c.walkPhase += dt * 9;
+            const monsters = this.game.spawner.getActiveMonsters();
+            let target = null;
+            let best = cfg.aggro;
+            for (const m of monsters) {
+                const d = dist(c.x, c.y, m.x, m.y);
+                if (d < best) {
+                    best = d;
+                    target = m;
+                }
+            }
+
+            if (target) {
+                c.facing = target.x >= c.x ? 1 : -1;
+                const d = dist(c.x, c.y, target.x, target.y);
+                if (d > cfg.atkRange) {
+                    const dx = target.x - c.x;
+                    const dy = target.y - c.y;
+                    const len = Math.hypot(dx, dy) || 1;
+                    c.x += (dx / len) * cfg.speed * dt;
+                    c.y += (dy / len) * cfg.speed * dt;
+                } else {
+                    c.atkTimer -= dt;
+                    if (c.atkTimer <= 0) {
+                        c.atkTimer = cfg.atkCd;
+                        this._summonDealDamage(target, c.damage, '#c8d8b0', c.x, c.y);
+                    }
+                }
+            }
+        },
+
+        _updateBull(c, dt, p, cfg) {
+            const monsters = this.game.spawner.getActiveMonsters();
+
+            if (c.state === 'charging') {
+                c.chargeTimer -= dt;
+                const tx = c.chargeTx;
+                const ty = c.chargeTy;
+                const dx = tx - c.x;
+                const dy = ty - c.y;
+                const len = Math.hypot(dx, dy) || 1;
+                c.facing = dx >= 0 ? 1 : -1;
+                const step = cfg.chargeSpeed * dt;
+                c.x += (dx / len) * step;
+                c.y += (dy / len) * step;
+
+                for (const m of monsters) {
+                    if (c.chargeHit.has(m.id)) continue;
+                    if (!circlesCollide(c.x, c.y, 32, m.x, m.y, m.hitboxRadius)) continue;
+                    c.chargeHit.add(m.id);
+                    this._summonDealDamage(m, c.damage, '#e8b878', c.x, c.y);
+                }
+
+                if (dist(c.x, c.y, tx, ty) < 18 || c.chargeTimer <= 0) {
+                    c.state = 'idle';
+                    c.atkTimer = cfg.idleCd;
+                }
+                return;
+            }
+
+            c.atkTimer -= dt;
+            if (c.atkTimer > 0) return;
+
+            let target = null;
+            let best = cfg.aggro;
+            for (const m of monsters) {
+                const d = dist(c.x, c.y, m.x, m.y);
+                if (d < best) {
+                    best = d;
+                    target = m;
+                }
+            }
+
+            if (target) {
+                c.facing = target.x >= c.x ? 1 : -1;
+                c.state = 'charging';
+                c.chargeTx = target.x;
+                c.chargeTy = target.y;
+                c.chargeTimer = 1.4;
+                c.chargeHit = new Set();
+                c.damage = p.getAbilityDamage(cfg.chargeDmgMult * (1 + (c.lv - 1) * 0.08));
+            }
+        },
+
+        _fireGodSword(c, p, cfg) {
+            const monsters = this.game.spawner.getActiveMonsters();
+            if (!monsters.length) return;
+            monsters.sort((a, b) => dist(c.x, c.y, a.x, a.y) - dist(c.x, c.y, b.x, b.y));
+            const target = monsters[0];
+            const a = angle(c.x, c.y, target.x, target.y);
+            this.godSwords.push({
+                x: c.x,
+                y: c.y - 18,
+                tx: target.x,
+                ty: target.y,
+                targetId: target.id,
+                vx: Math.cos(a) * cfg.swordSpeed,
+                vy: Math.sin(a) * cfg.swordSpeed,
+                rot: a,
+                damage: c.damage,
+                life: 2.5,
+            });
+        },
+
+        _updateGod(c, dt, p, cfg) {
+            const godCount = this._getDesiredPetCount(p, 'divine_god');
+            const anchor = this._anchorNearPlayer(p, c.slot, godCount, cfg.orbitDist);
+            c.x = lerp(c.x, anchor.x, dt * 2.2);
+            c.y = lerp(c.y, anchor.y, dt * 2.2);
+            c.atkTimer -= dt;
+            if (c.atkTimer <= 0) {
+                c.atkTimer = cfg.atkInterval;
+                this._fireGodSword(c, p, cfg);
+            }
+        },
+
+        _updateGodSwords(dt) {
+            for (const s of this.godSwords) {
+                s.life -= dt;
+                s.x += s.vx * dt;
+                s.y += s.vy * dt;
+                const monsters = this.game.spawner.getActiveMonsters();
+                if (!s.hitTarget) {
+                    for (const m of monsters) {
+                        if (!m.alive || m.dying) continue;
+                        if (m.id !== s.targetId) continue;
+                        if (!circlesCollide(s.x, s.y, 16, m.x, m.y, m.hitboxRadius)) continue;
+                        s.hitTarget = true;
+                        this._summonDealDamage(m, s.damage, '#fff8c8', s.x, s.y);
+                        this.game.particles.slashTrail(m.x, m.y, s.rot);
+                        break;
+                    }
+                }
+                if (!s.hitTarget && dist(s.x, s.y, s.tx, s.ty) < 24) s.life = 0;
+            }
+            this.godSwords = this.godSwords.filter(s => s.life > 0 && !s.hitTarget);
+        },
+
+        _playerRepositioning(p) {
+            return p.state === PlayerState.BULLET_TIME || p.state === PlayerState.ATTACKING;
+        },
+
+        _updateCompanions(dt) {
+            const p = this.game.player;
+            if (!p || p.hp <= 0) return;
+            this._ensureCompanions();
+
+            const w = this.game.renderer.w;
+            const h = _playBottom(this.game);
+            const top = 88;
+            const freezeWolfBull = this._playerRepositioning(p);
+
+            for (const c of this.companions) {
+                c.lv = p.getUpgradeLevel(
+                    c.type === 'wolf' ? 'wild_wolf' : c.type === 'bull' ? 'wild_bull' : 'divine_god'
+                );
+                if (c.lv <= 0) continue;
+
+                c.x = clamp(c.x, 20, w - 20);
+                c.y = clamp(c.y, top + 16, h - 16);
+
+                if (freezeWolfBull && (c.type === 'wolf' || c.type === 'bull')) {
+                    continue;
+                }
+
+                if (c.type === 'wolf') {
+                    this._updateWolf(c, dt, p, SUMMON_CFG.wild_wolf);
+                } else if (c.type === 'bull') {
+                    this._updateBull(c, dt, p, SUMMON_CFG.wild_bull);
+                } else if (c.type === 'god') {
+                    this._updateGod(c, dt, p, SUMMON_CFG.divine_god);
+                }
+            }
+
+            this.companions = this.companions.filter(c => {
+                const key = c.type === 'wolf' ? 'wild_wolf' : c.type === 'bull' ? 'wild_bull' : 'divine_god';
+                return p.getUpgradeLevel(key) > 0;
+            });
+
+            if (this.godSwords.length) this._updateGodSwords(dt);
+        },
+
+        _updateSummonPassives(dt) {
+            const p = this.game.player;
+            if (!p || this.game.state !== 'PLAYING') return;
+            if (p.getUpgradeLevel('heavenly_thunder') > 0) this._updateThunder(dt);
+            if (p.getUpgradeLevel('wild_wolf') > 0
+                || p.getUpgradeLevel('wild_bull') > 0
+                || p.getUpgradeLevel('divine_god') > 0) {
+                this._updateCompanions(dt);
+            }
+        },
+
+        hasSummonFx() {
+            return this.companions.length > 0 || this.thunderBolts.length > 0 || this.godSwords.length > 0;
+        },
+
+        _drawThunderBoltPath(ctx, points, alpha, width) {
+            if (!points || points.length < 2) return;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = '#e8fcff';
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.shadowColor = '#68d0ff';
+            ctx.shadowBlur = 18;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i++) {
+                ctx.lineTo(points[i].x, points[i].y);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = Math.max(1, width * 0.45);
+            ctx.stroke();
+            ctx.restore();
+        },
+
+        _drawThunderExplosion(ctx, t) {
+            const cx = t.x;
+            const cy = t.y;
+            const maxT = t.explodeMax || 0.32;
+            const prog = clamp(1 - t.timer / maxT, 0, 1);
+            const r = t.radius * (0.25 + prog * 0.85);
+            const alpha = 1 - prog * 0.85;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+
+            const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.55);
+            core.addColorStop(0, 'rgba(255, 255, 240, 0.95)');
+            core.addColorStop(0.35, 'rgba(255, 210, 80, 0.75)');
+            core.addColorStop(1, 'rgba(255, 100, 30, 0)');
+            ctx.fillStyle = core;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2);
+            ctx.fill();
+
+            const ring = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r);
+            ring.addColorStop(0, 'rgba(255, 180, 50, 0.5)');
+            ring.addColorStop(0.6, 'rgba(255, 90, 30, 0.35)');
+            ring.addColorStop(1, 'rgba(80, 40, 10, 0)');
+            ctx.fillStyle = ring;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = `rgba(255, 240, 180, ${alpha * 0.8})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r * prog, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.restore();
+        },
+
+        _drawThunder(ctx) {
+            const cfg = SUMMON_CFG.heavenly_thunder;
+            const boltDur = cfg.boltTime || 0.09;
+
+            for (const t of this.thunderBolts) {
+                const cx = t.x;
+                const cy = t.y;
+
+                if (t.phase === 'warn') {
+                    const pulse = 0.4 + Math.sin(Date.now() * 0.025) * 0.2;
+                    ctx.save();
+                    ctx.globalAlpha = pulse;
+                    ctx.strokeStyle = '#ffe878';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.ellipse(cx, cy, t.radius * 0.65, t.radius * 0.4, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = 'rgba(255, 230, 120, 0.12)';
+                    ctx.beginPath();
+                    ctx.ellipse(cx, cy, t.radius * 0.5, t.radius * 0.32, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                    continue;
+                }
+
+                if (t.phase === 'bolt' && t.boltPoints) {
+                    const boltProg = clamp(1 - t.timer / boltDur, 0, 1);
+                    const visCount = Math.max(2, Math.floor(t.boltPoints.length * boltProg));
+                    const visPts = t.boltPoints.slice(0, visCount);
+                    this._drawThunderBoltPath(ctx, visPts, 0.95, 5);
+                    if (boltProg >= 0.95) {
+                        ctx.save();
+                        ctx.globalAlpha = 0.85;
+                        const flash = ctx.createRadialGradient(cx, cy, 0, cx, cy, 18);
+                        flash.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+                        flash.addColorStop(1, 'rgba(255, 220, 100, 0)');
+                        ctx.fillStyle = flash;
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                }
+
+                if (t.phase === 'bolt' && t.boltPoints && t.timer > 0) {
+                    const skyX = t.boltPoints[0].x;
+                    const skyY = t.boltPoints[0].y;
+                    ctx.save();
+                    ctx.globalAlpha = 0.2;
+                    const cloud = ctx.createRadialGradient(skyX, skyY, 0, skyX, skyY, 50);
+                    cloud.addColorStop(0, 'rgba(200, 230, 255, 0.5)');
+                    cloud.addColorStop(1, 'rgba(100, 140, 200, 0)');
+                    ctx.fillStyle = cloud;
+                    ctx.beginPath();
+                    ctx.arc(skyX, skyY, 50, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                if (t.phase === 'explode') {
+                    if (t.boltPoints) {
+                        this._drawThunderBoltPath(ctx, t.boltPoints, 0.35, 3);
+                    }
+                    this._drawThunderExplosion(ctx, t);
+                }
+            }
+        },
+
+        _fillPx(ctx, ox, oy, col, row, color, px) {
+            if (!color) return;
+            ctx.fillStyle = color;
+            ctx.fillRect(ox + col * px, oy + row * px, px, px);
+        },
+
+        _drawWolf(ctx, c) {
+            const px = 4;
+            const x = Math.floor(c.x);
+            const y = Math.floor(c.y);
+            const bob = Math.sin(c.walkPhase) * 3;
+            const leg = Math.sin(c.walkPhase * 2) > 0;
+            const facing = c.facing ?? 1;
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.translate(x, y + bob);
+            if (facing < 0) ctx.scale(-1, 1);
+
+            const ox = -11 * px;
+            const oy = -7 * px;
+            const B = '#383c48';
+            const F = '#687080';
+            const L = '#98a8b8';
+            const E = '#1a1c22';
+            const N = '#2a2a30';
+
+            // 尾
+            this._fillPx(ctx, ox, oy, -4, 2, B, px);
+            this._fillPx(ctx, ox, oy, -3, 1, F, px);
+            this._fillPx(ctx, ox, oy, -3, 2, F, px);
+            this._fillPx(ctx, ox, oy, -2, 0, B, px);
+            // 后腿
+            this._fillPx(ctx, ox, oy, -1, 4, B, px);
+            this._fillPx(ctx, ox, oy, 0, 5, E, px);
+            this._fillPx(ctx, ox, oy, 1, 4, B, px);
+            this._fillPx(ctx, ox, oy, 2, 5, E, px);
+            // 身
+            for (let col = 0; col <= 5; col++) {
+                this._fillPx(ctx, ox, oy, col, 2, F, px);
+                this._fillPx(ctx, ox, oy, col, 3, B, px);
+            }
+            this._fillPx(ctx, ox, oy, 2, 1, L, px);
+            this._fillPx(ctx, ox, oy, 3, 1, L, px);
+            // 前腿
+            this._fillPx(ctx, ox, oy, 4, 4, B, px);
+            this._fillPx(ctx, ox, oy, 5, 5, E, px);
+            this._fillPx(ctx, ox, oy, 6, 4, B, px);
+            if (leg) this._fillPx(ctx, ox, oy, 6, 5, E, px);
+            // 头颈
+            this._fillPx(ctx, ox, oy, 5, 0, F, px);
+            this._fillPx(ctx, ox, oy, 6, 0, F, px);
+            this._fillPx(ctx, ox, oy, 7, 1, F, px);
+            this._fillPx(ctx, ox, oy, 7, 2, B, px);
+            // 耳
+            this._fillPx(ctx, ox, oy, 6, -2, B, px);
+            this._fillPx(ctx, ox, oy, 7, -2, B, px);
+            this._fillPx(ctx, ox, oy, 8, -1, B, px);
+            // 吻部
+            this._fillPx(ctx, ox, oy, 8, 1, L, px);
+            this._fillPx(ctx, ox, oy, 9, 2, L, px);
+            this._fillPx(ctx, ox, oy, 10, 2, N, px);
+            this._fillPx(ctx, ox, oy, 10, 3, N, px);
+            this._fillPx(ctx, ox, oy, 9, 3, F, px);
+            // 眼
+            this._fillPx(ctx, ox, oy, 8, 0, '#e8e8f0', px);
+            this._fillPx(ctx, ox, oy, 8, 0, E, px);
+            ctx.fillStyle = E;
+            ctx.fillRect(ox + 8 * px + 1, oy + 0 * px + 1, px - 2, px - 2);
+
+            ctx.restore();
+        },
+
+        _drawBull(ctx, c) {
+            const px = 4;
+            const x = Math.floor(c.x);
+            const y = Math.floor(c.y);
+            const facing = c.facing ?? 1;
+            const charge = c.state === 'charging';
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.translate(x, y);
+            if (facing < 0) ctx.scale(-1, 1);
+
+            const ox = -13 * px;
+            const oy = -8 * px;
+            const D = '#4a3020';
+            const M = '#7a5030';
+            const H = '#a07040';
+            const L = '#c8a060';
+            const E = '#1a1008';
+            const Horn = '#e8dcc8';
+
+            // 尾
+            this._fillPx(ctx, ox, oy, -3, 2, D, px);
+            this._fillPx(ctx, ox, oy, -2, 1, M, px);
+            // 后腿
+            this._fillPx(ctx, ox, oy, 0, 5, D, px);
+            this._fillPx(ctx, ox, oy, 0, 6, E, px);
+            this._fillPx(ctx, ox, oy, 1, 5, D, px);
+            this._fillPx(ctx, ox, oy, 1, 6, E, px);
+            // 躯干
+            for (let col = -1; col <= 6; col++) {
+                this._fillPx(ctx, ox, oy, col, 2, M, px);
+                this._fillPx(ctx, ox, oy, col, 3, D, px);
+                this._fillPx(ctx, ox, oy, col, 4, D, px);
+            }
+            this._fillPx(ctx, ox, oy, 2, 1, H, px);
+            this._fillPx(ctx, ox, oy, 3, 1, H, px);
+            // 前腿
+            this._fillPx(ctx, ox, oy, 5, 5, D, px);
+            this._fillPx(ctx, ox, oy, 5, 6, E, px);
+            this._fillPx(ctx, ox, oy, 6, 5, D, px);
+            this._fillPx(ctx, ox, oy, 6, 6, E, px);
+            // 头
+            this._fillPx(ctx, ox, oy, 6, 0, H, px);
+            this._fillPx(ctx, ox, oy, 7, 0, H, px);
+            this._fillPx(ctx, ox, oy, 7, 1, M, px);
+            this._fillPx(ctx, ox, oy, 8, 1, M, px);
+            this._fillPx(ctx, ox, oy, 8, 2, M, px);
+            this._fillPx(ctx, ox, oy, 9, 2, L, px);
+            this._fillPx(ctx, ox, oy, 10, 3, L, px);
+            this._fillPx(ctx, ox, oy, 10, 4, E, px);
+            // 鼻环
+            this._fillPx(ctx, ox, oy, 10, 3, '#d8b040', px);
+            // 角
+            this._fillPx(ctx, ox, oy, 6, -2, Horn, px);
+            this._fillPx(ctx, ox, oy, 7, -3, Horn, px);
+            this._fillPx(ctx, ox, oy, 8, -2, Horn, px);
+            this._fillPx(ctx, ox, oy, 9, -3, Horn, px);
+            this._fillPx(ctx, ox, oy, 7, -1, D, px);
+            // 眼
+            this._fillPx(ctx, ox, oy, 8, 0, E, px);
+
+            if (charge) {
+                ctx.globalAlpha = 0.35;
+                ctx.fillStyle = '#ffe8a0';
+                ctx.fillRect(ox - 4 * px, oy + 2 * px, 18 * px, 5 * px);
+            }
+
+            ctx.restore();
+        },
+
+        _drawGod(ctx, c) {
+            const x = Math.floor(c.x);
+            const y = Math.floor(c.y);
+            const pulse = 0.9 + Math.sin(Date.now() * 0.006 + c.slot) * 0.08;
+            ctx.save();
+            ctx.translate(x, y);
+            const g = ctx.createRadialGradient(0, -16, 4, 0, -8, 28 * pulse);
+            g.addColorStop(0, 'rgba(255, 248, 220, 0.9)');
+            g.addColorStop(1, 'rgba(255, 200, 80, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(0, -10, 14 * pulse, 20 * pulse, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffe8c8';
+            ctx.fillRect(-5, -22, 10, 10);
+            ctx.fillStyle = '#fff8f0';
+            ctx.fillRect(-8, -8, 16, 14);
+            ctx.fillStyle = '#ffd878';
+            ctx.fillRect(-10, 4, 20, 4);
+            ctx.restore();
+        },
+
+        _drawGodSword(ctx, s) {
+            const x = Math.floor(s.x);
+            const y = Math.floor(s.y);
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(s.rot + Math.PI / 2);
+            ctx.shadowColor = '#fff8c0';
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#fffce8';
+            ctx.fillRect(-3, -14, 6, 28);
+            ctx.fillStyle = '#ffd860';
+            ctx.fillRect(-5, 10, 10, 6);
+            ctx.fillStyle = '#c8a040';
+            ctx.fillRect(-2, -18, 4, 6);
+            ctx.restore();
+        },
+
+        drawSummonFx(ctx) {
+            if (this.thunderBolts.length) this._drawThunder(ctx);
+            for (const c of this.companions) {
+                if (c.type === 'wolf') this._drawWolf(ctx, c);
+                else if (c.type === 'bull') this._drawBull(ctx, c);
+                else if (c.type === 'god') this._drawGod(ctx, c);
+            }
+            for (const s of this.godSwords) this._drawGodSword(ctx, s);
+        },
+    });
+
+    const _origReset = AbilityManager.prototype.reset;
+    AbilityManager.prototype.reset = function (opts = {}) {
+        const keepCompanions = opts.keepCompanions === true;
+        const savedCompanions = keepCompanions && this.companions
+            ? this.companions.map((c) => ({
+                ...c,
+                chargeHit: c.chargeHit instanceof Set ? new Set(c.chargeHit) : new Set(),
+            }))
+            : null;
+        const savedThunderTimer = keepCompanions ? this.thunderTimer : 0;
+        _origReset.call(this);
+        this.companions = savedCompanions || [];
+        this.thunderTimer = savedThunderTimer ?? 0;
+        this.thunderBolts = [];
+        this.godSwords = [];
+    };
+
+    const _origUpdatePassive = AbilityManager.prototype.updatePassive;
+    AbilityManager.prototype.updatePassive = function (dt) {
+        _origUpdatePassive.call(this, dt);
+        this._updateSummonPassives(dt);
+    };
+
+})();
 
 
 // ---- sakura.js ----
@@ -5062,9 +6805,14 @@ class LevelManager {
         this.failIntro = null;
     }
 
-    startStageIntro(levelNum, onComplete) {
+    startStageIntro(levelNum, onComplete, bossKey) {
+        let bossName = null;
+        if (bossKey === 'centipede' && CONFIG.BOSS && CONFIG.BOSS.CENTIPEDE) {
+            bossName = CONFIG.BOSS.CENTIPEDE.name;
+        }
         this.stageIntro = {
             levelNum,
+            bossName,
             phase: 'slideIn',
             slideInDur: CONFIG.STAGE_INTRO_SLIDE_IN,
             holdDur: CONFIG.STAGE_INTRO_LABEL_HOLD,
@@ -5097,7 +6845,7 @@ class LevelManager {
         }
     }
 
-    _getStageIntroBoardX(intro, vp) {
+    _getStageIntroTextX(intro, vp) {
         const centerX = vp.cx;
         const offScreen = vp.w * 0.42;
         if (intro.phase === 'slideIn') {
@@ -5109,63 +6857,13 @@ class LevelManager {
         return lerp(centerX, vp.w + offScreen, easeInQuad(t));
     }
 
-    _drawPixelNail(ctx, x, y, unit) {
-        const n = unit;
-        ctx.fillStyle = '#2a1810';
-        ctx.fillRect(x, y, n, n);
-        ctx.fillStyle = '#5a4030';
-        ctx.fillRect(x + 1, y + 1, n - 2, n - 2);
-        ctx.fillStyle = '#8a7060';
-        ctx.fillRect(x + 1, y + 1, 1, 1);
-    }
-
-    _drawWoodenSign(ctx, cx, cy, s, levelNum) {
-        const unit = Math.max(2, Math.round(2 * s));
-        const cols = 56;
-        const rows = 13;
-        const bw = cols * unit;
-        const bh = rows * unit;
-        const x = Math.floor(cx - bw / 2);
-        const y = Math.floor(cy - bh / 2);
-        const text = `第${levelNum}关`;
-        const fontSize = Math.round(14 * s);
-
-        ctx.save();
-        ctx.imageSmoothingEnabled = false;
-
-        ctx.fillStyle = '#2e1a0c';
-        ctx.fillRect(x, y, bw, bh);
-
-        const inset = unit;
-        for (let row = 0; row < rows - 2; row++) {
-            const gy = y + inset + row * unit;
-            ctx.fillStyle = row === 0 ? '#a87840' : (row % 2 === 0 ? '#8a5c34' : '#7a502c');
-            ctx.fillRect(x + inset, gy, bw - inset * 2, unit);
-        }
-
-        ctx.fillStyle = '#6a4428';
-        ctx.fillRect(x + inset, y + inset, unit, bh - inset * 2);
-        ctx.fillRect(x + bw - inset * 2, y + inset, unit, bh - inset * 2);
-
-        const nailOff = unit;
-        const nailSz = unit + 1;
-        this._drawPixelNail(ctx, x + nailOff, y + nailOff, nailSz);
-        this._drawPixelNail(ctx, x + bw - nailOff - nailSz, y + nailOff, nailSz);
-        this._drawPixelNail(ctx, x + nailOff, y + bh - nailOff - nailSz, nailSz);
-        this._drawPixelNail(ctx, x + bw - nailOff - nailSz, y + bh - nailOff - nailSz, nailSz);
-
-        const tcx = Math.floor(cx);
-        const tcy = Math.floor(cy);
-        const off = 1;
-        ctx.font = `bold ${Math.max(10, fontSize)}px ${GAME_FONT}`;
+    _drawStageIntroText(ctx, text, x, y, fontSize, color) {
+        const px = Math.max(8, Math.round(fontSize));
+        ctx.font = `bold ${px}px ${GAME_FONT}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#1a1008';
-        ctx.fillText(text, tcx + off, tcy + off);
-        ctx.fillStyle = '#fff4c0';
-        ctx.fillText(text, tcx, tcy);
-
-        ctx.restore();
+        ctx.fillStyle = color;
+        ctx.fillText(text, Math.floor(x), Math.floor(y));
     }
 
     drawStageIntro(ctx, vp, uiScale) {
@@ -5173,11 +6871,17 @@ class LevelManager {
         const s = uiScale || 1;
         const intro = this.stageIntro;
         const labelY = Math.floor(vp.y + vp.h * 0.22);
-        const boardX = Math.floor(this._getStageIntroBoardX(intro, vp));
+        const textX = Math.floor(this._getStageIntroTextX(intro, vp));
+        const fontSize = Math.round(14 * s);
+        const text = `第${intro.levelNum}关`;
 
         ctx.save();
         ctx.imageSmoothingEnabled = false;
-        this._drawWoodenSign(ctx, boardX, labelY, s, intro.levelNum);
+        this._drawStageIntroText(ctx, text, textX, labelY, fontSize, '#000000');
+        if (intro.bossName) {
+            const subSize = Math.round(11 * s);
+            this._drawStageIntroText(ctx, intro.bossName, textX, labelY + Math.round(16 * s), subSize, '#000000');
+        }
         ctx.restore();
     }
 
@@ -5386,7 +7090,26 @@ class ExperienceManager {
     }
 
     onMonsterKilled(monster) {
+        if (monster.isBossSegment) return;
         this.addExp(this.getKillReward(monster));
+    }
+
+    _countUpgradePicks(player) {
+        if (!player || typeof UPGRADE_DEFS === 'undefined') return 0;
+        let n = 0;
+        for (const def of UPGRADE_DEFS) {
+            n += player.getUpgradeLevel(def.id);
+        }
+        return n;
+    }
+
+    setDebugLevel(targetLevel, player) {
+        const lv = clamp(Math.floor(targetLevel), 1, 30);
+        this.level = lv;
+        this.exp = 0;
+        this.expToNext = this._calcExpToNext(lv);
+        const picks = this._countUpgradePicks(player);
+        this.pendingLevelUps = Math.max(0, lv - 1 - picks);
     }
 
     tryTriggerPendingUpgrade() {
@@ -5564,11 +7287,15 @@ class UI {
         return canvasH - reserve;
     }
 
-    _getHudLayout(vp, s, player) {
+    _getHudLayout(vp, s, player, game) {
         const pad = 12 * s;
         const kiY = vp.y + 28 * s;
         const kiH = 40 * s;
-        const buffRowY = kiY + kiH + 8 * s;
+        const boss = game && game.spawner && game.spawner.boss;
+        const showBossBar = boss && boss.phase === 'active';
+        const bossBarH = showBossBar ? 22 * s : 0;
+        const bossBarY = kiY + kiH + 6 * s;
+        const buffRowY = showBossBar ? bossBarY + bossBarH + 6 * s : kiY + kiH + 8 * s;
         const hasBuffs = player && player.collectedOrbBuffs && player.collectedOrbBuffs.length > 0;
         const secondRowY = hasBuffs ? buffRowY + 30 * s : buffRowY;
         return {
@@ -5577,16 +7304,64 @@ class UI {
             kiY,
             kiW: vp.w - pad * 2,
             kiH,
+            bossBarY,
+            bossBarH,
+            showBossBar,
             buffRowY,
             secondRowY,
             comboY: secondRowY + 8 * s,
         };
     }
 
+    drawBossHpBar(ctx, boss, layout, s) {
+        if (!boss || !layout.showBossBar) return;
+        const x = layout.kiX;
+        const y = layout.bossBarY;
+        const w = layout.kiW;
+        const h = layout.bossBarH;
+        const ratio = boss.hpRatio;
+        const border = Math.max(2, Math.floor(2 * s));
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        drawPixelPanel(ctx, x, y, w, h, '#281820', '#c84848', border);
+
+        const innerX = x + border;
+        const innerY = y + border;
+        const innerW = w - border * 2;
+        const innerH = h - border * 2;
+        const fillW = Math.floor(innerW * ratio);
+
+        ctx.fillStyle = '#3a1818';
+        ctx.fillRect(innerX, innerY, innerW, innerH);
+        if (fillW > 0) {
+            ctx.fillStyle = '#c83030';
+            ctx.fillRect(innerX, innerY, fillW, innerH);
+            ctx.fillStyle = '#ff6868';
+            ctx.fillRect(innerX, innerY, fillW, Math.max(2, Math.floor(innerH * 0.4)));
+        }
+
+        drawPixelText(ctx, boss.name, x + 8 * s, y + h / 2, Math.round(9 * s), '#ffe0c8', 'left', 'middle');
+        drawPixelText(
+            ctx,
+            `${Math.ceil(boss.totalHp)}/${boss.maxTotalHp}`,
+            x + w - 8 * s,
+            y + h / 2,
+            Math.round(8 * s),
+            '#ffd0c0',
+            'right',
+            'middle'
+        );
+        ctx.restore();
+    }
+
     draw(ctx, game, vp, s) {
-        const layout = this._getHudLayout(vp, s, game.player);
+        const layout = this._getHudLayout(vp, s, game.player, game);
         this._lastHudLayout = layout;
         this.drawTopKiBar(ctx, game.player, layout, s);
+        if (game.spawner && game.spawner.boss) {
+            this.drawBossHpBar(ctx, game.spawner.boss, layout, s);
+        }
         this.drawTurnBuffIcons(ctx, game.player, layout, s);
         this.drawComboBanner(ctx, game.player, vp, layout, s);
         this.drawMessage(ctx, game.player, vp, s);
@@ -5963,7 +7738,7 @@ class CombatManager {
     }
 
     _handleMonsterKilled(m) {
-        if (m._deathHandled) return;
+        if (m._deathHandled || m.isBossSegment) return;
         m._deathHandled = true;
         const player = this.game.player;
         const hitAngle = player
@@ -6108,7 +7883,7 @@ class CombatManager {
     }
 
     _getMonsterById(id) {
-        return this.game.spawner.monsters.find(m => m.id === id && m.alive && !m.dying);
+        return this.game.spawner.getCombatTargetById(id);
     }
 
     _applyQueuedHit(hit) {
@@ -6139,7 +7914,7 @@ class CombatManager {
         this.game.particles.hitSpark(m.x, m.y, isCrit);
         this.game.renderer.shakeAttackHit(isCrit, combo);
 
-        if (m.kind === MonsterKind.BERSERKER) {
+        if (m.kind === MonsterKind.BERSERKER && m.base) {
             const drain = m.base.kiDrainOnHit || 0;
             p.ki = Math.max(0, p.ki - drain);
         }
@@ -6270,6 +8045,7 @@ class MonsterSpawner {
     reset() {
         this.monsters = [];
         this.spawnClusters = [];
+        this.boss = null;
     }
 
     _getSpawnBounds(w, playBottom) {
@@ -6408,10 +8184,17 @@ class MonsterSpawner {
 
     spawnStage(stageIndex, w, h, playBottom, safeZone, withSpawnAnim = false) {
         this.monsters = [];
-        this._initSpawnClusters(w, h, playBottom, safeZone);
+        this.boss = null;
         const cfg = CONFIG.STAGES[clamp(stageIndex, 0, CONFIG.STAGES.length - 1)];
         if (!cfg) return;
         const stageStatScale = getStageStatScale(stageIndex);
+
+        if (cfg.boss === 'centipede') {
+            this.boss = new CentipedeBoss(this.game, w, h, playBottom, safeZone, stageStatScale);
+            return;
+        }
+
+        this._initSpawnClusters(w, h, playBottom, safeZone);
         this._spawnBatch(MonsterKind.NORMAL, this._scaledCount(cfg.normal), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.ELITE, this._scaledCount(cfg.elite), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
         this._spawnBatch(MonsterKind.SHIELD, this._scaledShieldCount(cfg.shield), w, h, playBottom, safeZone, 0, withSpawnAnim, stageStatScale);
@@ -6448,6 +8231,10 @@ class MonsterSpawner {
     }
 
     update(dt, w, h, playBottom, playerTarget) {
+        if (this.boss) {
+            this.boss.update(dt, playerTarget);
+            return;
+        }
         const resolving = this.game && this.game.combat && this.game.combat.isResolving();
         for (const m of this.monsters) {
             if (resolving && !m.dying) continue;
@@ -6456,12 +8243,600 @@ class MonsterSpawner {
         this.monsters = this.monsters.filter(m => m.alive);
     }
 
+    getCombatTargetById(id) {
+        if (this.boss) {
+            const seg = this.boss.segments.find(s => s.id === id && s.alive);
+            if (seg && this.boss.phase === 'active') return seg;
+        }
+        return this.monsters.find(m => m.id === id && m.alive && !m.dying);
+    }
+
     getActiveMonsters() {
+        if (this.boss && this.boss.phase === 'active') {
+            return this.boss.getActiveSegments();
+        }
         return this.monsters.filter(m => m.alive && !m.dying && !m.spawning);
     }
 
     allClear() {
+        if (this.boss) return this.boss.isDefeated();
         return !this.monsters.some(m => m.alive && !m.dying);
+    }
+}
+
+
+// ---- pauseMenu.js ----
+function getStagesPerChapter() {
+    return CONFIG.DEBUG?.STAGES_PER_CHAPTER || 4;
+}
+
+function getMaxChapter() {
+    const per = getStagesPerChapter();
+    return Math.max(1, Math.ceil(CONFIG.STAGES.length / per));
+}
+
+function getChapterStageCount(chapter) {
+    const per = getStagesPerChapter();
+    const start = (chapter - 1) * per;
+    return Math.min(per, CONFIG.STAGES.length - start);
+}
+
+function chapterStageFromIndex(index) {
+    const per = getStagesPerChapter();
+    const idx = clamp(index | 0, 0, CONFIG.STAGES.length - 1);
+    return {
+        chapter: Math.floor(idx / per) + 1,
+        stage: (idx % per) + 1,
+    };
+}
+
+function stageIndexFromChapterStage(chapter, stage) {
+    const per = getStagesPerChapter();
+    const ch = clamp(chapter | 0, 1, getMaxChapter());
+    const maxSt = getChapterStageCount(ch);
+    const st = clamp(stage | 0, 1, maxSt);
+    const idx = (ch - 1) * per + (st - 1);
+    return clamp(idx, 0, CONFIG.STAGES.length - 1);
+}
+
+class PauseMenu {
+    constructor(game) {
+        this.game = game;
+        this.active = false;
+        this.view = 'pause';
+        this.passwordInput = '';
+        this.passwordError = '';
+        this.debugLevel = 1;
+        this.debugStageNum = 1;
+        this.debugUpgradeLevels = {};
+        this.upgradeScroll = 0;
+        this._scrollDrag = null;
+        this._listClip = null;
+        this._maxUpgradeScroll = 0;
+        this._rects = [];
+    }
+
+    _getMaxUpgradeLv() {
+        return CONFIG.DEBUG?.MAX_UPGRADE_LEVEL || 9;
+    }
+
+    _syncDebugUpgradeLevels() {
+        this.debugUpgradeLevels = {};
+        const p = this.game?.player;
+        if (typeof UPGRADE_DEFS === 'undefined') return;
+        for (const def of UPGRADE_DEFS) {
+            this.debugUpgradeLevels[def.id] = p ? p.getUpgradeLevel(def.id) : 0;
+        }
+    }
+
+    open() {
+        this.active = true;
+        this.view = 'pause';
+        this.passwordInput = '';
+        this.passwordError = '';
+        const g = this.game;
+        if (g.experience) this.debugLevel = g.experience.level;
+        this.debugStageNum = (g.levelManager ? g.levelManager.level : 0) + 1;
+        this._syncDebugUpgradeLevels();
+        this.upgradeScroll = 0;
+    }
+
+    close() {
+        this.active = false;
+        this.view = 'pause';
+        this.passwordInput = '';
+        this.passwordError = '';
+        this._scrollDrag = null;
+        this._listClip = null;
+        this._rects = [];
+    }
+
+    getPauseButtonRect(vp, s) {
+        const size = Math.round(26 * s);
+        const pad = Math.round(10 * s);
+        const kiY = vp.y + 28 * s;
+        const kiH = 40 * s;
+        let hudBottom = kiY + kiH;
+        const boss = this.game?.spawner?.boss;
+        if (boss && boss.phase === 'active') {
+            hudBottom += 6 * s + 22 * s;
+        }
+        return {
+            x: vp.x + vp.w - pad - size,
+            y: hudBottom + 8 * s,
+            w: size,
+            h: size,
+        };
+    }
+
+    hitPauseButton(x, y, vp, s) {
+        if (!this.game || this.game.state !== 'PLAYING' || this.active) return false;
+        const r = this.getPauseButtonRect(vp, s);
+        return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    }
+
+    drawPauseButton(ctx, vp, s) {
+        if (!this.game || this.game.state !== 'PLAYING' || this.active) return;
+        const r = this.getPauseButtonRect(vp, s);
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        drawPixelPanel(ctx, r.x, r.y, r.w, r.h, '#2a3040', '#c8b888', 2);
+        const cx = r.x + r.w / 2;
+        const cy = r.y + r.h / 2;
+        const barW = Math.max(3, Math.floor(4 * s));
+        const barH = Math.max(6, Math.floor(10 * s));
+        const gap = Math.max(2, Math.floor(2 * s));
+        ctx.fillStyle = '#e8e0c8';
+        ctx.fillRect(cx - barW / 2, cy - barH / 2 - gap / 2, barW, barH);
+        ctx.fillRect(cx - barW / 2, cy + gap / 2, barW, barH);
+        ctx.restore();
+    }
+
+    _pushRect(id, x, y, w, h) {
+        this._rects.push({ id, x, y, w, h });
+    }
+
+    _hitRect(x, y, id) {
+        for (const r of this._rects) {
+            if (r.id !== id) continue;
+            if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return true;
+        }
+        return false;
+    }
+
+    _hitRectId(x, y) {
+        for (const r of this._rects) {
+            if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return r.id;
+        }
+        return null;
+    }
+
+    _pointInListClip(x, y) {
+        const c = this._listClip;
+        if (!c) return false;
+        return x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h;
+    }
+
+    onPointerDown(x, y) {
+        if (this.view !== 'debug_upgrades') return;
+        if (this._hitRectId(x, y)) return;
+        if (this._pointInListClip(x, y)) {
+            this._scrollDrag = { startY: y, startScroll: this.upgradeScroll };
+        }
+    }
+
+    onPointerMove(x, y) {
+        if (!this._scrollDrag) return;
+        const dy = this._scrollDrag.startY - y;
+        this.upgradeScroll = clamp(this._scrollDrag.startScroll + dy, 0, this._maxUpgradeScroll);
+    }
+
+    onPointerUp() {
+        this._scrollDrag = null;
+    }
+
+    onWheel(deltaY) {
+        if (this.view !== 'debug_upgrades') return;
+        this.upgradeScroll = clamp(this.upgradeScroll + deltaY * 0.35, 0, this._maxUpgradeScroll);
+    }
+
+    _drawOverlay(ctx, vp) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(8, 12, 20, 0.72)';
+        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+        ctx.restore();
+    }
+
+    _drawPanelButton(ctx, x, y, w, h, label, s, id, accent) {
+        this._pushRect(id, x, y, w, h);
+        drawPixelPanel(ctx, x, y, w, h, accent ? '#3a2830' : '#2a3040', accent ? '#e8a060' : '#a8a0c0', 2);
+        drawPixelText(ctx, label, x + w / 2, y + h / 2, Math.round(13 * s), '#f0ece0');
+    }
+
+    _drawPauseView(ctx, vp, s) {
+        const panelW = vp.w * 0.78;
+        const panelH = 200 * s;
+        const px = vp.x + (vp.w - panelW) / 2;
+        const py = vp.y + vp.h * 0.32;
+        drawPixelPanel(ctx, px, py, panelW, panelH, '#1e2430', '#c8b888', 3);
+        drawPixelText(ctx, '暂停', vp.cx, py + 28 * s, Math.round(20 * s), '#ffe8c8');
+
+        const btnW = panelW * 0.72;
+        const btnH = 40 * s;
+        const btnX = vp.cx - btnW / 2;
+        const y1 = py + 58 * s;
+        const y2 = y1 + btnH + 12 * s;
+        this._drawPanelButton(ctx, btnX, y1, btnW, btnH, '继续', s, 'resume', false);
+        this._drawPanelButton(ctx, btnX, y2, btnW, btnH, '调试密码', s, 'password', true);
+    }
+
+    _drawPasswordView(ctx, vp, s) {
+        const panelW = vp.w * 0.86;
+        const panelH = 320 * s;
+        const px = vp.x + (vp.w - panelW) / 2;
+        const py = vp.y + vp.h * 0.24;
+        drawPixelPanel(ctx, px, py, panelW, panelH, '#1e2430', '#c8b888', 3);
+        drawPixelText(ctx, '输入调试密码', vp.cx, py + 24 * s, Math.round(16 * s), '#ffe8c8');
+
+        const fieldW = panelW * 0.8;
+        const fieldH = 36 * s;
+        const fieldX = vp.cx - fieldW / 2;
+        const fieldY = py + 48 * s;
+        drawPixelPanel(ctx, fieldX, fieldY, fieldW, fieldH, '#141820', '#8898b0', 2);
+        const masked = '*'.repeat(this.passwordInput.length) || '····';
+        drawPixelText(ctx, masked, vp.cx, fieldY + fieldH / 2, Math.round(14 * s), '#d8e8ff');
+
+        if (this.passwordError) {
+            drawPixelText(ctx, this.passwordError, vp.cx, fieldY + fieldH + 14 * s, Math.round(10 * s), '#ff6868');
+        }
+
+        const keySize = Math.floor(44 * s);
+        const gap = Math.floor(6 * s);
+        const gridW = keySize * 3 + gap * 2;
+        const gridX = vp.cx - gridW / 2;
+        const gridY = fieldY + fieldH + 28 * s;
+        const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '退格'];
+        for (let i = 0; i < keys.length; i++) {
+            const col = i % 3;
+            const row = Math.floor(i / 3);
+            const kx = gridX + col * (keySize + gap);
+            const ky = gridY + row * (keySize + gap);
+            const key = keys[i];
+            this._pushRect(`key_${key}`, kx, ky, keySize, keySize);
+            drawPixelPanel(ctx, kx, ky, keySize, keySize, '#2a3040', '#98a8c0', 2);
+            const fs = key.length > 1 ? Math.round(9 * s) : Math.round(14 * s);
+            drawPixelText(ctx, key, kx + keySize / 2, ky + keySize / 2, fs, '#e8f0ff');
+        }
+
+        const backW = panelW * 0.35;
+        const backH = 34 * s;
+        const backX = px + 16 * s;
+        const backY = py + panelH - backH - 14 * s;
+        this._drawPanelButton(ctx, backX, backY, backW, backH, '返回', s, 'back', false);
+
+        const okW = panelW * 0.35;
+        const okX = px + panelW - okW - 16 * s;
+        this._drawPanelButton(ctx, okX, backY, okW, backH, '确认', s, 'confirm', true);
+    }
+
+    _drawStepper(ctx, cx, y, label, value, s, ids, minVal, maxVal) {
+        const btn = Math.floor(32 * s);
+        const gap = 8 * s;
+        const valW = 52 * s;
+        const totalW = btn * 2 + valW + gap * 2 + 80 * s;
+        let x = cx - totalW / 2;
+
+        drawPixelText(ctx, label, x, y + btn / 2, Math.round(11 * s), '#c8c0b0', 'left', 'middle');
+        x += 80 * s;
+
+        this._pushRect(ids.minus, x, y, btn, btn);
+        drawPixelPanel(ctx, x, y, btn, btn, '#2a3040', '#a8a0c0', 2);
+        drawPixelText(ctx, '-', x + btn / 2, y + btn / 2, Math.round(16 * s), '#fff');
+        x += btn + gap;
+
+        drawPixelText(ctx, String(value), x + valW / 2, y + btn / 2, Math.round(14 * s), '#ffe8c8');
+        x += valW + gap;
+
+        this._pushRect(ids.plus, x, y, btn, btn);
+        drawPixelPanel(ctx, x, y, btn, btn, '#2a3040', '#a8a0c0', 2);
+        drawPixelText(ctx, '+', x + btn / 2, y + btn / 2, Math.round(16 * s), '#fff');
+    }
+
+    _drawDebugView(ctx, vp, s) {
+        const panelW = vp.w * 0.92;
+        const panelH = 340 * s;
+        const px = vp.x + (vp.w - panelW) / 2;
+        const py = vp.y + vp.h * 0.16;
+        drawPixelPanel(ctx, px, py, panelW, panelH, '#1a2030', '#e8a060', 3);
+        drawPixelText(ctx, '调试设置', vp.cx, py + 22 * s, Math.round(18 * s), '#ffd8a0');
+
+        const rowY1 = py + 50 * s;
+        const rowY2 = py + 100 * s;
+        this._drawStepper(ctx, vp.cx, rowY1, '主角等级', this.debugLevel, s,
+            { minus: 'lv_minus', plus: 'lv_plus' }, 1, 30);
+        const maxStage = CONFIG.STAGES.length;
+        this._drawStepper(ctx, vp.cx, rowY2, '关卡', this.debugStageNum, s,
+            { minus: 'st_minus', plus: 'st_plus' }, 1, maxStage);
+
+        const stageCfg = CONFIG.STAGES[clamp(this.debugStageNum - 1, 0, maxStage - 1)];
+        const bossTag = stageCfg && stageCfg.boss ? ` · ${CONFIG.BOSS?.CENTIPEDE?.name || 'Boss'}` : '';
+        const hint = `跳转 → 第${this.debugStageNum}关${bossTag}`;
+        drawPixelText(ctx, hint, vp.cx, py + 148 * s, Math.round(10 * s), '#98a8b8');
+
+        const midW = panelW * 0.88;
+        const midH = 40 * s;
+        const midX = vp.cx - midW / 2;
+        const midY = py + 168 * s;
+        this._drawPanelButton(ctx, midX, midY, midW, midH, '升级奖励', s, 'debug_upgrades_open', true);
+
+        const btnW = panelW * 0.42;
+        const btnH = 38 * s;
+        const yBtn = py + panelH - btnH - 14 * s;
+        this._drawPanelButton(ctx, px + 14 * s, yBtn, btnW, btnH, '返回', s, 'debug_back', false);
+        this._drawPanelButton(ctx, px + panelW - btnW - 14 * s, yBtn, btnW, btnH, '应用', s, 'debug_apply', true);
+    }
+
+    _drawUpgradeRow(ctx, x, y, w, h, def, level, s) {
+        const tier = CONFIG.UPGRADE_RARITY[def.rarity] || CONFIG.UPGRADE_RARITY.white;
+        const btn = Math.floor(28 * s);
+        const gap = 6 * s;
+        const valW = 36 * s;
+        const nameX = x + 10 * s;
+        const ctrlRight = x + w - 10 * s;
+
+        ctx.save();
+        drawPixelPanel(ctx, x, y, w, h, '#222c38', tier.color, 2);
+        drawPixelText(ctx, def.icon, nameX + 8 * s, y + h / 2, Math.round(12 * s), '#fff', 'center', 'middle');
+        drawPixelText(ctx, def.name, nameX + 22 * s, y + h / 2 - 6 * s, Math.round(10 * s), tier.color, 'left', 'middle');
+        drawPixelText(ctx, tier.name, nameX + 22 * s, y + h / 2 + 8 * s, Math.round(8 * s), '#8898a8', 'left', 'middle');
+
+        let bx = ctrlRight - btn * 2 - valW - gap * 2;
+        const by = y + (h - btn) / 2;
+        const minusId = `up:${def.id}:m`;
+        const plusId = `up:${def.id}:p`;
+
+        this._pushRect(minusId, bx, by, btn, btn);
+        drawPixelPanel(ctx, bx, by, btn, btn, '#2a3040', '#a8a0c0', 2);
+        drawPixelText(ctx, '-', bx + btn / 2, by + btn / 2, Math.round(14 * s), '#fff');
+        bx += btn + gap;
+
+        drawPixelText(ctx, String(level), bx + valW / 2, y + h / 2, Math.round(13 * s), '#ffe8c8');
+        bx += valW + gap;
+
+        this._pushRect(plusId, bx, by, btn, btn);
+        drawPixelPanel(ctx, bx, by, btn, btn, '#2a3040', '#a8a0c0', 2);
+        drawPixelText(ctx, '+', bx + btn / 2, by + btn / 2, Math.round(14 * s), '#fff');
+        ctx.restore();
+    }
+
+    _drawDebugUpgradesView(ctx, vp, s) {
+        const panelW = vp.w * 0.94;
+        const panelH = vp.h * 0.88;
+        const px = vp.x + (vp.w - panelW) / 2;
+        const py = vp.y + (vp.h - panelH) / 2;
+        drawPixelPanel(ctx, px, py, panelW, panelH, '#141c28', '#e8a060', 3);
+        drawPixelText(ctx, '升级奖励', vp.cx, py + 20 * s, Math.round(17 * s), '#ffd8a0');
+        drawPixelText(ctx, '上下滑动浏览 · 点击 +/- 调整等级', vp.cx, py + 40 * s, Math.round(9 * s), '#8898a8');
+
+        const listX = px + 12 * s;
+        const listY = py + 54 * s;
+        const listW = panelW - 24 * s;
+        const footerH = 52 * s;
+        const listH = panelH - 54 * s - footerH;
+        const rowH = 46 * s;
+        const rowGap = 6 * s;
+        const defs = typeof UPGRADE_DEFS !== 'undefined' ? UPGRADE_DEFS : [];
+        const contentH = defs.length * (rowH + rowGap);
+
+        this._listClip = { x: listX, y: listY, w: listW, h: listH };
+        this._maxUpgradeScroll = Math.max(0, contentH - listH);
+        this.upgradeScroll = clamp(this.upgradeScroll, 0, this._maxUpgradeScroll);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(listX, listY, listW, listH);
+        ctx.clip();
+
+        let ry = listY - this.upgradeScroll;
+        for (const def of defs) {
+            const lv = this.debugUpgradeLevels[def.id] || 0;
+            if (ry + rowH >= listY && ry <= listY + listH) {
+                this._drawUpgradeRow(ctx, listX, ry, listW, rowH, def, lv, s);
+            }
+            ry += rowH + rowGap;
+        }
+        ctx.restore();
+
+        if (this._maxUpgradeScroll > 0) {
+            const barX = listX + listW - 6 * s;
+            const barY = listY + 4 * s;
+            const barH = listH - 8 * s;
+            const thumbH = Math.max(24 * s, barH * (listH / contentH));
+            const thumbY = barY + (barH - thumbH) * (this.upgradeScroll / this._maxUpgradeScroll);
+            ctx.fillStyle = '#2a3448';
+            ctx.fillRect(barX, barY, 4 * s, barH);
+            ctx.fillStyle = '#c8a060';
+            ctx.fillRect(barX, thumbY, 4 * s, thumbH);
+        }
+
+        const btnW = panelW * 0.4;
+        const btnH = 38 * s;
+        const yBtn = py + panelH - btnH - 12 * s;
+        this._drawPanelButton(ctx, px + 14 * s, yBtn, btnW, btnH, '返回', s, 'upgrades_back', false);
+        this._drawPanelButton(ctx, px + panelW - btnW - 14 * s, yBtn, btnW, btnH, '应用', s, 'upgrades_apply', true);
+    }
+
+    draw(ctx, vp, s) {
+        if (!this.active) return;
+        this._rects = [];
+        this._drawOverlay(ctx, vp);
+        if (this.view === 'pause') this._drawPauseView(ctx, vp, s);
+        else if (this.view === 'password') this._drawPasswordView(ctx, vp, s);
+        else if (this.view === 'debug') this._drawDebugView(ctx, vp, s);
+        else if (this.view === 'debug_upgrades') this._drawDebugUpgradesView(ctx, vp, s);
+    }
+
+    _onPasswordKey(key) {
+        if (key === '清空') {
+            this.passwordInput = '';
+            this.passwordError = '';
+            return;
+        }
+        if (key === '退格') {
+            this.passwordInput = this.passwordInput.slice(0, -1);
+            this.passwordError = '';
+            return;
+        }
+        if (this.passwordInput.length >= 8) return;
+        this.passwordInput += key;
+        this.passwordError = '';
+    }
+
+    _confirmPassword() {
+        const pwd = CONFIG.DEBUG?.PASSWORD || '1';
+        if (this.passwordInput === pwd) {
+            this.view = 'debug';
+            this.passwordError = '';
+            const g = this.game;
+            if (g.experience) this.debugLevel = g.experience.level;
+            this.debugStageNum = (g.levelManager ? g.levelManager.level : 0) + 1;
+            this._syncDebugUpgradeLevels();
+            this.upgradeScroll = 0;
+            return;
+        }
+        this.passwordError = '密码错误';
+    }
+
+    applyDebugUpgrades() {
+        const g = this.game;
+        if (!g?.player) return;
+        g.player.rebuildUpgradesFromStacks(this.debugUpgradeLevels, true);
+    }
+
+    applyDebugSettings() {
+        const g = this.game;
+        if (!g || !g.experience) return;
+
+        this.applyDebugUpgrades();
+        g.experience.setDebugLevel(this.debugLevel, g.player);
+
+        const idx = clamp(this.debugStageNum - 1, 0, CONFIG.STAGES.length - 1);
+        g.pendingStageClear = false;
+        g._clearCombatResiduals();
+        g.levelManager.level = idx;
+        g.player.beginStage();
+        const playBottom = g.ui.getPlayAreaBottom
+            ? g.ui.getPlayAreaBottom(g.renderer.h, g.renderer.uiScale)
+            : g.renderer.h;
+        const safe = g._getSafeZone();
+        g.spawner.spawnStage(idx, g.renderer.w, g.renderer.h, playBottom, safe, false);
+        g.buffOrbs.spawnForStage(idx, safe, false);
+        g.combat.roundAttackResolved = true;
+    }
+
+    handleClick(x, y, vp, s) {
+        if (!this.active) return false;
+
+        if (this.view === 'pause') {
+            if (this._hitRect(x, y, 'resume')) {
+                this.game.resumeFromPause();
+                return true;
+            }
+            if (this._hitRect(x, y, 'password')) {
+                this.view = 'password';
+                this.passwordInput = '';
+                this.passwordError = '';
+                return true;
+            }
+            return true;
+        }
+
+        if (this.view === 'password') {
+            for (let i = 0; i <= 9; i++) {
+                if (this._hitRect(x, y, `key_${i}`)) {
+                    this._onPasswordKey(String(i));
+                    return true;
+                }
+            }
+            if (this._hitRect(x, y, 'key_清空')) { this._onPasswordKey('清空'); return true; }
+            if (this._hitRect(x, y, 'key_退格')) { this._onPasswordKey('退格'); return true; }
+            if (this._hitRect(x, y, 'back')) {
+                this.view = 'pause';
+                return true;
+            }
+            if (this._hitRect(x, y, 'confirm')) {
+                this._confirmPassword();
+                return true;
+            }
+            return true;
+        }
+
+        if (this.view === 'debug') {
+            if (this._hitRect(x, y, 'lv_minus')) {
+                this.debugLevel = Math.max(1, this.debugLevel - 1);
+                return true;
+            }
+            if (this._hitRect(x, y, 'lv_plus')) {
+                this.debugLevel = Math.min(30, this.debugLevel + 1);
+                return true;
+            }
+            if (this._hitRect(x, y, 'st_minus')) {
+                this.debugStageNum = Math.max(1, this.debugStageNum - 1);
+                return true;
+            }
+            if (this._hitRect(x, y, 'st_plus')) {
+                this.debugStageNum = Math.min(CONFIG.STAGES.length, this.debugStageNum + 1);
+                return true;
+            }
+            if (this._hitRect(x, y, 'debug_back')) {
+                this.view = 'pause';
+                return true;
+            }
+            if (this._hitRect(x, y, 'debug_upgrades_open')) {
+                this._syncDebugUpgradeLevels();
+                this.upgradeScroll = 0;
+                this.view = 'debug_upgrades';
+                return true;
+            }
+            if (this._hitRect(x, y, 'debug_apply')) {
+                this.applyDebugSettings();
+                this.game.resumeFromPause(true);
+                return true;
+            }
+            return true;
+        }
+
+        if (this.view === 'debug_upgrades') {
+            const hitId = this._hitRectId(x, y);
+            if (hitId === 'upgrades_back') {
+                this.view = 'debug';
+                this._scrollDrag = null;
+                return true;
+            }
+            if (hitId === 'upgrades_apply') {
+                this.applyDebugUpgrades();
+                this.view = 'debug';
+                this._scrollDrag = null;
+                return true;
+            }
+            if (hitId && hitId.startsWith('up:')) {
+                const parts = hitId.split(':');
+                const upgradeId = parts[1];
+                const action = parts[2];
+                const maxLv = this._getMaxUpgradeLv();
+                const cur = this.debugUpgradeLevels[upgradeId] || 0;
+                if (action === 'm') {
+                    this.debugUpgradeLevels[upgradeId] = Math.max(0, cur - 1);
+                } else if (action === 'p') {
+                    this.debugUpgradeLevels[upgradeId] = Math.min(maxLv, cur + 1);
+                }
+                return true;
+            }
+            if (this._pointInListClip(x, y)) return true;
+            return true;
+        }
+
+        return false;
     }
 }
 
@@ -6589,6 +8964,8 @@ class Game {
         this.experience = new ExperienceManager(this);
         this.levelManager = new LevelManager();
         this.ui = new UI();
+        this.pauseMenu = new PauseMenu(this);
+        this.pauseReturnState = 'PLAYING';
         this.audio = new AudioHooks();
         this.bloodStains = new BloodStainSystem();
         this.abilities = new AbilityManager(this);
@@ -6630,12 +9007,36 @@ class Game {
         const overlayUp = (e) => {
             if (this._isOverlayState()) this._onOverlayPointerUp(e);
         };
+        const overlayMove = (e) => {
+            if (this._isOverlayState()) this._onOverlayPointerMove(e);
+        };
         this.canvas.addEventListener('touchstart', overlayDown, { passive: false });
         this.canvas.addEventListener('mousedown', overlayDown);
+        this.canvas.addEventListener('touchmove', overlayMove, { passive: false });
+        this.canvas.addEventListener('mousemove', overlayMove);
         this.canvas.addEventListener('touchend', overlayUp, { passive: false });
         this.canvas.addEventListener('mouseup', overlayUp);
         this.canvas.addEventListener('touchcancel', overlayUp, { passive: false });
+        this.canvas.addEventListener('wheel', (e) => {
+            if (this.state !== 'PAUSED') return;
+            if (this.pauseMenu.view !== 'debug_upgrades') return;
+            this.pauseMenu.onWheel(e.deltaY);
+            e.preventDefault();
+        }, { passive: false });
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        const playingPointerUp = (e) => {
+            if (this.state !== 'PLAYING' || this.pauseMenu.active) return;
+            const pos = this.getClickPos(e);
+            const vp = this.renderer.getViewport();
+            const s = this.renderer.uiScale;
+            if (this.pauseMenu.hitPauseButton(pos.x, pos.y, vp, s)) {
+                if (e.cancelable) e.preventDefault();
+                this.openPause();
+            }
+        };
+        this.canvas.addEventListener('touchend', playingPointerUp, { passive: false });
+        this.canvas.addEventListener('mouseup', playingPointerUp);
 
         const onViewport = () => {
             this.renderer.resize();
@@ -6651,7 +9052,28 @@ class Game {
 
     _isOverlayState() {
         return this.state === 'MENU' || this.state === 'FAIL' || this.state === 'COMPLETE'
-            || this.state === 'LEVEL_UP' || this.state === 'STAGE_INTRO';
+            || this.state === 'LEVEL_UP' || this.state === 'STAGE_INTRO' || this.state === 'PAUSED';
+    }
+
+    openPause() {
+        if (this.state !== 'PLAYING') return;
+        if (this.input) this.input.cancelActivePointer();
+        if (this.player && this.player.state === PlayerState.BULLET_TIME) {
+            this.exitBulletTime(true);
+        }
+        this.pauseReturnState = this.state;
+        this.state = 'PAUSED';
+        this.pauseMenu.open();
+        this._lockOverlayInput();
+    }
+
+    resumeFromPause(triggerUpgrades) {
+        this.pauseMenu.close();
+        this.state = this.pauseReturnState || 'PLAYING';
+        this.pauseReturnState = 'PLAYING';
+        if (triggerUpgrades && this.experience) {
+            this.experience.tryTriggerPendingUpgrade();
+        }
     }
 
     _lockOverlayInput() {
@@ -6669,10 +9091,24 @@ class Game {
         if (this._overlayDismissPending) return;
         this._overlayGestureActive = true;
         if (e.cancelable) e.preventDefault();
+        if (this.state === 'PAUSED') {
+            const pos = this.getClickPos(e);
+            this.pauseMenu.onPointerDown(pos.x, pos.y);
+        }
+    }
+
+    _onOverlayPointerMove(e) {
+        if (this.state !== 'PAUSED') return;
+        const pos = this.getClickPos(e);
+        this.pauseMenu.onPointerMove(pos.x, pos.y);
+        if (e.cancelable) e.preventDefault();
     }
 
     _onOverlayPointerUp(e) {
         if (e.cancelable) e.preventDefault();
+        if (this.state === 'PAUSED') {
+            this.pauseMenu.onPointerUp();
+        }
         if (this._overlayDismissPending) {
             this._overlayDismissPending = false;
             return;
@@ -6681,6 +9117,12 @@ class Game {
         this._overlayGestureActive = false;
 
         const pos = this.getClickPos(e);
+        if (this.state === 'PAUSED') {
+            const vp = this.renderer.getViewport();
+            const s = this.renderer.uiScale;
+            this.pauseMenu.handleClick(pos.x, pos.y, vp, s);
+            return;
+        }
         if (this.state === 'LEVEL_UP') {
             const idx = this.upgrades.handleClick(pos.x, pos.y);
             if (idx >= 0) this.upgrades.selectUpgrade(idx, this.player);
@@ -6853,6 +9295,7 @@ class Game {
         this.levelManager.level = levelIndex;
         this.player.beginStage();
         this.spawner.monsters = [];
+        if (this.spawner) this.spawner.boss = null;
         this.combat.roundAttackResolved = true;
     }
 
@@ -6860,6 +9303,7 @@ class Game {
         if (this.input) this.input.cancelActivePointer();
         this.state = 'STAGE_INTRO';
         this._setupStageBeforeIntro(levelIndex);
+        const stageCfg = CONFIG.STAGES[clamp(levelIndex, 0, CONFIG.STAGES.length - 1)];
         const introDur = CONFIG.STAGE_INTRO_SLIDE_IN + CONFIG.STAGE_INTRO_LABEL_HOLD
             + CONFIG.STAGE_INTRO_SLIDE_OUT;
         const sakuraDur = introDur + (CONFIG.STAGE_INTRO_SAKURA_EXTRA || 0.8);
@@ -6867,7 +9311,7 @@ class Game {
         this.levelManager.startStageIntro(levelIndex + 1, () => {
             this._prepareStage(levelIndex, true);
             this.state = 'PLAYING';
-        });
+        }, stageCfg && stageCfg.boss);
     }
 
     _beginNextLevelTransition() {
@@ -6966,7 +9410,7 @@ class Game {
             return;
         }
         this.combat.beginRoundAttack();
-        this.abilities.reset();
+        this.abilities.reset({ keepCompanions: true });
     }
 
     _onAttackFinished() {
@@ -7012,6 +9456,7 @@ class Game {
         }
         if (this.state === 'STAGE_INTRO') return;
         if (this.state === 'STAGE_CLEAR') return;
+        if (this.state === 'PAUSED') return;
         if (this.state === 'LEVEL_UP') {
             this.upgrades.update(realDt);
             return;
@@ -7041,6 +9486,12 @@ class Game {
         ctx.fillStyle = `rgba(0, 0, 0, ${CONFIG.BULLET_TIME_DIM_ALPHA})`;
         ctx.fillRect(0, 0, this.renderer.w, this.renderer.h);
         ctx.restore();
+    }
+
+    _drawEnemyProjectiles(ctx) {
+        if (this.projectiles) this.projectiles.draw(ctx);
+        const boss = this.spawner && this.spawner.boss;
+        if (boss && typeof boss.drawBullets === 'function') boss.drawBullets(ctx);
     }
 
     draw() {
@@ -7081,11 +9532,27 @@ class Game {
                 m.pathTargetHighlight = previewTargets ? previewTargets.has(m.id) : false;
                 m.draw(ctx);
             }
-            if (battleScene) this.projectiles.draw(ctx);
+            if (battleScene && this.spawner.boss) {
+                const boss = this.spawner.boss;
+                if (boss.phase === 'warning') {
+                    boss.drawWarningOverlay(ctx);
+                } else if (boss.segments) {
+                    for (const seg of boss.segments) {
+                        seg.pathTargetHighlight = previewTargets ? previewTargets.has(seg.id) : false;
+                    }
+                    boss.draw(ctx);
+                }
+            }
         }
 
         if (showCombatFx) {
             this.abilities.drawBehind(ctx);
+        }
+        if (showCombatFx && this.abilities.batSwarms.length > 0) {
+            this.abilities.drawBatSwarms(ctx);
+        }
+        if (battleScene && this.abilities.hasSummonFx && this.abilities.hasSummonFx()) {
+            this.abilities.drawSummonFx(ctx);
         }
         if (this.player) {
             if (!this._isFailBattlefield()) this.player.drawTriggerZone(ctx);
@@ -7099,9 +9566,9 @@ class Game {
         }
         if (showCombatFx && (this.abilities.hasActiveFx() || this.abilities.hasAutoDarts() || this.abilities.batSwarms.length > 0)) {
             this.abilities.drawAutoDarts(ctx);
-            if (this.abilities.batSwarms.length > 0) this.abilities.drawBatSwarms(ctx);
             if (this.abilities.hasActiveFx()) this.abilities.drawFront(ctx);
         }
+        if (battleScene) this._drawEnemyProjectiles(ctx);
         if (this.state === 'FAIL_DEATH' && this.failDeath.isActive()) {
             this.failDeath.drawSpears(ctx);
         }
@@ -7122,9 +9589,15 @@ class Game {
         const s = this.renderer.uiScale;
         ctx.save();
         this.renderer.clipViewport(ctx);
-        if (this.player && !this._isFailBattlefield()) this.ui.draw(ctx, this, vp, s);
+        if (this.player && !this._isFailBattlefield()) {
+            this.ui.draw(ctx, this, vp, s);
+            if (this.state === 'PLAYING') {
+                this.pauseMenu.drawPauseButton(ctx, vp, s);
+            }
+        }
         this.levelManager.drawBanner(ctx, vp, s);
         if (this.state === 'LEVEL_UP') this.upgrades.drawUI(ctx, vp, s, this.player);
+        if (this.state === 'PAUSED') this.pauseMenu.draw(ctx, vp, s);
         this.levelManager.drawStageIntro(ctx, vp, s);
         this.levelManager.drawClearFlash(ctx, vp, s);
         if (this.state === 'FAIL' || this.state === 'STAGE_FAIL') {

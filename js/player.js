@@ -44,6 +44,7 @@ class Player {
         this.invalidPathTimer = 0;
         this.kiAtDrawStart = this.ki;
         this.damageFlashTimer = 0;
+        this.healFlashTimer = 0;
 
         this.turnBuffs = {
             attackMult: 1,
@@ -115,6 +116,7 @@ class Player {
         this.drawSessionSnapshot = null;
         this.invincibleTimer = 0;
         this.damageFlashTimer = 0;
+        this.healFlashTimer = 0;
         this.holyShieldCharges = 0;
         this.holyShieldTimer = 0;
         this.killCountForVampire = 0;
@@ -182,13 +184,23 @@ class Player {
         const actual = Math.max(1, Math.round(amount * this.getHealMultiplier()));
         const before = this.hp;
         this.hp = Math.min(this.maxHp, this.hp + actual);
-        return this.hp - before;
+        const gained = this.hp - before;
+        if (gained > 0) {
+            this.healFlashTimer = CONFIG.PLAYER.HEAL_FLASH_TIME || 0.5;
+        }
+        return gained;
     }
 
     getHolyShieldInterval() {
         const lv = this.getUpgradeLevel('holy_shield');
         if (lv <= 0) return 0;
-        return Math.max(1.5, 6 - 0.5 * (lv - 1));
+        return Math.max(1.5, 5 - 0.5 * (lv - 1));
+    }
+
+    grantHolyShieldImmediate() {
+        if (this.getUpgradeLevel('holy_shield') <= 0) return;
+        this.holyShieldCharges = 1;
+        this.holyShieldTimer = this.getHolyShieldInterval();
     }
 
     _refreshHolyShieldInterval() {
@@ -400,10 +412,6 @@ class Player {
         return Math.max(1, Math.round(dmg));
     }
 
-    getAutoDartScale() {
-        return 1 + 0.2 * this.getUpgradeLevel('giant_dart');
-    }
-
     hasSpiritBomb() {
         return this.getUpgradeLevel('spirit_bomb') > 0;
     }
@@ -423,9 +431,45 @@ class Player {
         this.queueMessage(`获得强化: ${upgrade.name}`);
     }
 
+    rebuildUpgradesFromStacks(stacks, silent = false) {
+        const hpRatio = clamp(this.hp / Math.max(1, this.maxHp), 0, 1);
+        this.baseAttack = CONFIG.PLAYER.BASE_ATTACK;
+        this.attackPowerScale = 1;
+        this.critRate = CONFIG.PLAYER.BASE_CRIT_RATE;
+        this.critDamage = CONFIG.PLAYER.BASE_CRIT_DAMAGE;
+        this.sizeScale = CONFIG.PLAYER.SIZE_SCALE;
+        this.baseHp = CONFIG.PLAYER.BASE_HP;
+        this.maxHp = this.baseHp;
+        this.baseKi = CONFIG.PLAYER.BASE_KI;
+        this.comboDamageBonus = CONFIG.PLAYER.COMBO_DAMAGE_BONUS;
+        this.upgradeStacks = {};
+        this.holyShieldCharges = 0;
+        this.holyShieldTimer = 0;
+        this.killCountForVampire = 0;
+
+        if (typeof UPGRADE_DEFS !== 'undefined') {
+            const maxLv = CONFIG.DEBUG?.MAX_UPGRADE_LEVEL || 9;
+            for (const def of UPGRADE_DEFS) {
+                const lv = clamp(Math.floor(stacks[def.id] || 0), 0, maxLv);
+                for (let i = 0; i < lv; i++) {
+                    this.upgradeStacks[def.id] = (this.upgradeStacks[def.id] || 0) + 1;
+                    def.apply(this, this.upgradeStacks[def.id]);
+                }
+            }
+        }
+
+        this.hp = Math.max(1, Math.round(this.maxHp * hpRatio));
+        const turnKiMax = Math.round(this.baseKi * (1 + this.nextTurnKiBonus));
+        this.kiMax = Math.max(20, turnKiMax);
+        this.ki = Math.min(this.kiMax, this.ki);
+        this._refreshHolyShieldInterval();
+        if (!silent) this.queueMessage('调试: 强化已更新');
+    }
+
     update(dt, realDt) {
         if (this.invincibleTimer > 0) this.invincibleTimer -= dt;
         if (this.damageFlashTimer > 0) this.damageFlashTimer -= dt;
+        if (this.healFlashTimer > 0) this.healFlashTimer -= dt;
         if (this.messageTimer > 0) this.messageTimer -= dt;
         if (this.invalidPathTimer > 0) {
             this.invalidPathTimer -= dt;
@@ -603,6 +647,9 @@ class Player {
             && Math.floor(this.invincibleTimer * 18) % 2 === 0;
         const damageFlashOn = this.damageFlashTimer > 0
             && Math.floor(this.damageFlashTimer * 22) % 2 === 0;
+        const healT = this.healFlashTimer > 0
+            ? clamp(this.healFlashTimer / (CONFIG.PLAYER.HEAL_FLASH_TIME || 0.5), 0, 1)
+            : 0;
         const px = Math.floor(this.x);
         const py = Math.floor(this.y);
 
@@ -610,8 +657,32 @@ class Player {
             ? SPRITES.ninja.attack[Math.floor(Date.now() / 80) % SPRITES.ninja.attack.length]
             : SPRITES.ninja.idle[Math.floor(Date.now() / 180) % SPRITES.ninja.idle.length];
         const alpha = blink ? 0.55 : 1;
-        const tint = damageFlashOn ? 0.72 : 0;
-        drawSprite(ctx, sprite, px, py, this.spriteScale, alpha, false, tint);
+        let tint = 0;
+        let tintR = 255;
+        let tintG = 72;
+        let tintB = 72;
+        if (damageFlashOn) {
+            tint = 0.72;
+        } else if (healT > 0) {
+            tint = 0.62 * healT;
+            tintR = 80;
+            tintG = 230;
+            tintB = 130;
+        }
+        drawSprite(ctx, sprite, px, py, this.spriteScale, alpha, false, tint, tintR, tintG, tintB);
+
+        if (healT > 0) {
+            ctx.save();
+            ctx.globalAlpha = 0.28 * healT;
+            const glow = ctx.createRadialGradient(px, py, 4, px, py, this.effectiveRadius + 18);
+            glow.addColorStop(0, 'rgba(140, 255, 180, 0.85)');
+            glow.addColorStop(1, 'rgba(80, 200, 120, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(px, py, this.effectiveRadius + 16, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
 
         this._drawHpBar(ctx);
 

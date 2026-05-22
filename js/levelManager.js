@@ -13,9 +13,14 @@ class LevelManager {
         this.failIntro = null;
     }
 
-    startStageIntro(levelNum, onComplete) {
+    startStageIntro(levelNum, onComplete, bossKey) {
+        let bossName = null;
+        if (bossKey === 'centipede' && CONFIG.BOSS && CONFIG.BOSS.CENTIPEDE) {
+            bossName = CONFIG.BOSS.CENTIPEDE.name;
+        }
         this.stageIntro = {
             levelNum,
+            bossName,
             phase: 'slideIn',
             slideInDur: CONFIG.STAGE_INTRO_SLIDE_IN,
             holdDur: CONFIG.STAGE_INTRO_LABEL_HOLD,
@@ -48,7 +53,7 @@ class LevelManager {
         }
     }
 
-    _getStageIntroBoardX(intro, vp) {
+    _getStageIntroTextX(intro, vp) {
         const centerX = vp.cx;
         const offScreen = vp.w * 0.42;
         if (intro.phase === 'slideIn') {
@@ -60,63 +65,13 @@ class LevelManager {
         return lerp(centerX, vp.w + offScreen, easeInQuad(t));
     }
 
-    _drawPixelNail(ctx, x, y, unit) {
-        const n = unit;
-        ctx.fillStyle = '#2a1810';
-        ctx.fillRect(x, y, n, n);
-        ctx.fillStyle = '#5a4030';
-        ctx.fillRect(x + 1, y + 1, n - 2, n - 2);
-        ctx.fillStyle = '#8a7060';
-        ctx.fillRect(x + 1, y + 1, 1, 1);
-    }
-
-    _drawWoodenSign(ctx, cx, cy, s, levelNum) {
-        const unit = Math.max(2, Math.round(2 * s));
-        const cols = 56;
-        const rows = 13;
-        const bw = cols * unit;
-        const bh = rows * unit;
-        const x = Math.floor(cx - bw / 2);
-        const y = Math.floor(cy - bh / 2);
-        const text = `第${levelNum}关`;
-        const fontSize = Math.round(14 * s);
-
-        ctx.save();
-        ctx.imageSmoothingEnabled = false;
-
-        ctx.fillStyle = '#2e1a0c';
-        ctx.fillRect(x, y, bw, bh);
-
-        const inset = unit;
-        for (let row = 0; row < rows - 2; row++) {
-            const gy = y + inset + row * unit;
-            ctx.fillStyle = row === 0 ? '#a87840' : (row % 2 === 0 ? '#8a5c34' : '#7a502c');
-            ctx.fillRect(x + inset, gy, bw - inset * 2, unit);
-        }
-
-        ctx.fillStyle = '#6a4428';
-        ctx.fillRect(x + inset, y + inset, unit, bh - inset * 2);
-        ctx.fillRect(x + bw - inset * 2, y + inset, unit, bh - inset * 2);
-
-        const nailOff = unit;
-        const nailSz = unit + 1;
-        this._drawPixelNail(ctx, x + nailOff, y + nailOff, nailSz);
-        this._drawPixelNail(ctx, x + bw - nailOff - nailSz, y + nailOff, nailSz);
-        this._drawPixelNail(ctx, x + nailOff, y + bh - nailOff - nailSz, nailSz);
-        this._drawPixelNail(ctx, x + bw - nailOff - nailSz, y + bh - nailOff - nailSz, nailSz);
-
-        const tcx = Math.floor(cx);
-        const tcy = Math.floor(cy);
-        const off = 1;
-        ctx.font = `bold ${Math.max(10, fontSize)}px ${GAME_FONT}`;
+    _drawStageIntroText(ctx, text, x, y, fontSize, color) {
+        const px = Math.max(8, Math.round(fontSize));
+        ctx.font = `bold ${px}px ${GAME_FONT}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#1a1008';
-        ctx.fillText(text, tcx + off, tcy + off);
-        ctx.fillStyle = '#fff4c0';
-        ctx.fillText(text, tcx, tcy);
-
-        ctx.restore();
+        ctx.fillStyle = color;
+        ctx.fillText(text, Math.floor(x), Math.floor(y));
     }
 
     drawStageIntro(ctx, vp, uiScale) {
@@ -124,11 +79,17 @@ class LevelManager {
         const s = uiScale || 1;
         const intro = this.stageIntro;
         const labelY = Math.floor(vp.y + vp.h * 0.22);
-        const boardX = Math.floor(this._getStageIntroBoardX(intro, vp));
+        const textX = Math.floor(this._getStageIntroTextX(intro, vp));
+        const fontSize = Math.round(14 * s);
+        const text = `第${intro.levelNum}关`;
 
         ctx.save();
         ctx.imageSmoothingEnabled = false;
-        this._drawWoodenSign(ctx, boardX, labelY, s, intro.levelNum);
+        this._drawStageIntroText(ctx, text, textX, labelY, fontSize, '#000000');
+        if (intro.bossName) {
+            const subSize = Math.round(11 * s);
+            this._drawStageIntroText(ctx, intro.bossName, textX, labelY + Math.round(16 * s), subSize, '#000000');
+        }
         ctx.restore();
     }
 

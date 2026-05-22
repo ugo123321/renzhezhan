@@ -59,11 +59,15 @@ class UI {
         return canvasH - reserve;
     }
 
-    _getHudLayout(vp, s, player) {
+    _getHudLayout(vp, s, player, game) {
         const pad = 12 * s;
         const kiY = vp.y + 28 * s;
         const kiH = 40 * s;
-        const buffRowY = kiY + kiH + 8 * s;
+        const boss = game && game.spawner && game.spawner.boss;
+        const showBossBar = boss && boss.phase === 'active';
+        const bossBarH = showBossBar ? 22 * s : 0;
+        const bossBarY = kiY + kiH + 6 * s;
+        const buffRowY = showBossBar ? bossBarY + bossBarH + 6 * s : kiY + kiH + 8 * s;
         const hasBuffs = player && player.collectedOrbBuffs && player.collectedOrbBuffs.length > 0;
         const secondRowY = hasBuffs ? buffRowY + 30 * s : buffRowY;
         return {
@@ -72,16 +76,64 @@ class UI {
             kiY,
             kiW: vp.w - pad * 2,
             kiH,
+            bossBarY,
+            bossBarH,
+            showBossBar,
             buffRowY,
             secondRowY,
             comboY: secondRowY + 8 * s,
         };
     }
 
+    drawBossHpBar(ctx, boss, layout, s) {
+        if (!boss || !layout.showBossBar) return;
+        const x = layout.kiX;
+        const y = layout.bossBarY;
+        const w = layout.kiW;
+        const h = layout.bossBarH;
+        const ratio = boss.hpRatio;
+        const border = Math.max(2, Math.floor(2 * s));
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        drawPixelPanel(ctx, x, y, w, h, '#281820', '#c84848', border);
+
+        const innerX = x + border;
+        const innerY = y + border;
+        const innerW = w - border * 2;
+        const innerH = h - border * 2;
+        const fillW = Math.floor(innerW * ratio);
+
+        ctx.fillStyle = '#3a1818';
+        ctx.fillRect(innerX, innerY, innerW, innerH);
+        if (fillW > 0) {
+            ctx.fillStyle = '#c83030';
+            ctx.fillRect(innerX, innerY, fillW, innerH);
+            ctx.fillStyle = '#ff6868';
+            ctx.fillRect(innerX, innerY, fillW, Math.max(2, Math.floor(innerH * 0.4)));
+        }
+
+        drawPixelText(ctx, boss.name, x + 8 * s, y + h / 2, Math.round(9 * s), '#ffe0c8', 'left', 'middle');
+        drawPixelText(
+            ctx,
+            `${Math.ceil(boss.totalHp)}/${boss.maxTotalHp}`,
+            x + w - 8 * s,
+            y + h / 2,
+            Math.round(8 * s),
+            '#ffd0c0',
+            'right',
+            'middle'
+        );
+        ctx.restore();
+    }
+
     draw(ctx, game, vp, s) {
-        const layout = this._getHudLayout(vp, s, game.player);
+        const layout = this._getHudLayout(vp, s, game.player, game);
         this._lastHudLayout = layout;
         this.drawTopKiBar(ctx, game.player, layout, s);
+        if (game.spawner && game.spawner.boss) {
+            this.drawBossHpBar(ctx, game.spawner.boss, layout, s);
+        }
         this.drawTurnBuffIcons(ctx, game.player, layout, s);
         this.drawComboBanner(ctx, game.player, vp, layout, s);
         this.drawMessage(ctx, game.player, vp, s);

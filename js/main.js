@@ -19,6 +19,8 @@ class Game {
         this.experience = new ExperienceManager(this);
         this.levelManager = new LevelManager();
         this.ui = new UI();
+        this.pauseMenu = new PauseMenu(this);
+        this.pauseReturnState = 'PLAYING';
         this.audio = new AudioHooks();
         this.bloodStains = new BloodStainSystem();
         this.abilities = new AbilityManager(this);
@@ -60,12 +62,36 @@ class Game {
         const overlayUp = (e) => {
             if (this._isOverlayState()) this._onOverlayPointerUp(e);
         };
+        const overlayMove = (e) => {
+            if (this._isOverlayState()) this._onOverlayPointerMove(e);
+        };
         this.canvas.addEventListener('touchstart', overlayDown, { passive: false });
         this.canvas.addEventListener('mousedown', overlayDown);
+        this.canvas.addEventListener('touchmove', overlayMove, { passive: false });
+        this.canvas.addEventListener('mousemove', overlayMove);
         this.canvas.addEventListener('touchend', overlayUp, { passive: false });
         this.canvas.addEventListener('mouseup', overlayUp);
         this.canvas.addEventListener('touchcancel', overlayUp, { passive: false });
+        this.canvas.addEventListener('wheel', (e) => {
+            if (this.state !== 'PAUSED') return;
+            if (this.pauseMenu.view !== 'debug_upgrades') return;
+            this.pauseMenu.onWheel(e.deltaY);
+            e.preventDefault();
+        }, { passive: false });
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        const playingPointerUp = (e) => {
+            if (this.state !== 'PLAYING' || this.pauseMenu.active) return;
+            const pos = this.getClickPos(e);
+            const vp = this.renderer.getViewport();
+            const s = this.renderer.uiScale;
+            if (this.pauseMenu.hitPauseButton(pos.x, pos.y, vp, s)) {
+                if (e.cancelable) e.preventDefault();
+                this.openPause();
+            }
+        };
+        this.canvas.addEventListener('touchend', playingPointerUp, { passive: false });
+        this.canvas.addEventListener('mouseup', playingPointerUp);
 
         const onViewport = () => {
             this.renderer.resize();
@@ -81,7 +107,28 @@ class Game {
 
     _isOverlayState() {
         return this.state === 'MENU' || this.state === 'FAIL' || this.state === 'COMPLETE'
-            || this.state === 'LEVEL_UP' || this.state === 'STAGE_INTRO';
+            || this.state === 'LEVEL_UP' || this.state === 'STAGE_INTRO' || this.state === 'PAUSED';
+    }
+
+    openPause() {
+        if (this.state !== 'PLAYING') return;
+        if (this.input) this.input.cancelActivePointer();
+        if (this.player && this.player.state === PlayerState.BULLET_TIME) {
+            this.exitBulletTime(true);
+        }
+        this.pauseReturnState = this.state;
+        this.state = 'PAUSED';
+        this.pauseMenu.open();
+        this._lockOverlayInput();
+    }
+
+    resumeFromPause(triggerUpgrades) {
+        this.pauseMenu.close();
+        this.state = this.pauseReturnState || 'PLAYING';
+        this.pauseReturnState = 'PLAYING';
+        if (triggerUpgrades && this.experience) {
+            this.experience.tryTriggerPendingUpgrade();
+        }
     }
 
     _lockOverlayInput() {
@@ -99,10 +146,24 @@ class Game {
         if (this._overlayDismissPending) return;
         this._overlayGestureActive = true;
         if (e.cancelable) e.preventDefault();
+        if (this.state === 'PAUSED') {
+            const pos = this.getClickPos(e);
+            this.pauseMenu.onPointerDown(pos.x, pos.y);
+        }
+    }
+
+    _onOverlayPointerMove(e) {
+        if (this.state !== 'PAUSED') return;
+        const pos = this.getClickPos(e);
+        this.pauseMenu.onPointerMove(pos.x, pos.y);
+        if (e.cancelable) e.preventDefault();
     }
 
     _onOverlayPointerUp(e) {
         if (e.cancelable) e.preventDefault();
+        if (this.state === 'PAUSED') {
+            this.pauseMenu.onPointerUp();
+        }
         if (this._overlayDismissPending) {
             this._overlayDismissPending = false;
             return;
@@ -111,6 +172,12 @@ class Game {
         this._overlayGestureActive = false;
 
         const pos = this.getClickPos(e);
+        if (this.state === 'PAUSED') {
+            const vp = this.renderer.getViewport();
+            const s = this.renderer.uiScale;
+            this.pauseMenu.handleClick(pos.x, pos.y, vp, s);
+            return;
+        }
         if (this.state === 'LEVEL_UP') {
             const idx = this.upgrades.handleClick(pos.x, pos.y);
             if (idx >= 0) this.upgrades.selectUpgrade(idx, this.player);
@@ -283,6 +350,7 @@ class Game {
         this.levelManager.level = levelIndex;
         this.player.beginStage();
         this.spawner.monsters = [];
+        if (this.spawner) this.spawner.boss = null;
         this.combat.roundAttackResolved = true;
     }
 
@@ -290,6 +358,7 @@ class Game {
         if (this.input) this.input.cancelActivePointer();
         this.state = 'STAGE_INTRO';
         this._setupStageBeforeIntro(levelIndex);
+        const stageCfg = CONFIG.STAGES[clamp(levelIndex, 0, CONFIG.STAGES.length - 1)];
         const introDur = CONFIG.STAGE_INTRO_SLIDE_IN + CONFIG.STAGE_INTRO_LABEL_HOLD
             + CONFIG.STAGE_INTRO_SLIDE_OUT;
         const sakuraDur = introDur + (CONFIG.STAGE_INTRO_SAKURA_EXTRA || 0.8);
@@ -297,7 +366,7 @@ class Game {
         this.levelManager.startStageIntro(levelIndex + 1, () => {
             this._prepareStage(levelIndex, true);
             this.state = 'PLAYING';
-        });
+        }, stageCfg && stageCfg.boss);
     }
 
     _beginNextLevelTransition() {
@@ -396,7 +465,7 @@ class Game {
             return;
         }
         this.combat.beginRoundAttack();
-        this.abilities.reset();
+        this.abilities.reset({ keepCompanions: true });
     }
 
     _onAttackFinished() {
@@ -442,6 +511,7 @@ class Game {
         }
         if (this.state === 'STAGE_INTRO') return;
         if (this.state === 'STAGE_CLEAR') return;
+        if (this.state === 'PAUSED') return;
         if (this.state === 'LEVEL_UP') {
             this.upgrades.update(realDt);
             return;
@@ -471,6 +541,12 @@ class Game {
         ctx.fillStyle = `rgba(0, 0, 0, ${CONFIG.BULLET_TIME_DIM_ALPHA})`;
         ctx.fillRect(0, 0, this.renderer.w, this.renderer.h);
         ctx.restore();
+    }
+
+    _drawEnemyProjectiles(ctx) {
+        if (this.projectiles) this.projectiles.draw(ctx);
+        const boss = this.spawner && this.spawner.boss;
+        if (boss && typeof boss.drawBullets === 'function') boss.drawBullets(ctx);
     }
 
     draw() {
@@ -511,11 +587,27 @@ class Game {
                 m.pathTargetHighlight = previewTargets ? previewTargets.has(m.id) : false;
                 m.draw(ctx);
             }
-            if (battleScene) this.projectiles.draw(ctx);
+            if (battleScene && this.spawner.boss) {
+                const boss = this.spawner.boss;
+                if (boss.phase === 'warning') {
+                    boss.drawWarningOverlay(ctx);
+                } else if (boss.segments) {
+                    for (const seg of boss.segments) {
+                        seg.pathTargetHighlight = previewTargets ? previewTargets.has(seg.id) : false;
+                    }
+                    boss.draw(ctx);
+                }
+            }
         }
 
         if (showCombatFx) {
             this.abilities.drawBehind(ctx);
+        }
+        if (showCombatFx && this.abilities.batSwarms.length > 0) {
+            this.abilities.drawBatSwarms(ctx);
+        }
+        if (battleScene && this.abilities.hasSummonFx && this.abilities.hasSummonFx()) {
+            this.abilities.drawSummonFx(ctx);
         }
         if (this.player) {
             if (!this._isFailBattlefield()) this.player.drawTriggerZone(ctx);
@@ -529,9 +621,9 @@ class Game {
         }
         if (showCombatFx && (this.abilities.hasActiveFx() || this.abilities.hasAutoDarts() || this.abilities.batSwarms.length > 0)) {
             this.abilities.drawAutoDarts(ctx);
-            if (this.abilities.batSwarms.length > 0) this.abilities.drawBatSwarms(ctx);
             if (this.abilities.hasActiveFx()) this.abilities.drawFront(ctx);
         }
+        if (battleScene) this._drawEnemyProjectiles(ctx);
         if (this.state === 'FAIL_DEATH' && this.failDeath.isActive()) {
             this.failDeath.drawSpears(ctx);
         }
@@ -552,9 +644,15 @@ class Game {
         const s = this.renderer.uiScale;
         ctx.save();
         this.renderer.clipViewport(ctx);
-        if (this.player && !this._isFailBattlefield()) this.ui.draw(ctx, this, vp, s);
+        if (this.player && !this._isFailBattlefield()) {
+            this.ui.draw(ctx, this, vp, s);
+            if (this.state === 'PLAYING') {
+                this.pauseMenu.drawPauseButton(ctx, vp, s);
+            }
+        }
         this.levelManager.drawBanner(ctx, vp, s);
         if (this.state === 'LEVEL_UP') this.upgrades.drawUI(ctx, vp, s, this.player);
+        if (this.state === 'PAUSED') this.pauseMenu.draw(ctx, vp, s);
         this.levelManager.drawStageIntro(ctx, vp, s);
         this.levelManager.drawClearFlash(ctx, vp, s);
         if (this.state === 'FAIL' || this.state === 'STAGE_FAIL') {

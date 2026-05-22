@@ -1,3 +1,13 @@
+function hexToRgba(hex, alpha) {
+    const h = (hex || '#ffffff').replace('#', '');
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const n = parseInt(full, 16);
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
 const UPGRADE_DEFS = [
     {
         id: 'luck',
@@ -13,7 +23,7 @@ const UPGRADE_DEFS = [
     },
     {
         id: 'multi_dart',
-        rarity: 'blue',
+        rarity: 'white',
         name: '多重飞镖',
         icon: '🎯',
         desc: '普攻飞镖数量+1',
@@ -21,10 +31,10 @@ const UPGRADE_DEFS = [
     },
     {
         id: 'giant_dart',
-        rarity: 'white',
+        rarity: 'blue',
         name: '巨大飞镖',
         icon: '⭕',
-        desc: '普攻飞镖体积+20%',
+        desc: '普攻20%概率发射巨大飞镖，伤害×2，重复升级发射数+1',
         apply() {},
     },
     {
@@ -32,7 +42,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '寒冰飞镖',
         icon: '❄️',
-        desc: '飞镖命中5%概率释放寒冰气，冰冻2秒(伤害=飞镖20%)；重复升级提高概率与伤害',
+        desc: '普攻命中5%释放寒冰飞镖，冰冻2秒，额外伤害20%',
         apply() {},
     },
     {
@@ -40,7 +50,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '元气弹',
         icon: '💫',
-        desc: '飞镖升级为元气弹，伤害+50%',
+        desc: '飞镖变元气弹，伤害+50%',
         apply() {},
     },
     {
@@ -48,7 +58,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '手里剑',
         icon: '🎯',
-        desc: '每次连击释放2个手里剑(10%攻击力)',
+        desc: '每次连击释放2枚手里剑(10%攻)',
         apply() {},
     },
     {
@@ -64,7 +74,7 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '愈合连击',
         icon: '🌿',
-        desc: '连击≥15时释放藤蔓减速并造成少量伤害，回复5%最大生命',
+        desc: '连击≥15释放藤蔓，回复5%生命',
         apply() {},
     },
     {
@@ -72,9 +82,9 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '圣盾',
         icon: '🛡️',
-        desc: '每6秒获得可抵挡1次伤害的护盾(最多1层)',
+        desc: '每5秒获得1层护盾，获得时立刻生效',
         apply(player) {
-            player._refreshHolyShieldInterval();
+            player.grantHolyShieldImmediate();
         },
     },
     {
@@ -82,14 +92,14 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '吸血蝙蝠',
         icon: '🦇',
-        desc: '每击败10个敌人释放蝙蝠群攻击附近敌人，飞回后回复2%最大生命/层',
+        desc: '每击杀10敌，蝙蝠群攻并回复2%生命',
         apply() {},
     },
     {
         id: 'meat_shield',
         rarity: 'white',
         name: '变肉',
-        icon: '🥩',
+        icon: '🛡️',
         desc: '最大生命+10%，体积+15%',
         apply(player) {
             const oldMax = player.maxHp;
@@ -111,7 +121,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '闪电链',
         icon: '⚡',
-        desc: '结算连击每+5在命中点释放闪电链(3目标)',
+        desc: '连击每+5释放闪电链',
         apply(player) {
             player.upgradeStacks.lightning_chain = (player.upgradeStacks.lightning_chain || 0) + 1;
         },
@@ -121,7 +131,7 @@ const UPGRADE_DEFS = [
         rarity: 'blue',
         name: '影分身',
         icon: '👤',
-        desc: '连击>10时永久召唤影分身(20%伤害)',
+        desc: '连击>10召唤影分身(20%伤)',
         apply() {},
     },
     {
@@ -129,7 +139,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '水龙卷术',
         icon: '🌊',
-        desc: '暴击率+5%，连击每+3对最近敌人释放穿透水龙卷',
+        desc: '暴击+5%，连击每+3释放水龙卷',
         apply(player) {
             player.critRate += 0.05;
         },
@@ -139,7 +149,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '黑洞',
         icon: '🕳️',
-        desc: '连击达到8时在攻击点生成黑洞（每次攻击最多1个）',
+        desc: '连击8时生成黑洞',
         apply(player) {
             player.upgradeStacks.black_hole = (player.upgradeStacks.black_hole || 0) + 1;
         },
@@ -149,7 +159,7 @@ const UPGRADE_DEFS = [
         rarity: 'purple',
         name: '刀阵旋风',
         icon: '🌀',
-        desc: '连击每+5在攻击点释放刀阵旋风',
+        desc: '连击每+5释放刀阵旋风',
         apply() {},
     },
     {
@@ -157,17 +167,97 @@ const UPGRADE_DEFS = [
         rarity: 'orange',
         name: '豪火球术',
         icon: '🔥',
-        desc: '连击每+10在攻击点释放豪火球(100%攻击力)',
+        desc: '连击每+10释放豪火球',
         apply(player) {
             player.upgradeStacks.great_fireball = (player.upgradeStacks.great_fireball || 0) + 1;
         },
     },
+    {
+        id: 'heavenly_thunder',
+        rarity: 'orange',
+        name: '天雷',
+        icon: '⚡',
+        desc: '每秒落雷范围攻击，重复升级落雷数+1',
+        apply() {},
+    },
+    {
+        id: 'wild_wolf',
+        rarity: 'white',
+        name: '野狼',
+        icon: '🐺',
+        pet: true,
+        desc: '宠物：野狼散养寻敌，无敌，重复升级数量+1',
+        apply() {},
+    },
+    {
+        id: 'wild_bull',
+        rarity: 'blue',
+        name: '野牛',
+        icon: '🐂',
+        pet: true,
+        desc: '宠物：野牛散养冲锋，无敌，重复升级数量+1',
+        apply() {},
+    },
+    {
+        id: 'divine_god',
+        rarity: 'purple',
+        name: '天神',
+        icon: '✨',
+        pet: true,
+        desc: '宠物：天神制裁之剑，全屏索敌，重复升级数量+1',
+        apply() {},
+    },
+    {
+        id: 'nurturing_heart',
+        rarity: 'orange',
+        name: '养育之心',
+        icon: '💗',
+        desc: '宠物数量翻倍，重复升级再次翻倍',
+        apply() {},
+    },
 ];
+
+const UPGRADE_POPUP_FX = {
+    white: {
+        overlay: 0.76,
+        edgeGlow: 0,
+        cardGlow: 0.12,
+        shimmer: false,
+        pulse: false,
+        sparkCount: 0,
+    },
+    blue: {
+        overlay: 0.8,
+        edgeGlow: 0.28,
+        cardGlow: 0.32,
+        shimmer: true,
+        pulse: false,
+        sparkCount: 6,
+    },
+    purple: {
+        overlay: 0.84,
+        edgeGlow: 0.48,
+        cardGlow: 0.5,
+        shimmer: true,
+        pulse: true,
+        sparkCount: 12,
+    },
+    orange: {
+        overlay: 0.88,
+        edgeGlow: 0.78,
+        cardGlow: 0.85,
+        shimmer: true,
+        pulse: true,
+        sparkCount: 22,
+        rays: true,
+    },
+};
 
 class UpgradeManager {
     constructor() {
         this.active = false;
         this.choices = [];
+        this.rolledRarity = 'white';
         this.onSelect = null;
         this._cardRects = [];
         this.popupTimer = 0;
@@ -184,25 +274,23 @@ class UpgradeManager {
         return 'white';
     }
 
-    _pickByRarity(rarity) {
-        const pool = UPGRADE_DEFS.filter(u => u.rarity === rarity);
-        if (pool.length === 0) return pickRandom(UPGRADE_DEFS);
-        return pickRandom(pool);
-    }
-
     generateChoices() {
         this.active = true;
         this.popupTimer = 0;
         this.choices = [];
-        const used = new Set();
+        this.rolledRarity = this._rollRarity();
+        let pool = UPGRADE_DEFS.filter(u => u.rarity === this.rolledRarity);
+        if (pool.length === 0) pool = UPGRADE_DEFS.slice();
+
+        const available = pool.slice();
         for (let i = 0; i < 3; i++) {
-            let pick = null;
-            for (let k = 0; k < 12; k++) {
-                pick = this._pickByRarity(this._rollRarity());
-                if (!used.has(pick.id) || k > 8) break;
+            if (available.length > 0) {
+                const idx = Math.floor(Math.random() * available.length);
+                this.choices.push(available[idx]);
+                available.splice(idx, 1);
+            } else {
+                this.choices.push(pickRandom(pool));
             }
-            used.add(pick.id);
-            this.choices.push(pick);
         }
     }
 
@@ -258,12 +346,88 @@ class UpgradeManager {
         }
     }
 
+    _getPopupFx() {
+        return UPGRADE_POPUP_FX[this.rolledRarity] || UPGRADE_POPUP_FX.white;
+    }
+
+    _drawRarityBackdrop(ctx, vp, s, popT) {
+        const fx = this._getPopupFx();
+        const tier = CONFIG.UPGRADE_RARITY[this.rolledRarity] || CONFIG.UPGRADE_RARITY.white;
+        const t = popT;
+
+        ctx.save();
+        ctx.globalAlpha = t;
+        ctx.fillStyle = `rgba(0, 0, 0, ${fx.overlay})`;
+        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+
+        if (fx.edgeGlow > 0) {
+            const pulse = fx.pulse ? (0.85 + Math.sin(Date.now() * 0.008) * 0.15) : 1;
+            const g = ctx.createRadialGradient(vp.cx, vp.cy, vp.w * 0.12, vp.cx, vp.cy, vp.w * 0.72);
+            g.addColorStop(0, 'rgba(0,0,0,0)');
+            g.addColorStop(0.55, hexToRgba(tier.color, fx.edgeGlow * 0.35 * pulse));
+            g.addColorStop(1, hexToRgba(tier.color, fx.edgeGlow * pulse));
+            ctx.fillStyle = g;
+            ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+        }
+
+        if (fx.rays) {
+            ctx.save();
+            ctx.translate(vp.cx, vp.cy);
+            ctx.rotate(Date.now() * 0.0004);
+            for (let i = 0; i < 8; i++) {
+                ctx.rotate(Math.PI / 4);
+                const ray = ctx.createLinearGradient(0, 0, vp.w * 0.5, 0);
+                ray.addColorStop(0, hexToRgba(tier.color, 0));
+                ray.addColorStop(0.5, hexToRgba(tier.color, 0.12 * t));
+                ray.addColorStop(1, hexToRgba(tier.color, 0));
+                ctx.fillStyle = ray;
+                ctx.fillRect(0, -vp.h * 0.06, vp.w * 0.55, vp.h * 0.12);
+            }
+            ctx.restore();
+        }
+
+        if (fx.sparkCount > 0) {
+            const seed = Math.floor(Date.now() / 120);
+            for (let i = 0; i < fx.sparkCount; i++) {
+                const a = ((i * 47 + seed) % 360) / 360 * Math.PI * 2;
+                const dist = ((i * 19 + seed) % 100) / 100;
+                const px = vp.cx + Math.cos(a) * vp.w * 0.38 * dist;
+                const py = vp.cy + Math.sin(a) * vp.h * 0.32 * dist;
+                const sz = 2 + (i % 3);
+                ctx.fillStyle = hexToRgba(tier.color, 0.25 + (i % 4) * 0.12);
+                ctx.fillRect(Math.floor(px), Math.floor(py), sz, sz);
+            }
+        }
+        ctx.restore();
+    }
+
     _drawCard(ctx, u, x, y, cardW, cardH, cardCx, innerPad, textMaxW, s, player, alpha) {
         const rarity = CONFIG.UPGRADE_RARITY[u.rarity];
+        const fx = this._getPopupFx();
         ctx.save();
         ctx.globalAlpha = alpha;
 
+        if (fx.cardGlow > 0) {
+            const pulse = fx.pulse ? (0.9 + Math.sin(Date.now() * 0.01 + x * 0.01) * 0.1) : 1;
+            ctx.shadowColor = rarity.color;
+            ctx.shadowBlur = (8 + fx.cardGlow * 18) * pulse * s;
+        }
+
         drawPixelPanel(ctx, x, y, cardW, cardH, 'rgba(30, 30, 60, 0.96)', rarity.color, 2);
+        ctx.shadowBlur = 0;
+
+        if (fx.shimmer && fx.cardGlow > 0.2) {
+            const sweep = ((Date.now() * 0.0012 + x * 0.002) % 1);
+            const sx = x + cardW * sweep;
+            ctx.globalAlpha = alpha * 0.22 * fx.cardGlow;
+            const shine = ctx.createLinearGradient(sx - 30, y, sx + 30, y);
+            shine.addColorStop(0, 'rgba(255,255,255,0)');
+            shine.addColorStop(0.5, 'rgba(255,255,255,0.9)');
+            shine.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = shine;
+            ctx.fillRect(x, y, cardW, cardH);
+            ctx.globalAlpha = alpha;
+        }
 
         const iconSize = Math.round(32 * s);
         const iconY = y + innerPad + iconSize * 0.45;
@@ -294,19 +458,26 @@ class UpgradeManager {
         if (!this.active) return;
         const s = uiScale || 1;
         const popT = easeOutQuad(this.getPopupT());
+        const tier = CONFIG.UPGRADE_RARITY[this.rolledRarity] || CONFIG.UPGRADE_RARITY.white;
+        const fx = this._getPopupFx();
 
         ctx.save();
-        ctx.fillStyle = `rgba(0, 0, 0, ${0.78 * popT})`;
-        ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+        this._drawRarityBackdrop(ctx, vp, s, popT);
 
-        const titleY = vp.y + vp.h * 0.14;
+        const titleY = vp.y + vp.h * 0.12;
         const titleScale = 0.75 + 0.25 * popT;
         ctx.save();
         ctx.translate(vp.cx, titleY);
         ctx.scale(titleScale, titleScale);
         ctx.translate(-vp.cx, -titleY);
         ctx.globalAlpha = popT;
+        if (fx.cardGlow > 0.35) {
+            ctx.shadowColor = tier.color;
+            ctx.shadowBlur = (6 + fx.cardGlow * 14) * s;
+        }
         drawPixelText(ctx, '升级！选择一个强化', vp.cx, titleY, Math.round(20 * s), '#ffe8c8');
+        ctx.shadowBlur = 0;
+        drawPixelText(ctx, tier.name, vp.cx, titleY + 26 * s, Math.round(14 * s), tier.color);
         ctx.restore();
 
         const cardW = vp.w * 0.84;
